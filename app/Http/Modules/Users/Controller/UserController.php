@@ -30,7 +30,7 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'area_id' => 'required|exists:areas,id',
             'position_id' => 'required|exists:positions,id',
-            'document' => 'required|string|unique:users', 
+            'document' => 'required|string|unique:users',  // se elimina roles y se deja como un solo usuario
         ]);
 
         $user = $this->userService->createUser($validated);
