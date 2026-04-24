@@ -28,7 +28,7 @@ class User extends Authenticatable
         'area_id',
         'position_id',
         'email',
-        'password',
+        'password', 
     ];
 
     /**
