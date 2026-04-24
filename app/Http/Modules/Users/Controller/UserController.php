@@ -31,7 +31,6 @@ class UserController extends Controller
             'area_id' => 'required|exists:areas,id',
             'position_id' => 'required|exists:positions,id',
             'document' => 'required|string|unique:users',
-            'roles' => 'nullable|array'
         ]);
 
         $user = $this->userService->createUser($validated);
@@ -52,7 +51,6 @@ class UserController extends Controller
             'area_id' => 'sometimes|exists:areas,id',
             'position_id' => 'sometimes|exists:positions,id',
             'document' => 'sometimes|string|unique:users,document,' . $user->id,
-            'roles' => 'nullable|array'
         ]);
 
         $user = $this->userService->updateUser($user, $validated);
@@ -89,7 +87,7 @@ class UserController extends Controller
             'area' => optional($user->area)->name,
             'position' => optional($user->position)->name,
             'permissions' => ['admin', 'evaluar', 'ver-historial'],
-            'roles' => $user->roles ?: ['admin']
+            'roles' => ['admin']
         ]);
     }
 }
