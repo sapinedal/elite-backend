@@ -11,8 +11,9 @@ class KPIController extends Controller
 {
     public function index(User $user)
     {
-        return response()->json($user->kpis);
+        return response()->json($user->kpis()->orderBy('created_at', 'asc')->get());
     }
+
 
     public function sync(Request $request, User $user)
     {
@@ -57,4 +58,11 @@ class KPIController extends Controller
 
         return response()->json($user->load('kpis'), 200);
     }
+
+    public function destroy(KPI $kpi)
+    {
+        $kpi->delete();
+        return response()->json(['message' => 'KPI eliminado correctamente'], 200);
+    }
 }
+
