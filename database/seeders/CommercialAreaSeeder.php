@@ -219,6 +219,25 @@ class CommercialAreaSeeder extends Seeder
                         'stage' => 'C. Gestión Operativa y Control de Ventas',
                         'weight' => 30,
                         'lower_is_better' => false,
+                        'indicators' => [
+                            [
+                                'name' => 'Tiempo Promedio de Cierre de Negocios',
+                                'definition' => 'Eficiencia en cierre desde primer contacto hasta firma.',
+                                'formula' => 'Tiempo promedio (días)= Σ Días de cierre / Nº negocios cerrados',
+                                'unit' => 'días',
+                                'fixed_goal' => 30,
+                                'parameters' => [],
+                                'tablaDetalle' => [
+                                    'headers' => ['VENTAS', 'FECHA INICIAL', 'CIERRE', 'DIAS'],
+                                    'rows' => [['', '', '', '']]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 30, 'qualification' => 'Meta alcanzada o superada (≤ 30 días)', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 30.01, 'max_value' => 45, 'qualification' => 'Buen desempeño, dentro del rango aceptable', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'Deficiente', 'min_value' => 45.01, 'max_value' => 9999, 'qualification' => 'Incumplimiento crítico (> 45 días)', 'color' => 'deficient', 'score' => 0],
+                                ],
+                            ],
+                        ],
                     ],
                     [
                         'name' => 'Gestión Documental y Procesos Legales/Internos',
