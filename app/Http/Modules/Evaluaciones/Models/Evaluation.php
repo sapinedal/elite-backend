@@ -14,7 +14,13 @@ class Evaluation extends Model
         'total_score',
         'status',
         'general_analysis',
+        'history',
     ];
+
+    protected $casts = [
+        'history' => 'array',
+    ];
+
 
     public function user()
     {

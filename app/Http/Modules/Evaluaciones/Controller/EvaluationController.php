@@ -22,15 +22,48 @@ class EvaluationController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $user) {
-            $evaluation = Evaluation::create([
-                'user_id' => $user->id,
-                'month' => $validated['month'],
-                'year' => $validated['year'],
-                'total_score' => $validated['total_score'],
-                'status' => 'finalizada',
-                'general_analysis' => $validated['general_analysis'] ?? null,
-            ]);
+            // Buscamos si ya existe una evaluación para este periodo
+            $evaluation = Evaluation::where('user_id', $user->id)
+                ->where('month', $validated['month'])
+                ->where('year', $validated['year'])
+                ->first();
 
+            if ($evaluation) {
+                // GUARDAR HISTORIAL: Antes de actualizar, guardamos el estado actual en el log
+                $previousData = [
+                    'total_score' => $evaluation->total_score,
+                    'general_analysis' => $evaluation->general_analysis,
+                    'status' => $evaluation->status,
+                    'results' => $evaluation->results,
+                    'updated_at' => $evaluation->updated_at,
+                ];
+                
+                $history = $evaluation->history ?? [];
+                $history[] = $previousData;
+
+                $evaluation->update([
+                    'total_score' => $validated['total_score'],
+                    'status' => 'finalizada',
+                    'general_analysis' => $validated['general_analysis'] ?? null,
+                    'history' => $history
+                ]);
+
+                // Limpiamos resultados anteriores para re-insertar los nuevos
+                $evaluation->results()->delete();
+            } else {
+                // Si no existe, la creamos desde cero
+                $evaluation = Evaluation::create([
+                    'user_id' => $user->id,
+                    'month' => $validated['month'],
+                    'year' => $validated['year'],
+                    'total_score' => $validated['total_score'],
+                    'status' => 'finalizada',
+                    'general_analysis' => $validated['general_analysis'] ?? null,
+                    'history' => []
+                ]);
+            }
+
+            // Insertar los nuevos resultados
             foreach ($validated['results'] as $res) {
                 EvaluationResult::create([
                     'evaluation_id' => $evaluation->id,
@@ -47,6 +80,7 @@ class EvaluationController extends Controller
 
             return response()->json($evaluation->load('results'), 201);
         });
+
     }
 
     public function show(User $user)
