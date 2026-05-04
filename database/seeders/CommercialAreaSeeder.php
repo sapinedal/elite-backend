@@ -173,7 +173,7 @@ class CommercialAreaSeeder extends Seeder
                                 'name' => 'Conversiones a Citas (Volumen)',
                                 'definition' => 'Número total de leads con los que se logró comunicación directa y agendamiento de cita.',
                                 'formula' => 'Citas_Agendadas',
-                                'unit' => ' Citas',
+                                'unit' => 'Citas',
                                 'parameters' => [
                                     ['name' => 'Citas_Agendadas', 'value' => 0],
                                 ],
@@ -198,6 +198,174 @@ class CommercialAreaSeeder extends Seeder
                                     ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 39, 'qualification' => 'No cumple con la meta', 'color' => 'deficient', 'score' => 10],
                                 ],
                             ],
+                            [
+                                'name' => 'Conversiones a Visitas (Volumen)',
+                                'definition' => 'Conversión leads a visitas-Agendan y asisten a sala de ventas o recorrido virtual/presencial',
+                                'formula' => '+Visitas_Mes_Actual/Visitas_Mes_Anterior*100',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 30, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 15, 'max_value' => 29, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 60],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 14.99, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 10],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Visitas_Mes_Anterior', 'value' => 0],
+                                    ['name' => 'Visitas_Mes_Actual', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Tasa de Conversión a Visitas (%)',
+                                'definition' => 'Conversión leads a visitas (%)',
+                                'formula' => '((Numero_Vistas_Efectivas/Total_Leads_Calificados)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 30, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 15, 'max_value' => 29, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 14.99, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 70],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Numero_Vistas_Efectivas', 'value' => 0],
+                                    ['name' => 'Total_Leads_Calificados', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Tasa de Conversión a Ventas (%)',
+                                'definition' => 'Conversion de visitas a ventas   (%)',
+                                'formula' => '((Numero_Ventas_Digitales/Total_Visitas)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 3, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 1, 'max_value' => 2.99, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 0.99, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 70],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Numero_Ventas_Digitales', 'value' => 0],
+                                    ['name' => 'Total_Visitas', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Tasa de Conversión Global de ventas (%)',
+                                'definition' => 'Mide la efectividad total del proceso comercial para convertir todos los leads generados (de cualquier canal) en ventas efectivas.',
+                                'formula' => '((Numero_Ventas_Digitales_Confirmadas/Total_Leeds_Generados)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 3, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 99, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'En riesgo', 'min_value' => 60, 'max_value' => 79, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Numero_Ventas_Digitales_Confirmadas', 'value' => 0],
+                                    ['name' => 'Total_Leeds_Generados', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Participación de Ventas por Canales Digitales',
+                                'definition' => 'Mide el porcentaje de ventas totales del proyecto que se originaron desde canales digitales (campañas pagas, redes sociales, formularios web, CRM, etc.). Permite identificar la efectividad del canal digital como fuente de cierres y su aporte a los resultados comerciales generales.',
+                                'formula' => '((Ventas_Digitales/Ventas_Totales)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 50, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 30, 'max_value' => 49, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 29.99, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Ventas_Digitales', 'value' => 0],
+                                    ['name' => 'Ventas_Totales', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Tasa de contacto inicial',
+                                'definition' => 'Mide qué porcentaje de los leads recibidos fueron contactados efectivamente. Refleja la agilidad del equipo en el primer acercamiento.',
+                                'formula' => '((Leads_Gestionados/Leads_Totales)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 85, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 70, 'max_value' => 84.99, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 70, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Leads_Gestionados', 'value' => 0],
+                                    ['name' => 'Leads_Totales', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Leads perdidos',
+                                'definition' => 'Mide el porcentaje de leads que no avanzan en el embudo de ventas y se pierden antes de concretar una oportunidad o cierre, identificando las principales causas para tomar acciones correctivas en la gestión comercial y en la estrategia de generación de leads.',
+                                'formula' => '((No_Contesta_Seguimiento + Imposible_Contacto + Perdio_Interes + Causa_Desconocida + Presupuesto + Duplicado + Aplaza_Compra + Furioso + Busca_Otro_Sector + Ya_Compro + No_Le_Gusta_Producto + Cercano_Al_Rio + Busca_Otra_Ciudad + Futuros_Proyectos + Busca_Renta + No_Tiene_Caja_Compensación + Prueba + Castigo_DataCredito + Reporte_Centrales_Riesgo)/Total_Leeds * 100)',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'No_Contesta_Seguimiento', 'value' => 0],
+                                    ['name' => 'Imposible_Contacto', 'value' => 0],
+                                    ['name' => 'Perdio_Interes', 'value' => 0],
+                                    ['name' => 'Causa_Desconocida', 'value' => 0],
+                                    ['name' => 'Presupuesto', 'value' => 0],
+                                    ['name' => 'Duplicado', 'value' => 0],
+                                    ['name' => 'Aplaza_Compra', 'value' => 0],
+                                    ['name' => 'Furioso', 'value' => 0],
+                                    ['name' => 'Busca_Otro_Sector', 'value' => 0],
+                                    ['name' => 'Ya_Compro', 'value' => 0],
+                                    ['name' => 'No_Le_Gusta_Producto', 'value' => 0],
+                                    ['name' => 'Cercano_Al_Rio', 'value' => 0],
+                                    ['name' => 'Busca_Otra_Ciudad', 'value' => 0],
+                                    ['name' => 'Futuros_Proyectos', 'value' => 0],
+                                    ['name' => 'Busca_Renta', 'value' => 0],
+                                    ['name' => 'No_Tiene_Caja_Compensación', 'value' => 0],
+                                    ['name' => 'Prueba', 'value' => 0],
+                                    ['name' => 'Castigo_DataCredito', 'value' => 0],
+                                    ['name' => 'Reporte_Centrales_Riesgo', 'value' => 0],
+                                    ['name' => 'Total_Leeds', 'value' => 1],
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 25, 'qualification' => 'Bajo nivel de pérdida', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 26, 'max_value' => 45, 'qualification' => 'Pérdida moderada', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'En riesgo', 'min_value' => 46, 'max_value' => 100, 'qualification' => 'Fuga crítica de prospectos', 'color' => 'deficient', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Participación de Mercado',
+                                'definition' => 'Compara la cuota de mercado de la empresa frente a la competencia.',
+                                'formula' => '(Ventas_Empresa / Ventas_Totales_Mercado) * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Ventas_Empresa', 'value' => 0],
+                                    ['name' => 'Ventas_Totales_Mercado', 'value' => 1],
+                                ],
+                                'tablaDetalle' => [
+                                    'headers' => ['PROYECTO', 'VENTAS'],
+                                    'rows' => [
+                                        ['CIUDADELA SAN MIGUEL', ''],
+                                        ['CIUDAD JARDIN', ''],
+                                        ['TIERRA DULCE (EME)', ''],
+                                        ['FONTANAR (BIENES Y BIENES)', ''],
+                                        ['SONORA MONTANA (CONINSA)', ''],
+                                        ['MAZZÚ (CONTEX)', ''],
+                                        ['FERRATORE (CENTROSUR)', ''],
+                                        ['ANACONAS', ''],
+                                        ['AZZURI (NUEVO LANZAMIENTO)', ''],
+                                    ]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 15, 'max_value' => 999, 'qualification' => 'Alta competitividad y liderazgo', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 10, 'max_value' => 14.99, 'qualification' => 'En línea con el promedio del mercado', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'En riesgo', 'min_value' => 7, 'max_value' => 9.99, 'qualification' => 'Disminución de posicionamiento', 'color' => 'at_risk', 'score' => 70],
+                                    ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 6.99, 'qualification' => 'Bajo desempeño frente a la competencia', 'color' => 'deficient', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Número de Alianzas Estratégicas Formalizadas',
+                                'definition' => 'Mide la generación de sinergias y alianzas útiles.',
+                                'formula' => '(Numero_Alianzas_Formalizadas / Meta_Trimestral) * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Numero_Alianzas_Formalizadas', 'value' => 0],
+                                    ['name' => 'Meta_Trimestral', 'value' => 6],
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 999, 'qualification' => 'Meta cumplida o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 70, 'max_value' => 99, 'qualification' => 'Avance favorable, en curso', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 69, 'qualification' => 'Avance insuficiente', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
                         ],
                     ],
                     [
@@ -209,6 +377,91 @@ class CommercialAreaSeeder extends Seeder
                         'stage' => 'B. Liderazgo y Gestión del Equipo Comercial',
                         'weight' => 30,
                         'lower_is_better' => false,
+                        'indicators' => [
+                            [
+                                'name' => 'Cumplimiento de Meta Individual del Equipo',
+                                'definition' => 'Promedio de cumplimiento de metas individuales de asesores.',
+                                'formula' => '((Ventas_Ingrid/Meta_Ingrid) + (Ventas_Natalia/Meta_Natalia) + (Ventas_Paola/Meta_Paola)) / 3 * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Meta_Ingrid', 'value' => 0],
+                                    ['name' => 'Ventas_Ingrid', 'value' => 0],
+                                    ['name' => 'Meta_Natalia', 'value' => 0],
+                                    ['name' => 'Ventas_Natalia', 'value' => 0],
+                                    ['name' => 'Meta_Paola', 'value' => 0],
+                                    ['name' => 'Ventas_Paola', 'value' => 0],
+                                ],
+                                'tablaDetalle' => [
+                                    'headers' => ['ASESOR', 'VENTAS', 'META', '% CUMPL'],
+                                    'rows' => [
+                                        ['Ingrid', '', '', ''],
+                                        ['Natalia', '', '', ''],
+                                        ['Paola', '', '', ''],
+                                    ]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Óptimo', 'min_value' => 90, 'max_value' => 999, 'qualification' => 'Meta cumplida', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 70, 'max_value' => 89.99, 'qualification' => 'Avance moderado', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 69.99, 'qualification' => 'Desempeño bajo', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Rotación del Personal Comercial',
+                                'definition' => 'Mide la estabilidad y permanencia del equipo.',
+                                'formula' => '(Numero_Bajas_Año / Promedio_Personal_Comercial) * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Numero_Bajas_Año', 'value' => 0],
+                                    ['name' => 'Promedio_Personal_Comercial', 'value' => 4],
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 15, 'qualification' => 'Meta alcanzada o superada (< 15%)', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 15.01, 'max_value' => 25, 'qualification' => 'Rotación moderada, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'Bajo', 'min_value' => 25.01, 'max_value' => 100, 'qualification' => 'Alta rotación, impacto en estabilidad', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Contribución al Ambiente Laboral',
+                                'definition' => 'Evaluación de colaboración, actitud y liderazgo (Evaluación 360° / Feedback Interno).',
+                                'formula' => 'Evaluacion_360',
+                                'unit' => 'pts (1-5)',
+                                'parameters' => [
+                                    ['name' => 'Evaluacion_360', 'value' => 0],
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 4.5, 'max_value' => 5, 'qualification' => 'Liderazgo inspirador y excelente ambiente', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => 'Buen desempeño, requiere mejorar habilidades blandas', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => 'Impacto negativo en el equipo, requiere intervención', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Índice de Productividad por Asesor',
+                                'definition' => 'Mide ventas por asesor frente a leads asignados o tiempo invertido.',
+                                'formula' => '((Ventas_Ingrid/Leads_Ingrid) + (Ventas_Natalia/Leads_Natalia) + (Ventas_Paola/Leads_Paola)) / 3 * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Ventas_Ingrid', 'value' => 0],
+                                    ['name' => 'Leads_Ingrid', 'value' => 1],
+                                    ['name' => 'Ventas_Natalia', 'value' => 0],
+                                    ['name' => 'Leads_Natalia', 'value' => 1],
+                                    ['name' => 'Ventas_Paola', 'value' => 0],
+                                    ['name' => 'Leads_Paola', 'value' => 1],
+                                ],
+                                'tablaDetalle' => [
+                                    'headers' => ['ASESORA', 'VENTAS DIGITALES', 'LEADS', '% VENTAS'],
+                                    'rows' => [
+                                        ['Ingrid', '', '', ''],
+                                        ['Natalia', '', '', ''],
+                                        ['Paola', '', '', ''],
+                                    ]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Óptimo', 'min_value' => 2.5, 'max_value' => 999, 'qualification' => 'Excelente productividad por asesor', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 1.8, 'max_value' => 2.49, 'qualification' => 'Productividad dentro del rango esperado', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 1.79, 'qualification' => 'Productividad por debajo del objetivo', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                        ],
                     ],
                     [
                         'name' => 'Gestión Operativa y Control de Ventas',
@@ -220,6 +473,29 @@ class CommercialAreaSeeder extends Seeder
                         'weight' => 30,
                         'lower_is_better' => false,
                         'indicators' => [
+                            [
+                                'name' => 'Precisión y Actualización del CRM',
+                                'definition' => 'Mide la calidad, integridad y actualidad de los negocios registrados en el CRM (Traslados y Promesas).',
+                                'formula' => '(Negocios_Completos / Total_Negocios_CRM) * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Negocios_Completos', 'value' => 0],
+                                    ['name' => 'Total_Negocios_CRM', 'value' => 1],
+                                ],
+                                'tablaDetalle' => [
+                                    'headers' => ['ASESOR', 'TRASLADOS REALIZADOS', 'FIRMAS PROMESAS', '% EFECTIVIDAD'],
+                                    'rows' => [
+                                        ['Ingrid', '', '', ''],
+                                        ['Natalia', '', '', ''],
+                                        ['Paola', '', '', ''],
+                                    ]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Óptimo', 'min_value' => 98, 'max_value' => 100, 'qualification' => 'Cumple o supera la meta (Datos íntegros)', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 90, 'max_value' => 97.99, 'qualification' => 'En rango de mejora, faltan datos puntuales', 'color' => 'acceptable', 'score' => 80],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => 'No cumple con la meta (Información desactualizada)', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
                             [
                                 'name' => 'Tiempo Promedio de Cierre de Negocios',
                                 'definition' => 'Eficiencia en cierre desde primer contacto hasta firma.',
@@ -237,6 +513,33 @@ class CommercialAreaSeeder extends Seeder
                                     ['level' => 'Deficiente', 'min_value' => 45.01, 'max_value' => 9999, 'qualification' => 'Incumplimiento crítico (> 45 días)', 'color' => 'deficient', 'score' => 0],
                                 ],
                             ],
+                            [
+                                'name' => 'Porcentaje de Ventas por Canal',
+                                'definition' => 'Distribución de ventas por origen del cliente (Digital, Referidos, Tradicional).',
+                                'formula' => '((Venta_Digital_Real/Venta_Digital_Meta) + (Referidos_Real/Referidos_Meta) + (Tradicional_Real/Tradicional_Meta)) / 3 * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Venta_Digital_Meta', 'value' => 5],
+                                    ['name' => 'Venta_Digital_Real', 'value' => 0],
+                                    ['name' => 'Referidos_Meta', 'value' => 3],
+                                    ['name' => 'Referidos_Real', 'value' => 0],
+                                    ['name' => 'Tradicional_Meta', 'value' => 2],
+                                    ['name' => 'Tradicional_Real', 'value' => 0],
+                                ],
+                                'tablaDetalle' => [
+                                    'headers' => ['CANAL', 'META', 'REAL', '% CUMPL'],
+                                    'rows' => [
+                                        ['Venta Digital', '', '', ''],
+                                        ['Referidos', '', '', ''],
+                                        ['Tradicional', '', '', ''],
+                                    ]
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 99.99, 'qualification' => 'Cumplimiento parcial satisfactorio', 'color' => 'excellent', 'score' => 80],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => 'Bajo cumplimiento por canales', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
                         ],
                     ],
                     [
@@ -248,6 +551,75 @@ class CommercialAreaSeeder extends Seeder
                         'stage' => 'D. Gestión Documental y Procesos Legales/Internos',
                         'weight' => 10,
                         'lower_is_better' => false,
+                        'indicators' => [
+                            [
+                                'name' => '% Documentación Comercial Archivada Correctamente',
+                                'definition' => 'Organización y cumplimiento en archivo y disponibilidad.',
+                                'formula' => '((Numero_Documentos_Completos/Total_Documentos_Generados)*100)',
+                                'fixed_goal' => 0,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 98, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 90, 'max_value' => 97, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'En riesgo', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Total_Documentos_Generados', 'value' => 0],
+                                    ['name' => 'Numero_Documentos_Completos', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Mide la oportunidad y cumplimiento en la entrega de los informes de ventas semanales dentro de los plazos establecidos.',
+                                'definition' => 'Envio de informe el día viernes de cada semana',
+                                'formula' => '((Numero_Informes_Enviados/Viernes_Del_Mes)*100)',
+                                'fixed_goal' => 100,
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => 'Meta alcanzada o superada', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 99, 'qualification' => 'Buen desempeño, requiere seguimiento', 'color' => 'acceptable', 'score' => 90],
+                                    ['level' => 'En riesgo', 'min_value' => 60, 'max_value' => 79, 'qualification' => 'Bajo cumplimiento, tendencia descendente', 'color' => 'at_risk', 'score' => 70],
+                                    ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 59, 'qualification' => 'Incumplimiento crítico', 'color' => 'deficient', 'score' => 0],
+                                ],
+                                'parameters' => [
+                                    ['name' => 'Viernes_Del_Mes', 'value' => 4],
+                                    ['name' => 'Numero_Informes_Enviados', 'value' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Entrega de Informe General del Área - Cierre de Mes',
+                                'definition' => 'Envio de informe general del área del cierre de mes dentro de los plazos establecidos.',
+                                'formula' => '(Informes_Enviados / 1) * 100',
+                                'unit' => '%',
+                                'parameters' => [
+                                    ['name' => 'Informes_Enviados', 'value' => 0],
+                                    ['name' => 'Fecha_Envio', 'value' => ''],
+                                ],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 100, 'qualification' => 'Informe enviado a tiempo', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 99.99, 'qualification' => 'Informe no enviado o fuera de plazo', 'color' => 'deficient', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Tiempo Promedio de Respuesta a Derechos de Petición/Desistimientos',
+                                'definition' => 'Cumplimiento de tiempos legales y manual de procedimientos.',
+                                'formula' => 'Pendiente por definir',
+                                'unit' => '%',
+                                'parameters' => [],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 100, 'qualification' => '100% en tiempo establecido', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 99.99, 'qualification' => 'Incumplimiento de tiempos legales', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                            [
+                                'name' => 'Nº de Fallas Operativas o Errores Procesales Reportados y Solucionados',
+                                'definition' => 'Proactividad en la identificación y resolución de problemas.',
+                                'formula' => 'Pendiente por definir',
+                                'unit' => '%',
+                                'parameters' => [],
+                                'conditional_goals' => [
+                                    ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 100, 'qualification' => '100% de las fallas solucionadas', 'color' => 'excellent', 'score' => 100],
+                                    ['level' => 'Bajo', 'min_value' => 0, 'max_value' => 99.99, 'qualification' => 'Fallas pendientes por solucionar', 'color' => 'at_risk', 'score' => 0],
+                                ],
+                            ],
+                        ],
                     ],
                 ];
 
