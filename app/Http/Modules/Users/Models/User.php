@@ -66,6 +66,6 @@ class User extends Authenticatable
 
     public function kpis()
     {
-        return $this->hasMany(KPI::class);
+        return $this->hasMany(KPI::class)->orderBy('stage', 'asc');
     }
 }

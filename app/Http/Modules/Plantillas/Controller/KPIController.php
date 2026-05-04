@@ -11,7 +11,7 @@ class KPIController extends Controller
 {
     public function index(User $user)
     {
-        return response()->json($user->kpis()->orderBy('created_at', 'asc')->get());
+        return response()->json($user->kpis()->orderBy('stage', 'asc')->get());
     }
 
 
@@ -56,7 +56,9 @@ class KPIController extends Controller
             }
         }
 
-        return response()->json($user->load('kpis'), 200);
+        return response()->json($user->load(['kpis' => function($query) {
+            $query->orderBy('stage', 'asc');
+        }]), 200);
     }
 
     public function destroy(KPI $kpi)
