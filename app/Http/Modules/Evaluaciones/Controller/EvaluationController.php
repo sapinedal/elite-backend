@@ -8,6 +8,7 @@ use App\Http\Modules\Evaluaciones\Models\EvaluationResult;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class EvaluationController extends Controller
 {
@@ -141,5 +142,52 @@ class EvaluationController extends Controller
                 ->orderBy('month', 'desc')
                 ->get()
         );
+    }
+
+    public function exportPdf(Evaluation $evaluation)
+    {
+        // Solo permitir exportar evaluaciones finalizadas
+        if ($evaluation->status !== 'finalizada') {
+            return response()->json(['message' => 'Solo se pueden exportar evaluaciones finalizadas'], 400);
+        }
+
+        $evaluation->load(['user', 'results']);
+        
+        $pdf = Pdf::loadView('pdf.evaluation', compact('evaluation'));
+        
+        return $pdf->stream("Evaluacion_{$evaluation->user->name}_{$evaluation->month}_{$evaluation->year}.pdf");
+    }
+
+    public function exportDashboard(Request $request)
+    {
+        $request->validate([
+            'month' => 'required|integer',
+            'year' => 'required|integer',
+            'area' => 'required|string',
+        ]);
+
+        $month = $request->month;
+        $year = $request->year;
+        $areaName = $request->area;
+
+        // Obtener evaluaciones de usuarios que pertenecen a esa área en el periodo dado
+        $evaluations = Evaluation::with(['user', 'results'])
+            ->where('month', $month)
+            ->where('year', $year)
+            ->whereHas('user', function ($q) use ($areaName) {
+                $q->whereHas('area', function($sq) use ($areaName) {
+                      $sq->where('name', $areaName);
+                  });
+            })
+            ->get();
+
+        $pdf = Pdf::loadView('pdf.dashboard', [
+            'evaluations' => $evaluations,
+            'area' => $areaName,
+            'month' => $month,
+            'year' => $year
+        ]);
+
+        return $pdf->stream("Dashboard_{$areaName}_{$month}_{$year}.pdf");
     }
 }
