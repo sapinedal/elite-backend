@@ -18,6 +18,7 @@ class EvaluationController extends Controller
             'year' => 'required|integer',
             'total_score' => 'required|numeric',
             'general_analysis' => 'nullable|string',
+            'status' => 'nullable|string',
             'results' => 'required|array',
         ]);
 
@@ -43,7 +44,7 @@ class EvaluationController extends Controller
 
                 $evaluation->update([
                     'total_score' => $validated['total_score'],
-                    'status' => 'finalizada',
+                    'status' => $validated['status'] ?? 'finalizada',
                     'general_analysis' => $validated['general_analysis'] ?? null,
                     'history' => $history
                 ]);
@@ -57,7 +58,7 @@ class EvaluationController extends Controller
                     'month' => $validated['month'],
                     'year' => $validated['year'],
                     'total_score' => $validated['total_score'],
-                    'status' => 'finalizada',
+                    'status' => $validated['status'] ?? 'finalizada',
                     'general_analysis' => $validated['general_analysis'] ?? null,
                     'history' => []
                 ]);
@@ -83,12 +84,21 @@ class EvaluationController extends Controller
 
     }
 
-    public function show(User $user)
+    public function show(Request $request, User $user)
     {
+        $query = Evaluation::where('user_id', $user->id)
+            ->with('results');
+
+        if ($request->has('month') && $request->has('year')) {
+            $evaluation = $query->where('month', $request->month)
+                ->where('year', $request->year)
+                ->first();
+            
+            return response()->json($evaluation);
+        }
+
         return response()->json(
-            Evaluation::where('user_id', $user->id)
-                ->with('results')
-                ->orderBy('year', 'desc')
+            $query->orderBy('year', 'desc')
                 ->orderBy('month', 'desc')
                 ->get()
         );
