@@ -147,7 +147,7 @@ class EvaluationController extends Controller
         return response()->json(
             $query->orderBy('year', 'desc')
                 ->orderBy('month', 'desc')
-                ->paginate(15)
+                ->get()
         );
     }
 
