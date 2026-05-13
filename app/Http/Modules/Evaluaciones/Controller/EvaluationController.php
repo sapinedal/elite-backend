@@ -36,12 +36,13 @@ class EvaluationController extends Controller
                     'total_score' => $evaluation->total_score,
                     'general_analysis' => $evaluation->general_analysis,
                     'status' => $evaluation->status,
-                    'results' => $evaluation->results,
                     'updated_at' => $evaluation->updated_at,
                 ];
                 
                 $history = $evaluation->history ?? [];
-                $history[] = $previousData;
+                // Mantener solo los últimos 5 registros para evitar saturar el campo JSON
+                array_unshift($history, $previousData);
+                $history = array_slice($history, 0, 5);
 
                 $evaluation->update([
                     'total_score' => $validated['total_score'],
@@ -75,12 +76,17 @@ class EvaluationController extends Controller
                     'kpi_target' => $res['kpi_target'],
                     'real_value' => $res['real_value'],
                     'score' => $res['score'],
-                    'ai_analysis' => $res['details']['ai_analysis'] ?? null,
-                    'details' => $res['details'] ?? null,
+                    'ai_analysis' => $res['details']['ai_analysis'] ?? $res['ai_analysis'] ?? null,
+                    'details' => $res['details'] ?? [
+                        'tablaDetalle' => $res['tablaDetalle'] ?? null,
+                        'indicator_results' => $res['indicator_results'] ?? [],
+                        'ai_analysis' => $res['ai_analysis'] ?? null
+                    ],
                 ]);
             }
 
-            return response()->json($evaluation->load('results'), 201);
+            return response()->json($evaluation->refresh()->load('results'), 201);
+
         });
 
     }
