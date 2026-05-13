@@ -5,6 +5,7 @@ namespace App\Http\Modules\Evaluaciones\Controller;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Evaluaciones\Models\Evaluation;
 use App\Http\Modules\Evaluaciones\Models\EvaluationResult;
+use App\Http\Modules\Evaluaciones\Models\EvaluationVersion;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,24 +32,24 @@ class EvaluationController extends Controller
                 ->first();
 
             if ($evaluation) {
-                // GUARDAR HISTORIAL: Antes de actualizar, guardamos el estado actual en el log
-                $previousData = [
-                    'total_score' => $evaluation->total_score,
-                    'general_analysis' => $evaluation->general_analysis,
-                    'status' => $evaluation->status,
-                    'updated_at' => $evaluation->updated_at,
-                ];
-                
-                $history = $evaluation->history ?? [];
-                // Mantener solo los últimos 5 registros para evitar saturar el campo JSON
-                array_unshift($history, $previousData);
-                $history = array_slice($history, 0, 5);
+                // RESPALDO DE SEGURIDAD (VERSIONAMIENTO):
+                // Antes de actualizar, guardamos el estado completo actual incluyendo resultados de KPIs
+                EvaluationVersion::create([
+                    'evaluation_id' => $evaluation->id,
+                    'snapshot' => [
+                        'evaluation' => $evaluation->only(['total_score', 'general_analysis', 'status', 'updated_at']),
+                        'results' => $evaluation->results->map(function($res) {
+                            return $res->only(['kpi_id', 'kpi_name', 'kpi_weight', 'kpi_target', 'real_value', 'score', 'ai_analysis', 'details']);
+                        })->toArray()
+                    ],
+                    'status_at_moment' => $evaluation->status,
+                    'changed_by' => auth()->id() ?? $user->id // El usuario que hace el cambio
+                ]);
 
                 $evaluation->update([
                     'total_score' => $validated['total_score'],
                     'status' => $validated['status'] ?? 'finalizada',
                     'general_analysis' => $validated['general_analysis'] ?? null,
-                    'history' => $history
                 ]);
 
                 // Limpiamos resultados anteriores para re-insertar los nuevos
@@ -62,7 +63,6 @@ class EvaluationController extends Controller
                     'total_score' => $validated['total_score'],
                     'status' => $validated['status'] ?? 'finalizada',
                     'general_analysis' => $validated['general_analysis'] ?? null,
-                    'history' => []
                 ]);
             }
 
@@ -147,7 +147,7 @@ class EvaluationController extends Controller
         return response()->json(
             $query->orderBy('year', 'desc')
                 ->orderBy('month', 'desc')
-                ->get()
+                ->paginate(15)
         );
     }
 
