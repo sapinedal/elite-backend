@@ -76,13 +76,14 @@ class EvaluationController extends Controller
                     'kpi_target' => $res['kpi_target'],
                     'real_value' => $res['real_value'],
                     'score' => $res['score'],
-                    'ai_analysis' => $res['details']['ai_analysis'] ?? $res['ai_analysis'] ?? null,
-                    'details' => $res['details'] ?? [
-                        'tablaDetalle' => $res['tablaDetalle'] ?? null,
-                        'indicator_results' => $res['indicator_results'] ?? [],
-                        'ai_analysis' => $res['ai_analysis'] ?? null
+                    'ai_analysis' => $res['ai_analysis'] ?? $res['details']['ai_analysis'] ?? null,
+                    'details' => [
+                        'tablaDetalle' => $res['details']['tablaDetalle'] ?? $res['tablaDetalle'] ?? null,
+                        'indicator_results' => $res['details']['indicator_results'] ?? $res['indicator_results'] ?? [],
+                        'ai_analysis' => $res['details']['ai_analysis'] ?? $res['ai_analysis'] ?? null
                     ],
                 ]);
+
             }
 
             return response()->json($evaluation->refresh()->load('results'), 201);
