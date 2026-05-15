@@ -50,6 +50,7 @@ class EvaluationController extends Controller
                     'total_score' => $validated['total_score'],
                     'status' => $validated['status'] ?? 'finalizada',
                     'general_analysis' => $validated['general_analysis'] ?? null,
+                    'evaluador_id' => auth()->id(),
                 ]);
 
                 // Limpiamos resultados anteriores para re-insertar los nuevos
@@ -58,6 +59,7 @@ class EvaluationController extends Controller
                 // Si no existe, la creamos desde cero
                 $evaluation = Evaluation::create([
                     'user_id' => $user->id,
+                    'evaluador_id' => auth()->id(),
                     'month' => $validated['month'],
                     'year' => $validated['year'],
                     'total_score' => $validated['total_score'],
@@ -95,7 +97,7 @@ class EvaluationController extends Controller
     public function show(Request $request, User $user)
     {
         $query = Evaluation::where('user_id', $user->id)
-            ->with('results');
+            ->with(['results', 'evaluador']);
 
         if ($request->has('month') && $request->has('year')) {
             $evaluation = $query->where('month', $request->month)
@@ -158,7 +160,7 @@ class EvaluationController extends Controller
             return response()->json(['message' => 'Solo se pueden exportar evaluaciones finalizadas'], 400);
         }
 
-        $evaluation->load(['user', 'results']);
+        $evaluation->load(['user', 'results', 'evaluador']);
         
         $pdf = Pdf::loadView('pdf.evaluation', compact('evaluation'));
         

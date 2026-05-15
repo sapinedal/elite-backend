@@ -132,18 +132,32 @@
         }
 
         .level-badge {
-            padding: 2px 8px;
-            border-radius: 10px;
+            padding: 3px 10px;
+            border-radius: 12px;
             font-size: 8px;
             font-weight: bold;
             text-transform: uppercase;
             color: white;
             display: inline-block;
+            min-width: 60px;
+            text-align: center;
         }
-        .level-excelente { background-color: #10b981; }
-        .level-aceptable { background-color: #f59e0b; }
-        .level-riesgo { background-color: #f97316; }
-        .level-deficiente { background-color: #ef4444; }
+        /* Colores del Semáforo - Mapeo Extendido */
+        .level-excelente, .level-excellent, .level-optimal, .level-óptimo, .level-alto { background-color: #10b981; }
+        .level-aceptable, .level-acceptable, .level-medio, .level-bueno { background-color: #f59e0b; }
+        .level-riesgo, .level-at_risk, .level-alerta { background-color: #f97316; }
+        .level-deficiente, .level-deficient, .level-inadequate, .level-bajo, .level-crítico { background-color: #ef4444; }
+        .level-na, .level-no_aplica, .level-no-aplica, .level-pendiente { background-color: #94a3b8; }
+
+        .indicator-na {
+            background-color: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #94a3b8;
+        }
+        .indicator-na .indicator-title {
+            color: #94a3b8;
+            text-decoration: line-through;
+        }
 
         .ai-analysis {
             background-color: #eff6ff;
@@ -153,6 +167,26 @@
             color: #1e40af;
             margin-top: 5px;
             font-size: 10px;
+        }
+
+        /* Tabla de Detalle */
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .detail-table th {
+            background-color: #f8fafc;
+            color: #64748b;
+            padding: 4px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        .detail-table td {
+            padding: 4px;
+            border: 1px solid #e2e8f0;
         }
 
         .footer {
@@ -206,6 +240,12 @@
                         <div class="score-label">Puntaje Global</div>
                         <div class="score-value">{{ number_format($evaluation->total_score, 2) }}%</div>
                     </div>
+                    <div style="margin-top: 10px; text-align: right;">
+                        <div class="meta-label">Evaluación elaborada por</div>
+                        <div class="meta-value" style="font-size: 9px; color: #64748b;">
+                            {{ $evaluation->evaluador->name ?? 'Sistema ELITE' }}
+                        </div>
+                    </div>
                 </td>
             </tr>
         </table>
@@ -243,27 +283,42 @@
         
         @if(isset($result->details['indicator_results']))
             @foreach($result->details['indicator_results'] as $ind)
-                <div class="indicator-block">
+                @php
+                    $isNa = isset($ind['not_applicable']) && $ind['not_applicable'];
+                @endphp
+                <div class="indicator-block {{ $isNa ? 'indicator-na' : '' }}">
                     <table width="100%">
                         <tr>
                             <td width="70%">
                                 <div class="indicator-header">
-                                    <div class="indicator-title">{{ $ind['indicator_name'] }}</div>
+                                    <div class="indicator-title">
+                                        {{ $ind['indicator_name'] }}
+                                        @if($isNa) (NO APLICA) @endif
+                                    </div>
                                     <div class="indicator-formula">Fórmula: {{ $ind['formula'] }}</div>
                                 </div>
                             </td>
                             <td width="30%" align="right">
-                                <div class="level-badge level-{{ strtolower(str_replace(' ', '_', $ind['level'] ?? 'deficiente')) }}">
-                                    {{ $ind['level'] ?? 'N/A' }}
+                                @php
+                                    $level = $ind['level'] ?? '';
+                                    if ($isNa) $level = 'na';
+                                    $levelClass = strtolower(str_replace([' ', '_'], '-', $level));
+                                @endphp
+                                <div class="level-badge level-{{ $levelClass }}">
+                                    {{ $isNa ? 'N/A' : ($ind['qualification'] ?: ($ind['level'] ?: 'Pendiente')) }}
                                 </div>
                                 <div style="font-size: 10px; font-weight: bold; margin-top: 4px; color: #004C6C;">
-                                    {{ number_format($ind['calculated_value'], 2) }}{{ $ind['unit'] ?? '%' }}
+                                    @if(!$isNa)
+                                        {{ number_format($ind['calculated_value'] ?? 0, 2) }}{{ $ind['unit'] ?? '%' }}
+                                    @else
+                                        -
+                                    @endif
                                 </div>
                             </td>
                         </tr>
                     </table>
 
-                    @if(isset($ind['variables']))
+                    @if(!$isNa && isset($ind['variables']))
                         <div style="margin-top: 5px; font-size: 9px; color: #64748b;">
                             <strong>Variables:</strong>
                             @foreach($ind['variables'] as $name => $val)
@@ -272,9 +327,37 @@
                         </div>
                     @endif
 
+                    @if(!$isNa && isset($ind['tablaDetalle']) && isset($ind['tablaDetalle']['headers']) && count($ind['tablaDetalle']['rows']) > 0)
+                        <table class="detail-table">
+                            <thead>
+                                <tr>
+                                    @foreach($ind['tablaDetalle']['headers'] as $header)
+                                        <th>{{ $header }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach(array_slice($ind['tablaDetalle']['rows'], 0, 15) as $row) {{-- Límite de 15 filas para no romper el PDF --}}
+                                    <tr>
+                                        @foreach($row as $cell)
+                                            <td>{{ $cell }}</td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                                @if(count($ind['tablaDetalle']['rows']) > 15)
+                                    <tr>
+                                        <td colspan="{{ count($ind['tablaDetalle']['headers']) }}" style="text-align: center; color: #94a3b8; font-style: italic;">
+                                            ... mostrando 15 de {{ count($ind['tablaDetalle']['rows']) }} registros ...
+                                        </td>
+                                    </tr>
+                                @endif
+                            </tbody>
+                        </table>
+                    @endif
+
                     @if(isset($ind['ai_analysis']))
                         <div class="ai-analysis">
-                            <strong>Análisis IA:</strong> {{ $ind['ai_analysis'] }}
+                            <strong>Análisis IA:</strong> {{ str_replace('(?)', '', $ind['ai_analysis']) }}
                         </div>
                     @endif
                 </div>
