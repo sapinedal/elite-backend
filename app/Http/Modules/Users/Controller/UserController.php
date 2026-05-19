@@ -80,14 +80,28 @@ class UserController extends Controller
         
         if (!$user) return response()->json(['message' => 'No user found'], 404);
 
+        // Simulamos la verificación de permisos para la bitácora de tareas.
+        // Todo el personal puede agregar tareas ('bitacora.crear'), pero solo roles
+        // específicos de gerencia/dirección o administradores pueden editar ('bitacora.editar' y 'bitacora.eliminar').
+        $isEditor = str_contains(strtolower(optional($user->position)->name), 'director') || 
+                    str_contains(strtolower(optional($user->position)->name), 'gerente') ||
+                    $user->email === 'admin@elite.com' ||
+                    str_contains(strtolower($user->name), 'admin');
+
+        $permissions = ['admin', 'evaluar', 'ver-historial', 'bitacora.crear'];
+        if ($isEditor) {
+            $permissions[] = 'bitacora.editar';
+            $permissions[] = 'bitacora.eliminar';
+        }
+
         return response()->json([
             'id' => $user->id,
             'nombre' => $user->name,
             'email' => $user->email,
             'area' => optional($user->area)->name,
             'position' => optional($user->position)->name,
-            'permissions' => ['admin', 'evaluar', 'ver-historial'],
-            'roles' => ['admin']
+            'permissions' => $permissions,
+            'roles' => $isEditor ? ['admin'] : ['empleado']
         ]);
     }
 }
