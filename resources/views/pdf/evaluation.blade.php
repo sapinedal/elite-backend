@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>Reporte de Evaluación - {{ $evaluation->user->name }}</title>
@@ -7,20 +8,24 @@
         @page {
             margin: 1cm;
         }
+
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
             color: #334155;
             line-height: 1.4;
             font-size: 11px;
         }
+
         .header {
             margin-bottom: 20px;
             border-bottom: 2px solid #004C6C;
             padding-bottom: 10px;
         }
+
         .header table {
             width: 100%;
         }
+
         .brand {
             font-size: 24px;
             font-weight: bold;
@@ -28,6 +33,7 @@
             text-transform: uppercase;
             letter-spacing: 2px;
         }
+
         .report-title {
             text-align: right;
             font-size: 14px;
@@ -35,15 +41,18 @@
             text-transform: uppercase;
             font-weight: bold;
         }
+
         .meta-section {
             background-color: #f8fafc;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
         }
+
         .meta-grid {
             width: 100%;
         }
+
         .meta-label {
             color: #94a3b8;
             font-weight: bold;
@@ -51,11 +60,13 @@
             font-size: 8px;
             margin-bottom: 2px;
         }
+
         .meta-value {
             font-size: 12px;
             font-weight: bold;
             color: #0f172a;
         }
+
         .score-box {
             background-color: #004C6C;
             color: white;
@@ -63,10 +74,12 @@
             border-radius: 8px;
             text-align: center;
         }
+
         .score-value {
             font-size: 24px;
             font-weight: bold;
         }
+
         .score-label {
             font-size: 8px;
             text-transform: uppercase;
@@ -88,6 +101,7 @@
             border-collapse: collapse;
             margin-bottom: 20px;
         }
+
         table.data-table th {
             background-color: #f1f5f9;
             color: #475569;
@@ -97,6 +111,7 @@
             text-transform: uppercase;
             border-bottom: 1px solid #e2e8f0;
         }
+
         table.data-table td {
             padding: 8px;
             border-bottom: 1px solid #f1f5f9;
@@ -106,6 +121,7 @@
         .kpi-row {
             background-color: #f8fafc;
         }
+
         .kpi-name {
             font-weight: bold;
             color: #334155;
@@ -117,14 +133,17 @@
             border: 1px solid #e2e8f0;
             border-radius: 6px;
         }
+
         .indicator-header {
             margin-bottom: 8px;
         }
+
         .indicator-title {
             font-size: 11px;
             font-weight: bold;
             color: #1e293b;
         }
+
         .indicator-formula {
             font-size: 9px;
             color: #64748b;
@@ -142,18 +161,50 @@
             min-width: 60px;
             text-align: center;
         }
+
         /* Colores del Semáforo - Mapeo Extendido */
-        .level-excelente, .level-excellent, .level-optimal, .level-óptimo, .level-alto { background-color: #10b981; }
-        .level-aceptable, .level-acceptable, .level-medio, .level-bueno { background-color: #f59e0b; }
-        .level-riesgo, .level-at_risk, .level-alerta { background-color: #f97316; }
-        .level-deficiente, .level-deficient, .level-inadequate, .level-bajo, .level-crítico { background-color: #ef4444; }
-        .level-na, .level-no_aplica, .level-no-aplica, .level-pendiente { background-color: #94a3b8; }
+        .level-excelente,
+        .level-excellent,
+        .level-optimal,
+        .level-óptimo,
+        .level-alto {
+            background-color: #10b981;
+        }
+
+        .level-aceptable,
+        .level-acceptable,
+        .level-medio,
+        .level-bueno {
+            background-color: #f59e0b;
+        }
+
+        .level-riesgo,
+        .level-at_risk,
+        .level-alerta {
+            background-color: #f97316;
+        }
+
+        .level-deficiente,
+        .level-deficient,
+        .level-inadequate,
+        .level-bajo,
+        .level-crítico {
+            background-color: #ef4444;
+        }
+
+        .level-na,
+        .level-no_aplica,
+        .level-no-aplica,
+        .level-pendiente {
+            background-color: #94a3b8;
+        }
 
         .indicator-na {
             background-color: #f1f5f9;
             border-color: #e2e8f0;
             color: #94a3b8;
         }
+
         .indicator-na .indicator-title {
             color: #94a3b8;
             text-decoration: line-through;
@@ -177,6 +228,7 @@
             font-size: 8px;
             border: 1px solid #e2e8f0;
         }
+
         .detail-table th {
             background-color: #f8fafc;
             color: #64748b;
@@ -184,6 +236,7 @@
             border: 1px solid #e2e8f0;
             text-align: left;
         }
+
         .detail-table td {
             padding: 4px;
             border: 1px solid #e2e8f0;
@@ -200,6 +253,7 @@
         }
     </style>
 </head>
+
 <body>
 
     <div class="header">
@@ -219,14 +273,15 @@
                     <div class="meta-value">{{ $evaluation->user->name }}</div>
                     <div style="margin-top: 10px;">
                         <div class="meta-label">Cargo / Área</div>
-                        <div class="meta-value" style="font-size: 10px;">{{ $evaluation->user->position ?? 'Colaborador' }}</div>
+                        <div class="meta-value" style="font-size: 10px;">
+                            {{ $evaluation->user->position ?? 'Colaborador' }}</div>
                     </div>
                 </td>
                 <td width="30%">
                     <div class="meta-label">Periodo Evaluado</div>
                     <div class="meta-value">
                         @php
-                            $months = [1=>'Enero', 2=>'Febrero', 3=>'Marzo', 4=>'Abril', 5=>'Mayo', 6=>'Junio', 7=>'Julio', 8=>'Agosto', 9=>'Septiembre', 10=>'Octubre', 11=>'Noviembre', 12=>'Diciembre'];
+                            $months = [1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril', 5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto', 9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'];
                         @endphp
                         {{ $months[$evaluation->month] }} {{ $evaluation->year }}
                     </div>
@@ -280,7 +335,7 @@
         <div style="margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
             <span style="font-weight: bold; color: #475569; font-size: 10px;">KPI: {{ $result->kpi_name }}</span>
         </div>
-        
+
         @if(isset($result->details['indicator_results']))
             @foreach($result->details['indicator_results'] as $ind)
                 @php
@@ -301,7 +356,8 @@
                             <td width="30%" align="right">
                                 @php
                                     $level = $ind['level'] ?? '';
-                                    if ($isNa) $level = 'na';
+                                    if ($isNa)
+                                        $level = 'na';
                                     $levelClass = strtolower(str_replace([' ', '_'], '-', $level));
                                 @endphp
                                 <div class="level-badge level-{{ $levelClass }}">
@@ -337,7 +393,8 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach(array_slice($ind['tablaDetalle']['rows'], 0, 15) as $row) {{-- Límite de 15 filas para no romper el PDF --}}
+                                @foreach(array_slice($ind['tablaDetalle']['rows'], 0, 15) as $row) {{-- Límite de 15 filas para no
+                                    romper el PDF --}}
                                     <tr>
                                         @foreach($row as $cell)
                                             <td>{{ $cell }}</td>
@@ -346,7 +403,8 @@
                                 @endforeach
                                 @if(count($ind['tablaDetalle']['rows']) > 15)
                                     <tr>
-                                        <td colspan="{{ count($ind['tablaDetalle']['headers']) }}" style="text-align: center; color: #94a3b8; font-style: italic;">
+                                        <td colspan="{{ count($ind['tablaDetalle']['headers']) }}"
+                                            style="text-align: center; color: #94a3b8; font-style: italic;">
                                             ... mostrando 15 de {{ count($ind['tablaDetalle']['rows']) }} registros ...
                                         </td>
                                     </tr>
@@ -357,15 +415,16 @@
 
                     @if(isset($ind['ai_analysis']))
                         <div class="ai-analysis">
-                            <strong>Análisis IA:</strong> {{ str_replace('(?)', '', $ind['ai_analysis']) }}
+                            <strong>Análisis de Resultados:</strong> {{ str_replace('(?)', '', $ind['ai_analysis']) }}
                         </div>
                     @endif
                 </div>
             @endforeach
         @endif
-        
+
         @if($result->ai_analysis)
-            <div style="margin: 10px 0; padding: 10px; background-color: #f8fafc; border-radius: 6px; border: 1px dashed #cbd5e1;">
+            <div
+                style="margin: 10px 0; padding: 10px; background-color: #f8fafc; border-radius: 6px; border: 1px dashed #cbd5e1;">
                 <div class="meta-label">Interpretación Estratégica (KPI)</div>
                 <div style="font-size: 10px; color: #475569; font-style: italic;">"{{ $result->ai_analysis }}"</div>
             </div>
@@ -386,4 +445,5 @@
     </div>
 
 </body>
+
 </html>
