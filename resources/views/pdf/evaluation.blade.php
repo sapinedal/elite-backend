@@ -268,6 +268,18 @@
         if (file_exists($logoPath)) {
             $logoBase64 = base64_encode(file_get_contents($logoPath));
         }
+
+        if (!function_exists('replaceEmojis')) {
+            function replaceEmojis($text) {
+                $emojis = [
+                    '🟢' => '<span style="color: #10b981; font-size: 11px;">●</span>',
+                    '🟡' => '<span style="color: #f59e0b; font-size: 11px;">●</span>',
+                    '🔴' => '<span style="color: #ef4444; font-size: 11px;">●</span>'
+                ];
+                $text = str_replace('(?)', '', $text);
+                return str_replace(array_keys($emojis), array_values($emojis), $text);
+            }
+        }
     @endphp
 
     <div class="header">
@@ -432,9 +444,9 @@
                         </table>
                     @endif
 
-                    @if(isset($ind['ai_analysis']))
+                     @if(isset($ind['ai_analysis']))
                         <div class="ai-analysis">
-                            <strong>Análisis de Resultados:</strong> {{ str_replace('(?)', '', $ind['ai_analysis']) }}
+                            <strong>Análisis de Resultados:</strong> {!! replaceEmojis($ind['ai_analysis']) !!}
                         </div>
                     @endif
                 </div>
@@ -445,7 +457,7 @@
             <div
                 style="margin: 10px 0; padding: 10px; background-color: #f8fafc; border-radius: 6px; border: 1px dashed #cbd5e1;">
                 <div class="meta-label">Interpretación Estratégica (KPI)</div>
-                <div style="font-size: 10px; color: #475569; font-style: italic;">"{{ $result->ai_analysis }}"</div>
+                <div style="font-size: 10px; color: #475569; font-style: italic;">"{!! replaceEmojis($result->ai_analysis) !!}"</div>
             </div>
         @endif
     @endforeach
@@ -454,7 +466,7 @@
         <div style="page-break-before: auto; margin-top: 30px;">
             <div class="section-title">Análisis General de la Evaluación</div>
             <div style="padding: 15px; background-color: #f1f5f9; border-radius: 8px; font-size: 10px; line-height: 1.6;">
-                {{ $evaluation->general_analysis }}
+                {!! replaceEmojis($evaluation->general_analysis) !!}
             </div>
         </div>
     @endif
