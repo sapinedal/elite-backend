@@ -272,9 +272,9 @@
         if (!function_exists('replaceEmojis')) {
             function replaceEmojis($text) {
                 $emojis = [
-                    '🟢' => '<span style="color: #10b981; font-size: 11px;">●</span>',
-                    '🟡' => '<span style="color: #f59e0b; font-size: 11px;">●</span>',
-                    '🔴' => '<span style="color: #ef4444; font-size: 11px;">●</span>'
+                    '🟢' => '<span style="color: #10b981; font-size: 14px; font-weight: bold; line-height: 1;">&#8226;</span>',
+                    '🟡' => '<span style="color: #f59e0b; font-size: 14px; font-weight: bold; line-height: 1;">&#8226;</span>',
+                    '🔴' => '<span style="color: #ef4444; font-size: 14px; font-weight: bold; line-height: 1;">&#8226;</span>'
                 ];
                 $text = str_replace('(?)', '', $text);
                 return str_replace(array_keys($emojis), array_values($emojis), $text);
