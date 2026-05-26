@@ -256,11 +256,30 @@
 
 <body>
 
+    @php
+        $logoPath = public_path('logo_inver.svg');
+        if (!file_exists($logoPath)) {
+            $logoPath = base_path('public/logo_inver.svg');
+        }
+        if (!file_exists($logoPath)) {
+            $logoPath = base_path('../elite-frontend/src/assets/logo_inver.svg');
+        }
+        $logoBase64 = '';
+        if (file_exists($logoPath)) {
+            $logoBase64 = base64_encode(file_get_contents($logoPath));
+        }
+    @endphp
+
     <div class="header">
         <table>
             <tr>
-                <td class="brand">ELITE</td>
-                <td class="report-title">Reporte de Desempeño</td>
+                <td class="brand" style="vertical-align: middle;">
+                    @if(!empty($logoBase64))
+                        <img src="data:image/svg+xml;base64,{{ $logoBase64 }}" style="height: 35px; vertical-align: middle; margin-right: 10px;" />
+                    @endif
+                    <span style="vertical-align: middle;">ELITE</span>
+                </td>
+                <td class="report-title" style="vertical-align: middle;">Reporte de Desempeño</td>
             </tr>
         </table>
     </div>
@@ -274,7 +293,7 @@
                     <div style="margin-top: 10px;">
                         <div class="meta-label">Cargo / Área</div>
                         <div class="meta-value" style="font-size: 10px;">
-                            {{ $evaluation->user->position ?? 'Colaborador' }}</div>
+                            {{ is_object($evaluation->user->position) ? $evaluation->user->position->name : ($evaluation->user->position ?? 'Colaborador') }}</div>
                     </div>
                 </td>
                 <td width="30%">
@@ -298,7 +317,7 @@
                     <div style="margin-top: 10px; text-align: right;">
                         <div class="meta-label">Evaluación elaborada por</div>
                         <div class="meta-value" style="font-size: 9px; color: #64748b;">
-                            {{ $evaluation->evaluador->name ?? 'Sistema ELITE' }}
+                            {{ isset($evaluation->evaluador) && is_object($evaluation->evaluador->position) ? $evaluation->evaluador->position->name : (isset($evaluation->evaluador) && $evaluation->evaluador->position ? $evaluation->evaluador->position : 'Sistema ELITE') }}
                         </div>
                     </div>
                 </td>

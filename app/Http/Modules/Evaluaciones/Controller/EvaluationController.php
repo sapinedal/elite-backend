@@ -179,18 +179,20 @@ class EvaluationController extends Controller
         $year = $request->year;
         $areaName = $request->area;
 
+        // Obtener todos los usuarios del área
+        $users = \App\Http\Modules\Users\Models\User::whereHas('area', function ($q) use ($areaName) {
+            $q->where('name', $areaName);
+        })->with('position')->get();
+
         // Obtener evaluaciones de usuarios que pertenecen a esa área en el periodo dado
         $evaluations = Evaluation::with(['user', 'results'])
             ->where('month', $month)
             ->where('year', $year)
-            ->whereHas('user', function ($q) use ($areaName) {
-                $q->whereHas('area', function($sq) use ($areaName) {
-                      $sq->where('name', $areaName);
-                  });
-            })
+            ->whereIn('user_id', $users->pluck('id'))
             ->get();
 
         $pdf = Pdf::loadView('pdf.dashboard', [
+            'users' => $users,
             'evaluations' => $evaluations,
             'area' => $areaName,
             'month' => $month,
