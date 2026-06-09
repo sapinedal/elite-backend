@@ -191,13 +191,17 @@ class EvaluationController extends Controller
             ->whereIn('user_id', $users->pluck('id'))
             ->get();
 
+        // Obtener todo el historial de evaluaciones para estos usuarios
+        $allEvaluations = Evaluation::whereIn('user_id', $users->pluck('id'))->get();
+
         $pdf = Pdf::loadView('pdf.dashboard', [
             'users' => $users,
             'evaluations' => $evaluations,
+            'allEvaluations' => $allEvaluations,
             'area' => $areaName,
             'month' => $month,
             'year' => $year
-        ]);
+        ])->setOption('isRemoteEnabled', true);
 
         return $pdf->stream("Dashboard_{$areaName}_{$month}_{$year}.pdf");
     }
