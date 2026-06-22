@@ -10,5 +10,6 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/plantillas/plantillas.php';
     require __DIR__ . '/configuracion/configuracion.php';
     require __DIR__ . '/tasks/tasks.php';
+    require __DIR__ . '/ftra/ftra.php';
     
 });
