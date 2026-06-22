@@ -23,7 +23,7 @@ class TaskController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['status', 'priority', 'area_id', 'responsible_id', 'search']);
+        $filters = $request->only(['status', 'priority', 'area_id', 'responsible_id', 'search', 'page', 'per_page', 'paginate']);
         $tasks = $this->taskService->listTasks($filters);
         
         return response()->json($tasks);
@@ -54,11 +54,13 @@ class TaskController extends Controller
     public function show(Task $task)
     {
         $task->load([
-            'requestedBy',
-            'responsible',
-            'area',
-            'observations.user',
-            'auditLogs.user'
+            'requestedBy:id,name',
+            'responsible:id,name',
+            'area:id,name',
+            'observations:id,task_id,user_id,observation,created_at',
+            'observations.user:id,name',
+            'auditLogs:id,task_id,user_id,action,changes,created_at',
+            'auditLogs.user:id,name'
         ]);
 
         return response()->json($task);

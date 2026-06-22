@@ -19,34 +19,85 @@ class TaskService
      */
     public function listTasks(array $filters = [])
     {
-        $query = Task::with(['requestedBy', 'responsible', 'area', 'observations']);
+        $query = Task::query();
 
-        // Filtrado por Estado
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        // Filtrado por Prioridad (P0, P1, P2, P3)
-        if (!empty($filters['priority'])) {
-            $query->where('priority', $filters['priority']);
-        }
-
-        // Filtrado por Área
+        // Aplicamos los filtros generales (Área, Responsable y Búsqueda por Texto)
         if (!empty($filters['area_id'])) {
             $query->where('area_id', $filters['area_id']);
         }
 
-        // Filtrado por Responsable
         if (!empty($filters['responsible_id'])) {
             $query->where('responsible_id', $filters['responsible_id']);
         }
 
-        // Búsqueda textual por el título
         if (!empty($filters['search'])) {
             $query->where('title', 'like', '%' . $filters['search'] . '%');
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        // Si se solicita paginación, calculamos estadísticas y devolvemos la respuesta paginada
+        if ((isset($filters['paginate']) && $filters['paginate'] === 'true') || isset($filters['page']) || isset($filters['per_page'])) {
+            // Clonamos el query para calcular estadísticas basándonos únicamente en los filtros del sidebar
+            $statsQuery = clone $query;
+            $statusCounts = $statsQuery->select('status', DB::raw('count(*) as count'))
+                                       ->groupBy('status')
+                                       ->get()
+                                       ->pluck('count', 'status');
+
+            $statsQuery2 = clone $query;
+            $p0Count = $statsQuery2->where('priority', 'P0')->count();
+
+            $statsQuery3 = clone $query;
+            $totalCount = $statsQuery3->count();
+
+            // Ahora aplicamos los filtros específicos de tarjetas (Estado y Prioridad)
+            if (!empty($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+
+            if (!empty($filters['priority'])) {
+                $query->where('priority', $filters['priority']);
+            }
+
+            $perPage = intval($filters['per_page'] ?? 15);
+            $paginated = $query->with([
+                                   'requestedBy:id,name',
+                                   'responsible:id,name',
+                                   'area:id,name'
+                               ])
+                               ->withCount('observations')
+                               ->orderBy('created_at', 'desc')
+                               ->paginate($perPage);
+
+            return [
+                'pagination' => $paginated,
+                'stats' => [
+                    'total' => $totalCount,
+                    'todo' => intval($statusCounts->get('Por hacer', 0)),
+                    'in_progress' => intval($statusCounts->get('En progreso', 0)),
+                    'completed' => intval($statusCounts->get('Completada', 0)),
+                    'waiting' => intval($statusCounts->get('En espera', 0)),
+                    'critical' => $p0Count,
+                ]
+            ];
+        }
+
+        // Si no se pide paginación, aplicamos todos los filtros y devolvemos la lista completa
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['priority'])) {
+            $query->where('priority', $filters['priority']);
+        }
+
+        return $query->with([
+                         'requestedBy:id,name',
+                         'responsible:id,name',
+                         'area:id,name'
+                     ])
+                     ->withCount('observations')
+                     ->orderBy('created_at', 'desc')
+                     ->get();
     }
 
     /**
