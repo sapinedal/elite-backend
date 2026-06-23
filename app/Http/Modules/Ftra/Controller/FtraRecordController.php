@@ -34,7 +34,7 @@ class FtraRecordController extends Controller
      */
     public function show(FtraRecord $record)
     {
-        $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name']);
+        $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
         return response()->json($record);
     }
 

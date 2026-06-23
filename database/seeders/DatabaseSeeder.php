@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             CommercialAreaSeeder::class,
             PermissionSeeder::class,
             ContractorSeeder::class,
+            ResidenteSeeder::class,
         ]);
     }
 }

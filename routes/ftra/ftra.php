@@ -3,6 +3,7 @@
 use App\Http\Modules\Ftra\Controller\FormatController;
 use App\Http\Modules\Ftra\Controller\ContractorController;
 use App\Http\Modules\Ftra\Controller\FtraRecordController;
+use App\Http\Modules\Ftra\Controller\ResidenteController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('ftra')->middleware('auth:sanctum')->group(function () {
@@ -21,6 +22,13 @@ Route::prefix('ftra')->middleware('auth:sanctum')->group(function () {
     Route::get('/contractors/{contractor}', [ContractorController::class, 'show']);
     Route::put('/contractors/{contractor}', [ContractorController::class, 'update']);
     Route::delete('/contractors/{contractor}', [ContractorController::class, 'destroy']);
+
+    // CRUD de Residentes / Responsables
+    Route::get('/residentes', [ResidenteController::class, 'index']);
+    Route::post('/residentes', [ResidenteController::class, 'store']);
+    Route::get('/residentes/{residente}', [ResidenteController::class, 'show']);
+    Route::put('/residentes/{residente}', [ResidenteController::class, 'update']);
+    Route::delete('/residentes/{residente}', [ResidenteController::class, 'destroy']);
 
     // CRUD de Registros FTRA (Auditorías operativas)
     Route::get('/records', [FtraRecordController::class, 'index']);

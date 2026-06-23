@@ -18,6 +18,12 @@ class FtraRecord extends Model
         'registered_by_id',
         'contractor_signature',
         'resident_signature',
+        'responsable_id',
+        'resultado_inspeccion',
+        'orden_aseo',
+        'piso',
+        'apartamento',
+        'director_signature',
     ];
 
     protected $casts = [
@@ -37,6 +43,11 @@ class FtraRecord extends Model
     public function registeredBy()
     {
         return $this->belongsTo(User::class, 'registered_by_id');
+    }
+
+    public function responsable()
+    {
+        return $this->belongsTo(Residente::class, 'responsable_id');
     }
 
     public function photos()

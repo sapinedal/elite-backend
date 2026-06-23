@@ -15,7 +15,7 @@ class FtraRecordService
      */
     public function listRecords(array $filters = [])
     {
-        $query = FtraRecord::query()->with(['contractor', 'format', 'photos', 'registeredBy:id,name']);
+        $query = FtraRecord::query()->with(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
 
         if (!empty($filters['contractor_id'])) {
             $query->where('contractor_id', $filters['contractor_id']);
@@ -54,6 +54,9 @@ class FtraRecordService
         return DB::transaction(function () use ($data, $userId, $photos) {
             $data['registered_by_id'] = $userId;
             $data['status'] = $data['status'] ?? 'Registrada';
+            if (isset($data['resultado_inspeccion'])) {
+                $data['is_completed'] = ($data['resultado_inspeccion'] !== 'Rechazado');
+            }
 
             $record = FtraRecord::create($data);
 
@@ -70,7 +73,7 @@ class FtraRecordService
                 }
             }
 
-            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name']);
+            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
         });
     }
 
@@ -80,6 +83,9 @@ class FtraRecordService
     public function updateRecord(FtraRecord $record, array $data, ?array $photos = null): FtraRecord
     {
         return DB::transaction(function () use ($record, $data, $photos) {
+            if (isset($data['resultado_inspeccion'])) {
+                $data['is_completed'] = ($data['resultado_inspeccion'] !== 'Rechazado');
+            }
             $record->update($data);
 
             // Añadir fotos adicionales si vienen
@@ -95,7 +101,7 @@ class FtraRecordService
                 }
             }
 
-            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name']);
+            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
         });
     }
 
@@ -106,7 +112,7 @@ class FtraRecordService
     {
         return DB::transaction(function () use ($record, $status) {
             $record->update(['status' => $status]);
-            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name']);
+            return $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
         });
     }
 
