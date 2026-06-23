@@ -36,6 +36,7 @@ class StoreFtraRecordRequest extends FormRequest
             'contractor_signature' => 'nullable|string',
             'resident_signature' => 'nullable|string',
             'director_signature' => 'nullable|string',
+            'supervisor_signature' => 'nullable|string',
             'photos' => 'nullable|array',
             'photos.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         ];

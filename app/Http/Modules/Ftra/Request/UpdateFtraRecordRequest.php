@@ -36,6 +36,7 @@ class UpdateFtraRecordRequest extends FormRequest
             'contractor_signature' => 'sometimes|nullable|string',
             'resident_signature' => 'sometimes|nullable|string',
             'director_signature' => 'sometimes|nullable|string',
+            'supervisor_signature' => 'sometimes|nullable|string',
             'photos' => 'nullable|array',
             'photos.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         ];

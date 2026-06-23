@@ -24,6 +24,7 @@ class FtraRecord extends Model
         'piso',
         'apartamento',
         'director_signature',
+        'supervisor_signature',
     ];
 
     protected $casts = [
