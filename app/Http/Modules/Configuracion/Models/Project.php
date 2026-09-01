@@ -21,4 +21,9 @@ class Project extends Model
         'is_active' => 'boolean',
         'total_budget' => 'float',
     ];
+
+    public function towers()
+    {
+        return $this->hasMany(Tower::class, 'project_id');
+    }
 }
