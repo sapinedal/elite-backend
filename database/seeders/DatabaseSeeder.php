@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
             ProjectSeeder::class,
             AreaPositionSeeder::class,
             CommercialAreaSeeder::class,
+            TramitesEscrituracionSeeder::class,
+            ProcesosGestionDocumentalSeeder::class,
             PermissionSeeder::class,
             ContractorSeeder::class,
             ResidenteSeeder::class,
