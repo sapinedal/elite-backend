@@ -52,7 +52,7 @@ class TramitesEscrituracionSeeder extends Seeder
 
         // 4. Definición de los KPIs extraídos de la Evaluación de Desempeño
         $kpis = [
-            // ETAPA 1: PRE-CONCRECIÓN
+            // ETAPA 1: PRE-CONCRECIÓN (50%)
             [
                 'name' => 'Porcentaje de Cierres Financieros Logrados a Tiempo',
                 'description' => 'Mide la eficacia con que se logran aprobación de créditos, subsidios y pagos de cuota inicial en la fecha establecida.',
@@ -60,8 +60,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
-                'weight' => 20,
-                'incidence' => 100,
+                'weight' => 10,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -70,8 +70,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Cierres_Financieros_Exitosos / Cierres_Financieros_Programados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Cierres_Financieros_Exitosos', 'value' => 25],
-                            ['name' => 'Cierres_Financieros_Programados', 'value' => 25],
+                            ['name' => 'Cierres_Financieros_Exitosos', 'value' => 0],
+                            ['name' => 'Cierres_Financieros_Programados', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => 'Meta alcanzada (100%)', 'color' => 'excellent', 'score' => 100],
@@ -88,8 +88,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
-                'weight' => 15,
-                'incidence' => 100,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -99,7 +99,7 @@ class TramitesEscrituracionSeeder extends Seeder
                         'unit' => '%',
                         'parameters' => [
                             ['name' => 'Sin_Cierre_Gestionados', 'value' => 0],
-                            ['name' => 'Sin_Cierre_Total', 'value' => 1],
+                            ['name' => 'Sin_Cierre_Total', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% gestionado', 'color' => 'excellent', 'score' => 100],
@@ -115,8 +115,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
-                'weight' => 15,
-                'incidence' => 100,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -126,7 +126,7 @@ class TramitesEscrituracionSeeder extends Seeder
                         'unit' => '%',
                         'parameters' => [
                             ['name' => 'Con_Subsidio_Gestionados', 'value' => 0],
-                            ['name' => 'Con_Subsidio_Total', 'value' => 1],
+                            ['name' => 'Con_Subsidio_Total', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% con subsidio gestionado', 'color' => 'excellent', 'score' => 100],
@@ -142,8 +142,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 15,
                 'unit' => 'Días',
                 'stage' => 'Pre-Concreción',
-                'weight' => 15,
-                'incidence' => 100,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -152,8 +152,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => 'Sum_Dias_Por_Cliente / Nro_Clientes',
                         'unit' => 'Días',
                         'parameters' => [
-                            ['name' => 'Sum_Dias_Por_Cliente', 'value' => 15],
-                            ['name' => 'Nro_Clientes', 'value' => 1],
+                            ['name' => 'Sum_Dias_Por_Cliente', 'value' => 0],
+                            ['name' => 'Nro_Clientes', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 15, 'qualification' => 'Dentro del tiempo óptimo (Máx. 15 días)', 'color' => 'excellent', 'score' => 100],
@@ -170,8 +170,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
-                'weight' => 15,
-                'incidence' => 100,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -180,8 +180,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Registros_Actualizados / Registros_Totales) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Registros_Actualizados', 'value' => 100],
-                            ['name' => 'Registros_Totales', 'value' => 100],
+                            ['name' => 'Registros_Actualizados', 'value' => 0],
+                            ['name' => 'Registros_Totales', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% actualizada', 'color' => 'excellent', 'score' => 100],
@@ -197,8 +197,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 5,
                 'unit' => 'Puntos',
                 'stage' => 'Pre-Concreción',
-                'weight' => 20,
-                'incidence' => 100,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -207,7 +207,7 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => 'Puntaje_Evaluacion_360',
                         'unit' => 'Puntos',
                         'parameters' => [
-                            ['name' => 'Puntaje_Evaluacion_360', 'value' => 5],
+                            ['name' => 'Puntaje_Evaluacion_360', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 4.5, 'max_value' => 5, 'qualification' => 'Sobresaliente (4.5 - 5.0)', 'color' => 'excellent', 'score' => 100],
@@ -218,7 +218,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 ]
             ],
 
-            // ETAPA 2: ESCRITURACIÓN
+            // ETAPA 2: ESCRITURACIÓN (50%)
             [
                 'name' => 'Porcentaje de Entregas con Documentación',
                 'description' => 'Cuantifica la calidad de la documentación solicitada a la notaría sin observaciones.',
@@ -226,8 +226,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 2,
                 'unit' => '%',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -237,7 +237,7 @@ class TramitesEscrituracionSeeder extends Seeder
                         'unit' => '%',
                         'parameters' => [
                             ['name' => 'Expedientes_Con_Observaciones', 'value' => 0],
-                            ['name' => 'Total_Expedientes', 'value' => 100],
+                            ['name' => 'Total_Expedientes', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 2, 'qualification' => 'Menos del 2% de errores (Óptimo)', 'color' => 'excellent', 'score' => 100],
@@ -253,8 +253,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 10,
                 'unit' => 'Días',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -263,8 +263,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => 'Sum_Dias_Por_Tramite / Nro_Tramites',
                         'unit' => 'Días',
                         'parameters' => [
-                            ['name' => 'Sum_Dias_Por_Tramite', 'value' => 7],
-                            ['name' => 'Nro_Tramites', 'value' => 1],
+                            ['name' => 'Sum_Dias_Por_Tramite', 'value' => 0],
+                            ['name' => 'Nro_Tramites', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 10, 'qualification' => '7 a 10 días hábiles (Óptimo)', 'color' => 'excellent', 'score' => 100],
@@ -280,8 +280,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -290,8 +290,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Paz_Y_Salvos_A_Tiempo / Total_Paz_Y_Salvos) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Paz_Y_Salvos_A_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Paz_Y_Salvos', 'value' => 100],
+                            ['name' => 'Paz_Y_Salvos_A_Tiempo', 'value' => 0],
+                            ['name' => 'Total_Paz_Y_Salvos', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% a tiempo', 'color' => 'excellent', 'score' => 100],
@@ -307,8 +307,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 15,
                 'unit' => 'Días',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 8,
+                'incidence' => 50,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -317,8 +317,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => 'Sum_Dias_Por_Escritura / Nro_Escrituras',
                         'unit' => 'Días',
                         'parameters' => [
-                            ['name' => 'Sum_Dias_Por_Escritura', 'value' => 10],
-                            ['name' => 'Nro_Escrituras', 'value' => 1],
+                            ['name' => 'Sum_Dias_Por_Escritura', 'value' => 0],
+                            ['name' => 'Nro_Escrituras', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 15, 'qualification' => '10 a 15 días hábiles (Cumplido)', 'color' => 'excellent', 'score' => 100],
@@ -334,8 +334,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Escrituración',
-                'weight' => 10,
-                'incidence' => 0,
+                'weight' => 6,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -344,8 +344,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Archivos_Completos / Total_Expedientes) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Archivos_Completos', 'value' => 100],
-                            ['name' => 'Total_Expedientes', 'value' => 100],
+                            ['name' => 'Archivos_Completos', 'value' => 0],
+                            ['name' => 'Total_Expedientes', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% de expedientes completos', 'color' => 'excellent', 'score' => 100],
@@ -361,8 +361,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 6,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -371,8 +371,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Reportes_A_Tiempo / Total_Reportes) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Reportes_A_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Reportes', 'value' => 100],
+                            ['name' => 'Reportes_A_Tiempo', 'value' => 0],
+                            ['name' => 'Total_Reportes', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% a tiempo', 'color' => 'excellent', 'score' => 100],
@@ -388,8 +388,8 @@ class TramitesEscrituracionSeeder extends Seeder
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'Escrituración',
-                'weight' => 15,
-                'incidence' => 0,
+                'weight' => 6,
+                'incidence' => 50,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -398,8 +398,8 @@ class TramitesEscrituracionSeeder extends Seeder
                         'formula' => '(Tareas_Cumplidas / Total_Tareas) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Tareas_Cumplidas', 'value' => 100],
-                            ['name' => 'Total_Tareas', 'value' => 100],
+                            ['name' => 'Tareas_Cumplidas', 'value' => 0],
+                            ['name' => 'Total_Tareas', 'value' => 0],
                         ],
                         'conditional_goals' => [
                             ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 999, 'qualification' => '100% cumplido', 'color' => 'excellent', 'score' => 100],

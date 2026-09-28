@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             TecnicaAreaSeeder::class,
             ContableAreaSeeder::class,
             JuridicaAreaSeeder::class,
+            MercadeoAreaSeeder::class,
             PermissionSeeder::class,
             ContractorSeeder::class,
             ResidenteSeeder::class,
