@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
             TramitesEscrituracionSeeder::class,
             ProcesosGestionDocumentalSeeder::class,
             TecnicaAreaSeeder::class,
+            ContableAreaSeeder::class,
+            JuridicaAreaSeeder::class,
             PermissionSeeder::class,
             ContractorSeeder::class,
             ResidenteSeeder::class,
