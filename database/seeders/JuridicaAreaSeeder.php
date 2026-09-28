@@ -56,8 +56,13 @@ class JuridicaAreaSeeder extends Seeder
 
         $instantiatedUsers = [];
         foreach ($colaboradores as $colab) {
-            $user = User::where('document', $colab['document'])
-                ->orWhereRaw('LOWER(email) = ?', [mb_strtolower($colab['email'])])
+            $user = User::withTrashed()
+                ->where(function ($q) use ($colab) {
+                    if (!empty($colab['document'])) {
+                        $q->where('document', $colab['document']);
+                    }
+                    $q->orWhereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower(trim($colab['email']))]);
+                })
                 ->first();
 
             $position = $createdPositions[$colab['position_name']] ?? $createdPositions['Abogada Junior'];
@@ -70,10 +75,13 @@ class JuridicaAreaSeeder extends Seeder
                     'document' => $colab['document'],
                     'position_id' => $position->id,
                     'area_id' => $juridicaArea->id,
-                    'email' => $colab['email'],
+                    'email' => trim($colab['email']),
                     'password' => bcrypt('Elite123'),
                 ]);
             } else {
+                if ($user->trashed()) {
+                    $user->restore();
+                }
                 $user->update([
                     'first_name' => mb_strtoupper($colab['first_name'], 'UTF-8'),
                     'last_name' => mb_strtoupper($colab['last_name'], 'UTF-8'),
@@ -81,7 +89,7 @@ class JuridicaAreaSeeder extends Seeder
                     'document' => $user->document ?: $colab['document'],
                     'position_id' => $position->id,
                     'area_id' => $juridicaArea->id,
-                    'email' => $user->email ?: $colab['email'],
+                    'email' => $user->email ?: trim($colab['email']),
                 ]);
             }
 

@@ -48,9 +48,12 @@ class TecnicaAreaSeeder extends Seeder
         // =========================================================================
         // USUARIO 1: ALMACENISTA DE OBRA (CC: 8359612 / id 27 - Juan Carlos Esquivel Hoyos)
         // =========================================================================
-        $userAlmacen = User::where('document', '8359612')
-            ->orWhere('id', 27)
-            ->orWhereRaw('LOWER(email) IN (?, ?)', ['almacen@inverconstruccion.com', 'almacen.tecnica@elite.com'])
+        $userAlmacen = User::withTrashed()
+            ->where(function ($q) {
+                $q->where('document', '8359612')
+                    ->orWhere('id', 27)
+                    ->orWhereRaw('LOWER(TRIM(email)) IN (?, ?)', ['almacen@inverconstruccion.com', 'almacen.tecnica@elite.com']);
+            })
             ->first();
 
         $defaultFirstNameAlmacen = 'JUAN CARLOS';
@@ -69,6 +72,9 @@ class TecnicaAreaSeeder extends Seeder
                 'password' => bcrypt('Elite123'),
             ]);
         } else {
+            if ($userAlmacen->trashed()) {
+                $userAlmacen->restore();
+            }
             $userAlmacen->update([
                 'first_name' => mb_strtoupper($defaultFirstNameAlmacen, 'UTF-8'),
                 'last_name' => mb_strtoupper($defaultLastNameAlmacen, 'UTF-8'),
@@ -360,8 +366,11 @@ class TecnicaAreaSeeder extends Seeder
         // =========================================================================
         // USUARIO 2: RESIDENTE DE ESTRUCTURA Y URBANISMO (CC: 1017186775 - Santiago Prieto)
         // =========================================================================
-        $userResidente = User::where('document', '1017186775')
-            ->orWhereRaw('LOWER(email) = ?', ['santiago.prieto@elite.com'])
+        $userResidente = User::withTrashed()
+            ->where(function ($q) {
+                $q->where('document', '1017186775')
+                    ->orWhereRaw('LOWER(TRIM(email)) = ?', ['santiago.prieto@elite.com']);
+            })
             ->first();
 
         $defaultFirstNameResidente = 'SANTIAGO';
@@ -380,6 +389,9 @@ class TecnicaAreaSeeder extends Seeder
                 'password' => bcrypt('Elite123'),
             ]);
         } else {
+            if ($userResidente->trashed()) {
+                $userResidente->restore();
+            }
             $userResidente->update([
                 'first_name' => mb_strtoupper($userResidente->first_name ?: $defaultFirstNameResidente, 'UTF-8'),
                 'last_name' => mb_strtoupper($userResidente->last_name ?: $defaultLastNameResidente, 'UTF-8'),
@@ -624,8 +636,11 @@ class TecnicaAreaSeeder extends Seeder
         // =========================================================================
         // USUARIO 3: DIRECTOR DE OBRA (CC: 98632277 - Jorge Elias Pemberty Zapata)
         // =========================================================================
-        $userDirector = User::where('document', '98632277')
-            ->orWhereRaw('LOWER(email) = ?', ['dirobrasanmiguel@inverconstruccion.com'])
+        $userDirector = User::withTrashed()
+            ->where(function ($q) {
+                $q->where('document', '98632277')
+                    ->orWhereRaw('LOWER(TRIM(email)) = ?', ['dirobrasanmiguel@inverconstruccion.com']);
+            })
             ->first();
 
         $defaultFirstNameDirector = 'JORGE ELIAS';
@@ -644,6 +659,9 @@ class TecnicaAreaSeeder extends Seeder
                 'password' => bcrypt('Elite123'),
             ]);
         } else {
+            if ($userDirector->trashed()) {
+                $userDirector->restore();
+            }
             $userDirector->update([
                 'first_name' => mb_strtoupper($userDirector->first_name ?: $defaultFirstNameDirector, 'UTF-8'),
                 'last_name' => mb_strtoupper($userDirector->last_name ?: $defaultLastNameDirector, 'UTF-8'),
@@ -918,8 +936,11 @@ class TecnicaAreaSeeder extends Seeder
         // =========================================================================
         // USUARIO 4: RESIDENTE DE ACABADOS (CC: 1128470626 - Julian Andres Posada Morales)
         // =========================================================================
-        $userAcabados = User::where('document', '1128470626')
-            ->orWhereRaw('LOWER(email) = ?', ['residenteacabados@inverconstruccion.com'])
+        $userAcabados = User::withTrashed()
+            ->where(function ($q) {
+                $q->where('document', '1128470626')
+                    ->orWhereRaw('LOWER(TRIM(email)) = ?', ['residenteacabados@inverconstruccion.com']);
+            })
             ->first();
 
         $defaultFirstNameAcabados = 'JULIAN ANDRES';
@@ -938,6 +959,9 @@ class TecnicaAreaSeeder extends Seeder
                 'password' => bcrypt('Elite123'),
             ]);
         } else {
+            if ($userAcabados->trashed()) {
+                $userAcabados->restore();
+            }
             $userAcabados->update([
                 'first_name' => mb_strtoupper($userAcabados->first_name ?: $defaultFirstNameAcabados, 'UTF-8'),
                 'last_name' => mb_strtoupper($userAcabados->last_name ?: $defaultLastNameAcabados, 'UTF-8'),
