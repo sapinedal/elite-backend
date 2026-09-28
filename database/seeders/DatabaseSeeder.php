@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             CommercialAreaSeeder::class,
             TramitesEscrituracionSeeder::class,
             ProcesosGestionDocumentalSeeder::class,
+            TecnicaAreaSeeder::class,
             PermissionSeeder::class,
             ContractorSeeder::class,
             ResidenteSeeder::class,
