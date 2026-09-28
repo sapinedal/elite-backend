@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Http\Modules\Users\Models\User;
-use App\Http\Modules\Plantillas\Models\KPI;
 use App\Http\Modules\Configuracion\Models\Area;
 use App\Http\Modules\Configuracion\Models\Position;
+use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Plantillas\Models\KPI;
+use Illuminate\Database\Seeder;
 
 class TecnicaAreaSeeder extends Seeder
 {
@@ -99,76 +99,44 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '(Recepciones_Sin_Discrepancias / Total_Recepciones) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Recepciones_Sin_Discrepancias', 'value' => 4],
-                            ['name' => 'Total_Recepciones', 'value' => 106],
+                            ['name' => 'Recepciones_Sin_Discrepancias', 'value' => 0],
+                            ['name' => 'Total_Recepciones', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 99, 'max_value' => 1000, 'qualification' => 'Meta cumplida — desempeño óptimo (≥ 99%)', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Bajo Riesgo', 'min_value' => 95, 'max_value' => 98.99, 'qualification' => 'Bajo riesgo — requiere mejora para mantener el estándar (95% - 98.99%)', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 94.99, 'qualification' => 'Meta incumplida — impacto directo en calidad y costos (< 95%)', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 99, 'max_value' => 1000, 'qualification' => '≥ 99% — Meta cumplida, desempeño óptimo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En riesgo', 'min_value' => 95, 'max_value' => 98.99, 'qualification' => '95% – 98.99% — Bajo riesgo, requiere mejora', 'color' => 'at_risk', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 94.99, 'qualification' => '< 95% — Meta incumplida, impacto directo en calidad y costos', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Nº Factura', 'Discrepancia / Observación Identificada', 'Estado'],
-                            'rows' => [
-                                ['2640', 'Se repite cobro en la factura 2638', 'Rechazada / NC Solicitada'],
-                                ['2644', 'Cobro de un insumo ya facturado previamente', 'Rechazada / NC Solicitada'],
-                                ['2655', 'El valor unitario del insumo está errado', 'Ajustada'],
-                                ['2671', 'Cobro duplicado de insumo ya facturado', 'Rechazada / NC Solicitada'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Tiempo Promedio de Despacho de Materiales (desde solicitud)',
-                        'definition' => 'Evaluar la agilidad y eficiencia en la entrega de materiales a la obra desde la solicitud hasta la entrega. Metas estándar: Almacén ≤ 10 min, Patios ≤ 20 min, Bodegas satelitales ≤ 20 min.',
-                        'formula' => 'Promedio de cumplimiento en tiempos por tipo de despacho',
+                        'name' => 'Tiempo Promedio de Atención en Ventanilla (Despacho)',
+                        'definition' => 'Controlar el tiempo que toma atender una solicitud de entrega de material a contratistas/personal de obra en almacén.',
+                        'formula' => 'Tiempo_Promedio_Atencion_Minutos',
+                        'unit' => 'min',
+                        'lower_is_better' => true,
+                        'parameters' => [
+                            ['name' => 'Tiempo_Promedio_Atencion_Minutos', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 15.0, 'qualification' => '≤ 15 min — Excelente nivel de servicio y agilidad en entrega', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 15.01, 'max_value' => 25.0, 'qualification' => '15.1 – 25 min — Dentro de tolerancia operativa', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 25.01, 'max_value' => 1000, 'qualification' => '> 25 min — Cuello de botella en almacén', 'color' => 'deficient', 'score' => 0],
+                        ],
+                    ],
+                    [
+                        'name' => 'Rotación de Inventarios (Despacho vs Entradas)',
+                        'definition' => 'Evalúa la eficiencia en el flujo de materiales, garantizando que los insumos no permanezcan estancados en almacén.',
+                        'formula' => '(Valor_Materiales_Despachados / Valor_Total_Entradas_Inventario) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Tiempo_Promedio_Almacen_Min', 'value' => 3],
-                            ['name' => 'Meta_Almacen_Min', 'value' => 10],
-                            ['name' => 'Tiempo_Promedio_Patios_Min', 'value' => 14],
-                            ['name' => 'Meta_Patios_Min', 'value' => 20],
-                            ['name' => 'Tiempo_Promedio_Satelitales_Min', 'value' => 17],
-                            ['name' => 'Meta_Satelitales_Min', 'value' => 20],
+                            ['name' => 'Valor_Materiales_Despachados', 'value' => 0],
+                            ['name' => 'Valor_Total_Entradas_Inventario', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Excelente', 'min_value' => 100, 'max_value' => 1000, 'qualification' => 'Cumple o mejora meta estándar de tiempos', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable / Riesgo', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => 'Hasta 10% por encima de la meta — Riesgo operativo a intervenir', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '> 10% por encima de la meta — Retrasos críticos que afectan obra', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 90, 'max_value' => 1000, 'qualification' => '≥ 90% — Alta rotación, inventario eficiente', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 75, 'max_value' => 89.99, 'qualification' => '75% – 89.99% — Rotación moderada', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 74.99, 'qualification' => '< 75% — Baja rotación, riesgo de sobrestock o estancamiento', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Tipo de Despacho', 'Muestreo / Frecuencia', 'Tiempo Registrado', 'Meta Estándar', '% Cumplimiento'],
-                            'rows' => [
-                                ['Almacén', '8 muestras aleatorias en el mes', '3 min', '≤ 10 min', '100%'],
-                                ['Patios (Madera y Bloque)', '4 muestras aleatorias en el mes', '14 min', '≤ 20 min', '100%'],
-                                ['Bodegas Satelitales (Cemento, Pega, Enchape)', '4 bodegas satelitales muestreadas', '17 min', '≤ 20 min', '100%'],
-                            ]
-                        ]
-                    ],
-                    [
-                        'name' => 'Índice de Rotación de Inventario (Almacén)',
-                        'definition' => 'Mide la eficiencia de salida de materiales (menor tiempo de almacenamiento). Rotación = Material despachado / Inventario promedio.',
-                        'formula' => 'Rotacion_Veces_Mes',
-                        'unit' => 'veces/mes',
-                        'parameters' => [
-                            ['name' => 'Rotacion_Veces_Mes', 'value' => 1.0],
-                        ],
-                        'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 1.0, 'max_value' => 999, 'qualification' => 'Rotación ágil (≥ 1.0 veces/mes) — Desempeño 100%', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Bueno', 'min_value' => 0.4, 'max_value' => 0.999, 'qualification' => 'Rotación moderada (≥ 0.4 y < 1.0) — Desempeño 80%', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Aceptable', 'min_value' => 0.2, 'max_value' => 0.399, 'qualification' => 'Baja rotación (≥ 0.2 y < 0.4) — Desempeño 50%', 'color' => 'at_risk', 'score' => 50],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 0.199, 'qualification' => 'Inventario inmovilizado (< 0.2) — Desempeño 0%', 'color' => 'deficient', 'score' => 0],
-                        ],
-                        'tablaDetalle' => [
-                            'headers' => ['Insumo / Torre', 'Inv. Inicial', 'Inv. Final', '% Variación', 'Rotación (veces/mes)'],
-                            'rows' => [
-                                ['Cemento (Torre 2)', '210', '47', '-77.62%', '1.27'],
-                                ['Paraguas (Torre 2)', '8', '5', '-37.50%', '0.46'],
-                                ['Cerámica Baños (Torre 2)', '1,146.6', '784.8', '-31.55%', '0.37'],
-                                ['Cerámica Pto Fijo (Torre 2)', '1,362.6', '2,655', '+94.85%', '-0.64'],
-                                ['Pega (Torre 2)', '19,560', '37,360', '+91.00%', '-0.63'],
-                                ['Desmoldante (Torre 1)', '55', '55', '0.00%', '0.00'],
-                            ]
-                        ]
                     ]
                 ]
             ],
@@ -189,69 +157,60 @@ class TecnicaAreaSeeder extends Seeder
                         'definition' => 'Exactitud entre el inventario físico y el registrado en Multifox. Meta: IDI < 1% del valor total del inventario.',
                         'formula' => '(Valor_Absoluto_Diferencias / Valor_Total_Inventario) * 100',
                         'unit' => '%',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Valor_Absoluto_Diferencias', 'value' => 6700000],
-                            ['name' => 'Valor_Total_Inventario', 'value' => 370047516],
+                            ['name' => 'Valor_Absoluto_Diferencias', 'value' => 0],
+                            ['name' => 'Valor_Total_Inventario', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 1.0, 'qualification' => 'IDI < 1% del valor total del inventario — Exactitud sobresaliente', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 1.0, 'qualification' => 'IDI < 1% — Exactitud sobresaliente', 'color' => 'optimal', 'score' => 100],
                             ['level' => 'Aceptable', 'min_value' => 1.01, 'max_value' => 2.5, 'qualification' => 'IDI 1% – 2.5% — Desviación moderada bajo control', 'color' => 'acceptable', 'score' => 80],
                             ['level' => 'Deficiente', 'min_value' => 2.51, 'max_value' => 1000, 'qualification' => 'IDI > 2.5% — Desviación alta física vs. sistema', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Torre / Concepto', 'Inventario Total', 'Valor Diferencia / Reintegro', '% IDI'],
-                            'rows' => [
-                                ['Faltantes Torre 1', '$ 179,484,654.96', '$ 10,833,966.57', '6.04%'],
-                                ['Sobrantes Torre 1', '$ 179,484,654.96', '$ 19,973.50', '0.01%'],
-                                ['Faltantes Torre 2', '$ 190,562,861.59', '$ 2,362,616.49', '1.24%'],
-                                ['Sobrantes Torre 2', '$ 190,562,861.59', '$ 0.00', '0.00%'],
-                                ['Promedio Global IDI', '$ 370,047,516.55', '$ 13,216,556.56', '1.82%'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Velocidad de Registro de Entradas y Salidas en Sistema (≤ 8h)',
-                        'definition' => 'Garantiza que el 100% de los movimientos físicos queden incorporados en el sistema ≤ 8 horas posteriores a la operación física.',
-                        'formula' => '(Movimientos_Registrados_a_Tiempo / Total_Movimientos) * 100',
-                        'unit' => '%',
+                        'name' => 'Oportunidad en el Registro de Movimientos en el Sistema',
+                        'definition' => 'Tiempo transcurrido entre el movimiento físico (entrada/salida) y su registro en Multifox.',
+                        'formula' => 'Tiempo_Promedio_Registro_Horas',
+                        'unit' => 'horas',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Movimientos_Registrados_a_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Movimientos', 'value' => 100],
+                            ['name' => 'Tiempo_Promedio_Registro_Horas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Meta Cumplida', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% de movimientos registrados ≤ 8 horas — Registro oportuno y control total', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Parcial', 'min_value' => 80, 'max_value' => 99.99, 'qualification' => '80% – 99% de movimientos registrados ≤ 8 horas — Retrasos que pueden afectar exactitud', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Incumplida', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% registrados ≤ 8 horas — Alto riesgo de descuadres físico vs sistema', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 4.0, 'qualification' => '≤ 4 horas — Registro en tiempo real', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 4.01, 'max_value' => 8.0, 'qualification' => '4.1 – 8 horas — Registro dentro de la jornada', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 8.01, 'max_value' => 1000, 'qualification' => '> 8 horas — Retraso en actualización del sistema', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Porcentaje de Documentación de Almacén Archivada Correctamente',
-                        'definition' => 'Organización y accesibilidad de soportes (OC, vales, remisiones). Meta: 100% archivada (física/digital) ≤ 24 horas después del movimiento.',
-                        'formula' => '(Documentos_Archivados_a_Tiempo / Total_Documentos) * 100',
+                        'name' => 'Cumplimiento del Archivo y Control Documental',
+                        'definition' => 'Porcentaje de remisiones, facturas, actas y vales debidamente firmados, organizados y archivados.',
+                        'formula' => '(Documentos_Completos_Archivados / Total_Documentos_Generados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Documentos_Archivados_a_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Documentos', 'value' => 100],
+                            ['name' => 'Documentos_Completos_Archivados', 'value' => 0],
+                            ['name' => 'Total_Documentos_Generados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Cumple', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Gestión del archivo eficiente y al día', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'En Riesgo', 'min_value' => 80, 'max_value' => 94.99, 'qualification' => '80% – 94% — Retrasos puntuales que requieren control', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'No Cumple', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — Acumulación de documentos sin archivar', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Trazabilidad y archivo completo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial', 'min_value' => 95, 'max_value' => 99.99, 'qualification' => '95% – 99.99% — Faltantes menores en regularización', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 94.99, 'qualification' => '< 95% — Descontrol documental y riesgo de auditoría', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Nº de Inventarios Físicos Cíclicos/Generales Realizados a Tiempo',
-                        'definition' => 'Cumplimiento del programa de conteos físicos. Realizar dentro de los primeros 7 días de cada mes calendario.',
-                        'formula' => '(Conteos_a_Tiempo / Conteos_Programados) * 100',
+                        'name' => 'Inventarios Cíclicos Realizados a Tiempo',
+                        'definition' => 'Cumplimiento del cronograma de conteos cíclicos semanales/quincenales de familias críticas de materiales.',
+                        'formula' => '(Conteos_Realizados_ATiempo / Total_Conteos_Programados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Conteos_a_Tiempo', 'value' => 1],
-                            ['name' => 'Conteos_Programados', 'value' => 1],
+                            ['name' => 'Conteos_Realizados_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Conteos_Programados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo (Días 1–7)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => 'Días 1–7 — 100% Cumple plenamente la meta. Inventario confiable', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Parcial (Días 8–14)', 'min_value' => 50, 'max_value' => 99.99, 'qualification' => 'Días 8–14 — 50% Cumplimiento parcial. Riesgo moderado en conciliaciones', 'color' => 'acceptable', 'score' => 50],
-                            ['level' => 'No Cumple (> Día 14)', 'min_value' => 0, 'max_value' => 49.99, 'qualification' => 'Después del día 14 — 0% No cumple. Alto riesgo de desviaciones', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Cumplimiento total del cronograma', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial', 'min_value' => 80, 'max_value' => 99.99, 'qualification' => '80% – 99.99% — Cumplimiento parcial con justificación', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — Incumplimiento del plan de control', 'color' => 'deficient', 'score' => 0],
                         ],
                     ]
                 ]
@@ -259,8 +218,8 @@ class TecnicaAreaSeeder extends Seeder
             // BLOQUE C: Mantenimiento y Seguridad (15%)
             [
                 'name' => 'C. Mantenimiento y Seguridad',
-                'description' => 'Cero incidentes de seguridad atribuibles al almacén y mantenimiento de altos estándares de orden y limpieza mediante auditorías periódicas.',
-                'formula' => 'Puntuación combinada de seguridad y orden/aseo',
+                'description' => 'Asegura la operatividad de herramientas y equipos menores, junto con altos estándares de orden, aseo y seguridad (5S/SST) en almacén.',
+                'formula' => 'Promedio de disponibilidad de equipos y calificación de auditoría 5S/SST',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'C. Mantenimiento y Seguridad',
@@ -269,47 +228,41 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Nº de Incidentes de Seguridad en Almacén (Atribuibles)',
-                        'definition' => 'Registra eventos que ponen en riesgo la seguridad física o laboral por fallas, omisiones o negligencias atribuibles al personal del almacén. Meta: 0 incidentes.',
-                        'formula' => 'Incidentes_Atribuibles',
-                        'unit' => 'Incidentes',
+                        'name' => 'Estado y Disponibilidad de Herramientas y Equipos Menores',
+                        'definition' => 'Porcentaje de herramientas y equipos menores en estado operativo y disponibles para préstamo en obra.',
+                        'formula' => '(Herramientas_Operativas / Total_Herramientas_Inventario) * 100',
+                        'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Incidentes_Atribuibles', 'value' => 0],
+                            ['name' => 'Herramientas_Operativas', 'value' => 0],
+                            ['name' => 'Total_Herramientas_Inventario', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 0, 'qualification' => '0 incidentes atribuibles — 100% de cumplimiento en seguridad', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'En Riesgo', 'min_value' => 1, 'max_value' => 1, 'qualification' => '1 incidente atribuible — Requiere investigación y plan de acción', 'color' => 'at_risk', 'score' => 50],
-                            ['level' => 'Crítico', 'min_value' => 2, 'max_value' => 999, 'qualification' => '≥ 2 incidentes atribuibles — Incumplimiento crítico de seguridad', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Equipos en óptimas condiciones', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 85, 'max_value' => 94.99, 'qualification' => '85% – 94.99% — Requiere mantenimiento preventivo', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 84.99, 'qualification' => '< 85% — Afectación a la operación de obra', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Puntuación en Auditorías de Orden y Limpieza',
-                        'definition' => 'Calidad del mantenimiento del espacio de trabajo en almacén y patios. Meta: ≥ 4.5 / 5.0 puntos.',
-                        'formula' => 'Promedio_Auditorias_Orden_Limpieza',
-                        'unit' => 'Puntos',
+                        'name' => 'Orden, Aseo y Seguridad en el Almacén (Auditorías 5S / SST)',
+                        'definition' => 'Calificación obtenida en las inspecciones periódicas de orden, aseo, señalización y almacenamiento seguro.',
+                        'formula' => 'Calificacion_Inspeccion_5S',
+                        'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Promedio_Auditorias_Orden_Limpieza', 'value' => 5.0],
+                            ['name' => 'Calificacion_Inspeccion_5S', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Excelente', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => 'Puntuación ≥ 4.5/5 — Espacio limpio, aseado y perfectamente organizado', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => 'Puntuación 3.5 – 4.4 — Requiere mejoras puntuales de orden', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => 'Puntuación < 3.5 — Desorden y falta de aseo', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 90, 'max_value' => 1000, 'qualification' => '≥ 90% — Almacén ordenado, seguro y señalizado', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 89.99, 'qualification' => '80% – 89.99% — Oportunidades menores de mejora', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — Riesgo de accidentes o desorden crítico', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Auditor / Inspector', 'Tipo de Auditoría', 'Observaciones', 'Calificación (1-5)'],
-                            'rows' => [
-                                ['Paula', 'Auditoría Orden y Aseo', 'Muy organizado y bien distribuido. Aseo profundo periódico adecuado.', '5.0'],
-                                ['Mauricio', 'Auditoría Orden y Aseo', 'Calificación excelente. Apoyo en consecución de cotizaciones de proveedores.', '5.0'],
-                            ]
-                        ]
                     ]
                 ]
             ],
             // BLOQUE D: Eficiencia en Procesos (15%)
             [
                 'name' => 'D. Eficiencia en Procesos',
-                'description' => 'Evalúa los tiempos de causación contable, emisión de documentos soporte, resolución de discrepancias DIAN, ambiente laboral y amortización de anticipos.',
-                'formula' => 'Promedio ponderado de causación, documentos soporte, conciliación DIAN, clima y anticipos',
+                'description' => 'Mide la rapidez en respuesta a requerimientos, control de mermas, eficiencia en devoluciones, nivel de servicio a cuadrillas y mejoras implementadas.',
+                'formula' => 'Promedio de tiempo de respuesta, mermas, devoluciones, servicio y mejoras',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'D. Eficiencia en Procesos',
@@ -318,75 +271,79 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Tiempo Promedio de Causación de Facturas',
-                        'definition' => 'Tiempo desde recepción hasta registro contable. Meta estándar: ≤ 3 días hábiles.',
-                        'formula' => 'Dias_Promedio_Causacion',
-                        'unit' => 'Días',
+                        'name' => 'Tiempo Promedio de Respuesta a Requerimientos de Obra',
+                        'definition' => 'Tiempo que toma al almacén procesar y alistar un pedido interno desde su solicitud.',
+                        'formula' => 'Tiempo_Promedio_Respuesta_Horas',
+                        'unit' => 'horas',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Dias_Promedio_Causacion', 'value' => 1.5],
+                            ['name' => 'Tiempo_Promedio_Respuesta_Horas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 3.0, 'qualification' => '≤ 3 días hábiles — Causación oportuna sin demoras', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable', 'min_value' => 3.01, 'max_value' => 5.0, 'qualification' => '3.1 – 5.0 días hábiles — Retraso moderado en procesamiento contable', 'color' => 'acceptable', 'score' => 70],
-                            ['level' => 'Deficiente', 'min_value' => 5.01, 'max_value' => 999, 'qualification' => '> 5 días hábiles — Ineficiencia en causación de facturas', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '≤ 2 horas — Atención inmediata', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 2.01, 'max_value' => 4.0, 'qualification' => '2.1 – 4 horas — Respuesta oportuna', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 4.01, 'max_value' => 1000, 'qualification' => '> 4 horas — Retraso que impacta cuadrillas', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Tiempo Promedio de Emisión de Documentos Soporte',
-                        'definition' => 'Rapidez en generación de documentos soporte electrónicos. Meta: ≤ 48 horas.',
-                        'formula' => 'Horas_Promedio_Emision',
-                        'unit' => 'Horas',
+                        'name' => 'Porcentaje de Mermas y Pérdidas de Materiales',
+                        'definition' => 'Valor monetario de materiales deteriorados, vencidos o extraviados dentro del almacén respecto al valor bajo custodia.',
+                        'formula' => '(Valor_Mermas_Perdidas / Valor_Total_Materiales_Custodia) * 100',
+                        'unit' => '%',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Horas_Promedio_Emision', 'value' => 24],
+                            ['name' => 'Valor_Mermas_Perdidas', 'value' => 0],
+                            ['name' => 'Valor_Total_Materiales_Custodia', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Excelente', 'min_value' => 0, 'max_value' => 48, 'qualification' => '≤ 48 horas — Emisión rápida y en norma', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable', 'min_value' => 48.01, 'max_value' => 72, 'qualification' => '49 – 72 horas — Emisión con ligera demora', 'color' => 'acceptable', 'score' => 75],
-                            ['level' => 'Deficiente', 'min_value' => 72.01, 'max_value' => 9999, 'qualification' => '> 72 horas — Retraso crítico en documentos soporte', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 0, 'max_value' => 0.5, 'qualification' => '< 0.5% — Custodia excelente sin pérdidas', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Tolerable', 'min_value' => 0.51, 'max_value' => 1.5, 'qualification' => '0.5% – 1.5% — Merma operativa normal', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 1.51, 'max_value' => 1000, 'qualification' => '> 1.5% — Pérdida alta, requiere investigación', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Nº de Discrepancias Identificadas y Resueltas en Conciliación DIAN',
-                        'definition' => 'Eficiencia en identificar y resolver inconsistencias con DIAN en ≤ 48 horas por la obra.',
-                        'formula' => '(Discrepancias_Resueltas / Discrepancias_Detectadas) * 100',
+                        'name' => 'Eficiencia en Devoluciones y Sobrantes de Obra',
+                        'definition' => 'Porcentaje de materiales sobrantes reintegrados correctamente al sistema dentro de las 48 horas de recibidos.',
+                        'formula' => '(Devoluciones_Reintegradas_Sistema / Total_Devoluciones_Recibidas) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Discrepancias_Resueltas', 'value' => 4],
-                            ['name' => 'Discrepancias_Detectadas', 'value' => 4],
+                            ['name' => 'Devoluciones_Reintegradas_Sistema', 'value' => 0],
+                            ['name' => 'Total_Devoluciones_Recibidas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% identificadas y resueltas a tiempo (ej: Notas Crédito tramitadas)', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Parcial', 'min_value' => 80, 'max_value' => 99.99, 'qualification' => '80% – 99% resueltas — Casos pendientes de seguimiento', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% resueltas — Riesgo fiscal / tributario', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Reintegro oportuno al stock', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 94.99, 'qualification' => '80% – 94.99% — Acumulación temporal de sobrantes', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — Materiales sin ingresar al sistema', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Contribución al Ambiente Laboral (Evaluación 360°)',
-                        'definition' => 'Evaluación de colaboración, actitud y retroalimentación positiva de pares y líderes (escala 1 a 5).',
-                        'formula' => 'Calificacion_360',
-                        'unit' => 'Puntos',
-                        'parameters' => [
-                            ['name' => 'Calificacion_360', 'value' => 4.88],
-                        ],
-                        'conditional_goals' => [
-                            ['level' => 'Excelente', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => 'Retroalimentación altamente positiva (≥ 4.5/5)', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => 'Desempeño adecuado en trabajo en equipo (3.5 – 4.49)', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => 'Baja calificación en evaluación 360 (< 3.5)', 'color' => 'deficient', 'score' => 0],
-                        ],
-                    ],
-                    [
-                        'name' => 'Porcentaje de Anticipos Legalizados y Amortizados Correctamente',
-                        'definition' => 'Seguimiento y precisión en la gestión de anticipos entregados. Legalizados al final de cada mes.',
-                        'formula' => '(Anticipos_Legalizados / Anticipos_Entregados) * 100',
+                        'name' => 'Nivel de Servicio a Contratistas y Cuadrillas',
+                        'definition' => 'Mide la satisfacción y efectividad en la entrega de materiales según la programación diaria de obra.',
+                        'formula' => '(Despachos_Completos_ATiempo / Total_Solicitudes_Despacho) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Anticipos_Legalizados', 'value' => 5],
-                            ['name' => 'Anticipos_Entregados', 'value' => 5],
+                            ['name' => 'Despachos_Completos_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Solicitudes_Despacho', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% de anticipos legalizados y amortizados al mes', 'color' => 'optimal', 'score' => 100],
-                            ['level' => 'Aceptable', 'min_value' => 80, 'max_value' => 99.99, 'qualification' => '80% – 99% legalizados — Anticipos pendientes de cierre', 'color' => 'acceptable', 'score' => 80],
-                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — Riesgo financiero en amortización', 'color' => 'deficient', 'score' => 0],
+                            ['level' => 'Óptimo', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Servicio eficiente y sin demoras', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable', 'min_value' => 85, 'max_value' => 94.99, 'qualification' => '85% – 94.99% — Demoras puntuales no críticas', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente', 'min_value' => 0, 'max_value' => 84.99, 'qualification' => '< 85% — Desatención a contratistas', 'color' => 'deficient', 'score' => 0],
+                        ],
+                    ],
+                    [
+                        'name' => 'Implementación de Mejoras en Almacén',
+                        'definition' => 'Iniciativas y mejoras implementadas para optimizar el almacenamiento, rotulado, flujo de materiales o control documental.',
+                        'formula' => '(Mejoras_Implementadas / Mejoras_Propuestas_Aprobadas) * 100',
+                        'unit' => '%',
+                        'parameters' => [
+                            ['name' => 'Mejoras_Implementadas', 'value' => 0],
+                            ['name' => 'Mejoras_Propuestas_Aprobadas', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Óptimo', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Innovación y optimización continua', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Proceso', 'min_value' => 50, 'max_value' => 99.99, 'qualification' => '50% – 99.99% — Mejoras en desarrollo', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Sin Avance', 'min_value' => 0, 'max_value' => 49.99, 'qualification' => '< 50% — Sin iniciativas de mejora', 'color' => 'deficient', 'score' => 0],
                         ],
                     ]
                 ]
@@ -434,14 +391,12 @@ class TecnicaAreaSeeder extends Seeder
         }
 
         $kpisResidente = [
-            // =========================================================================
             // BLOQUE A: Supervisión Técnica y Ejecución de Estructura y urbanismo (40%)
-            // =========================================================================
             [
                 'name' => 'A. Supervisión Técnica y Ejecución de Estructura y urbanismo',
                 'description' => 'Mide la adherencia al programa de avance físico de obra gruesa y urbanismo, el control de errores críticos antes de supervisión externa y la eficiencia en el cubicaje de concreto y acero.',
                 'formula' => 'Promedio de cumplimiento de cronograma, cero errores críticos y cubicación en rango',
-                'target' => 100,
+                'target' => 95,
                 'unit' => '%',
                 'stage' => 'A. Supervisión Técnica y Ejecución de Estructura y urbanismo',
                 'weight' => 40,
@@ -449,148 +404,58 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Porcentaje de Cumplimiento del Programa Mensual de Estructura y urbanismo',
-                        'definition' => 'Mide la adherencia a la planificación detallada de la obra gruesa y frentes de urbanismo.',
-                        'formula' => '(Actividades_Completadas / Actividades_Programadas) * 100',
+                        'name' => 'Porcentaje de Cumplimiento del Programa Mensual de Estructura y Urbanismo',
+                        'definition' => 'Mide el avance real ejecutado frente a lo planificado en el cronograma maestro para actividades de estructura y urbanismo.',
+                        'formula' => '(Avance_Fisico_Real_Acumulado / Avance_Fisico_Programado_Acumulado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Actividades_Completadas', 'value' => 100],
-                            ['name' => 'Actividades_Programadas', 'value' => 100],
+                            ['name' => 'Avance_Fisico_Real_Acumulado', 'value' => 0],
+                            ['name' => 'Avance_Fisico_Programado_Acumulado', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumplimiento (Verde)',
-                                'min_value' => 95,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 95% — Cumplimiento y desempeño óptimo en la secuencia constructiva',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Riesgo / Parcial (Amarillo)',
-                                'min_value' => 80,
-                                'max_value' => 94.99,
-                                'qualification' => '80% – 94% — En riesgo / Parcialmente cumple, requiere seguimiento semanal',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento Crítico (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 79.99,
-                                'qualification' => '< 80% — Incumplimiento crítico, activar plan de recuperación inmediata',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Cumplimiento total del programa', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Riesgo Moderado (Amarillo)', 'min_value' => 90, 'max_value' => 94.99, 'qualification' => '90% – 94.99% — Riesgo moderado, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento Crítico (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Incumplimiento crítico, plan de recuperación inmediato', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente / Actividad', 'Fecha Inicio', 'Avance Teórico', 'Avance Real', 'Adelanto / Retraso', 'Estado'],
-                            'rows' => [
-                                ['Tanque', '23/07/2025', '80%', '80%', '-10 días', 'Recuperado'],
-                                ['Acero de Refuerzo Estructura T2', '30/03/2026', '50%', '100%', '+70.00% adelanto', 'Óptimo'],
-                                ['Malla Electrosoldada T2', '30/03/2026', '50%', '100%', '+70.00% adelanto', 'Óptimo'],
-                                ['Muros 15 y 20 (CIM - P5)', '30/03/2026', '100%', '100%', '0.00% al día', 'Cumplido'],
-                                ['Muros 15 y 20 (P6 - P10)', '12/05/2026', '100%', '100%', '0.00% al día', 'Cumplido'],
-                                ['Muros 15 y 20 (P11 - P15)', '25/06/2026', '78%', '100%', '+10.53% adelanto', 'Óptimo'],
-                                ['Losa de Entrepiso T2', '30/03/2026', '73%', '100%', '+35.10% adelanto', 'Óptimo'],
-                                ['Escaleras T2', '24/04/2026', '61%', '85%', '+30.24% adelanto', 'Óptimo'],
-                                ['Redes Hidrosanitarias', '30/03/2026', '56%', '65%', '+15.48% adelanto', 'Óptimo'],
-                                ['Redes Eléctricas Tubería', '30/03/2026', '49%', '65%', '+30.72% adelanto', 'Óptimo'],
-                                ['Avance General Estructura', '30/03/2026', '70%', '98%', '+41.16% adelanto (20 días antes)', 'Finalizado con Éxito'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Número de Errores Críticos de Ejecución Estructural Detectados Internamente',
-                        'definition' => 'Cuantifica la calidad del control interno antes de la supervisión externa. Mide errores críticos sin cerrar o sin plan de acción.',
-                        'formula' => 'Errores_Criticos_Sin_Cerrar',
-                        'unit' => 'Errores',
+                        'name' => 'Cero Errores Críticos Previos a Supervisión Externa',
+                        'definition' => 'Verificación y liberación interna rigurosa de armados de acero, formaletería, dovelas y vaciados antes de la inspección de interventoría externa.',
+                        'formula' => 'Numero_Errores_Criticos_Identificados',
+                        'unit' => 'errores',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Errores_Criticos_Sin_Cerrar', 'value' => 0],
+                            ['name' => 'Numero_Errores_Criticos_Identificados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 0,
-                                'qualification' => '0 errores críticos sin cerrar — Control técnico interno efectivo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 1,
-                                'max_value' => 999,
-                                'qualification' => '≥ 1 error crítico sin cerrar o sin plan de acción',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumple (Verde)', 'min_value' => 0, 'max_value' => 0.0, 'qualification' => '0 errores — Detección oportuna antes de fundición', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Alerta (Amarillo)', 'min_value' => 1, 'max_value' => 2.0, 'qualification' => '1 – 2 hallazgos menores subsanados', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 2.01, 'max_value' => 1000, 'qualification' => '> 2 errores críticos en supervisión', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Elemento / Frente', 'Tipo de Hallazgo', 'Gestión Técnica Realizada', 'Resolución / Cierre'],
-                            'rows' => [
-                                ['Losa Cubierta Portería', 'Observaciones al armado de acero', 'Notificación formal previa y constancia de responsabilidad contratista', 'Cerrado / Trazabilidad completa'],
-                                ['Salida Eléctrica Borde', 'Ubicación en salpicadero de cocina', 'Consulta al calculista IPI para ubicar en recubrimiento exterior', 'Aprobado por calculista y liberado'],
-                                ['Muros 101 y 104 (Nivel 1)', 'Cilindros no alcanzaron f\'c esperado a 14/28 días', 'Extracción de testigos, ultrasonido (3,849 m/s) y esclerometría (37.7) vs patrón', 'Liberado por Interventoría sin daño destructivo'],
-                                ['Muro 20cm Balcón', 'Aval de anclaje a muro estructural', 'Alternativa de aislamiento con icopor y dovela continua', 'Aprobado por Supervisión Técnica'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Porcentaje de Cubicación de Materiales de Estructura en Rango',
+                        'name' => 'Eficiencia en el Uso de Materiales (Cubicación vs Planos)',
                         'definition' => 'Mide la eficiencia en el uso de concreto y acero. Desviación entre cubicaje real y cubicaje de diseño (Meta: Desviación ≤ 5%).',
                         'formula' => '((Cubicaje_Real - Cubicaje_Diseno) / Cubicaje_Diseno) * 100',
                         'unit' => '%',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Desviacion_Cubicaje_Porcentaje', 'value' => 2.5],
+                            ['name' => 'Cubicaje_Real', 'value' => 0],
+                            ['name' => 'Cubicaje_Diseno', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumple (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 5.0,
-                                'qualification' => '0% – 5% — Dentro del rango permitido, cubicaje controlado y eficiente',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Riesgo (Amarillo)',
-                                'min_value' => 5.01,
-                                'max_value' => 10.0,
-                                'qualification' => '5.01% – 10% — En riesgo, requiere revisión y ajuste en vaciados',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 10.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 10% — Incumplimiento, alto desperdicio o desvío',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumple (Verde)', 'min_value' => 0, 'max_value' => 5.0, 'qualification' => '0% – 5% — Dentro del rango permitido, cubicaje controlado', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Riesgo (Amarillo)', 'min_value' => 5.01, 'max_value' => 10.0, 'qualification' => '5.01% – 10% — En riesgo, requiere revisión y ajuste en vaciados', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 10.01, 'max_value' => 1000, 'qualification' => '> 10% — Incumplimiento, alto desperdicio o desvío', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Elemento / Estructura', 'Tipo Material', '% Desperdicio Registrado', 'Meta Estándar', 'Calificación'],
-                            'rows' => [
-                                ['Pilas Tanque', 'Concreto', '1.00% – 2.42%', '≤ 5%', '100% (Verde)'],
-                                ['Muros Tanque', 'Concreto', '0.99%', '≤ 5%', '100% (Verde)'],
-                                ['Losa Aérea Tanque', 'Concreto', '1.00%', '≤ 5%', '100% (Verde)'],
-                                ['Estructura Torre 2', 'Concreto Muros/Losas', '15.16% – 16.05%', '≤ 5%', 'Requiere control por fluidez en pata de muro'],
-                                ['Estructura Torre 2', 'Acero de Refuerzo', 'Control de pedidos vs salidas', '≤ 5%', 'Seguimiento continuo en almacén'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE B: Control de Calidad y Cumplimiento Normativo (30%)
-            // =========================================================================
             [
                 'name' => 'B. Control de Calidad y Cumplimiento Normativo',
-                'description' => 'Evalúa los resultados conformes en ensayos de concreto, acero y suelos, el control estricto de no conformidades y las auditorías de seguridad SG-SST.',
-                'formula' => 'Promedio de conformidad de ensayos, cero no conformidades y puntuación SG-SST',
+                'description' => 'Asegura que los elementos estructurales cumplan con la norma NSR-10, liberación previa de armados, cierre de no conformidades y resistencias de laboratorio.',
+                'formula' => 'Promedio de porcentaje de liberación conforme, cierre a tiempo de NC y ensayos f\'c',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'B. Control de Calidad y Cumplimiento Normativo',
@@ -599,147 +464,57 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => '% Cumplimiento Ensayos de Calidad con Resultados Conformes',
-                        'definition' => 'Evalúa la calidad de materiales y procesos (concreto, acero, compactación de suelos/vías). Meta: 100% de ensayos conformes.',
-                        'formula' => '(Ensayos_Conformes / Total_Ensayos) * 100',
+                        'name' => 'Porcentaje de Liberación de Elementos Estructurales',
+                        'definition' => 'Elementos estructurales (zapatas, muros, losas, columnas, tanques) con protocolo de liberación firmado antes de cada fundición.',
+                        'formula' => '(Elementos_Liberados_Conforme / Total_Elementos_Inspeccionados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Ensayos_Conformes', 'value' => 100],
-                            ['name' => 'Total_Ensayos', 'value' => 100],
+                            ['name' => 'Elementos_Liberados_Conforme', 'value' => 0],
+                            ['name' => 'Total_Elementos_Inspeccionados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% — Todos los ensayos conformes con especificaciones técnicas',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 95,
-                                'max_value' => 99.99,
-                                'qualification' => '95% – 99% — Conformidad alta, revisión de novedades de laboratorio',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Riesgo (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 94.99,
-                                'qualification' => '< 95% — Riesgo de calidad estructural',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Liberación total conforme a especificaciones', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 95, 'max_value' => 99.99, 'qualification' => '95% – 99.99% — Liberación con observaciones menores', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 0, 'max_value' => 94.99, 'qualification' => '< 95% — No conformidades estructurales recurrentes', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Ensayo / Frente', 'Laboratorio / Muestreo', '% Conformidad', 'Conclusión Técnica'],
-                            'rows' => [
-                                ['Pilas y Vigas Tanque', 'Concrelab / Vitaa', '100% – 104%', 'Ensayos conformes superando f\'c de diseño'],
-                                ['Compactación Equipos y Vías', 'Densidad Proctor (~2260 kg/m³)', '99% – 100%', 'Suelo en máxima capacidad de compactación'],
-                                ['Muestras Concreto Estructura T2', 'Laboratorio Concrelab', '108% – 121%', 'Resistencias nominales conformes a 28/56 días'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Número de No Conformidades en Calidad de Estructura o urbanismo',
-                        'definition' => 'Cuantifica problemas de calidad detectados interna y externamente. Meta: Internas < 1/mes, Externas = 0.',
-                        'formula' => 'No_Conformidades_Detectadas',
-                        'unit' => 'No Conformidades',
+                        'name' => 'Tiempo de Respuesta y Cierre de No Conformidades Estructurales',
+                        'definition' => 'Días calendario promedio transcurridos entre la notificación de un hallazgo técnico y su solución aprobada por cálculo/interventoría.',
+                        'formula' => 'Tiempo_Promedio_Cierre_Dias',
+                        'unit' => 'días',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'No_Conformidades_Detectadas', 'value' => 0],
+                            ['name' => 'Tiempo_Promedio_Cierre_Dias', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumple (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 0,
-                                'qualification' => '0 no conformidades (internas y externas) — Cumple plenamente',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Seguimiento (Amarillo)',
-                                'min_value' => 1,
-                                'max_value' => 1,
-                                'qualification' => '1 no conformidad interna con plan correctivo documentado',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 2,
-                                'max_value' => 999,
-                                'qualification' => '≥ 1 no conformidad externa o ≥ 2 internas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 3.0, 'qualification' => '≤ 3 días — Cierre inmediato de hallazgos', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 3.01, 'max_value' => 5.0, 'qualification' => '3.1 – 5 días — Cierre dentro del plazo límite', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5 días — Retraso que compromete frentes sucesores', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo / Frente', 'No Conformidad', 'Acción Correctiva', 'Impacto en Calificación'],
-                            'rows' => [
-                                ['Losa Portería', 'Armado de acero observado', 'Advertencia formal y trazabilidad contractual preventiva', '100% — Gestión preventiva eficaz'],
-                                ['Resistencia Tanque', 'Resistencia preliminar intermedia', 'Seguimiento a núcleos a 28/56 días (>136% f\'c)', 'Liberado'],
-                                ['Formaleta Torre 2', 'Desplazamiento 1 cm por residuo en superficie', 'Protocolo de limpieza e inspección pre-vaciado', '80% — En seguimiento'],
-                                ['Cierre Estructura', 'Sin novedades al 28 de agosto', 'Finalización con 20 días de adelanto', '100% (Verde)'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Puntuación en Auditorías de Seguridad (SG-SST)',
-                        'definition' => 'Evalúa la adherencia a normas de seguridad y salud en el trabajo en frentes de estructura y urbanismo. Meta: > 95%.',
-                        'formula' => '(Puntos_Obtenidos / Puntos_Posibles) * 100',
+                        'name' => 'Ensayos y Resistencia de Concretos (Laboratorio)',
+                        'definition' => 'Porcentaje de cilindros de concreto ensayados a 7, 14 y 28 días que cumplen o superan la resistencia f\'c especificada en el diseño.',
+                        'formula' => '(Muestras_Cumplen_Resistencia / Total_Muestras_Ensayadas) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Puntuacion_SST_Inverconstruccion', 'value' => 99.5],
+                            ['name' => 'Muestras_Cumplen_Resistencia', 'value' => 0],
+                            ['name' => 'Total_Muestras_Ensayadas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Excelente (Verde)',
-                                'min_value' => 95,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 95% — Cumple plenamente, alta adherencia preventiva',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Riesgo (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 94.99,
-                                'qualification' => '90% – 94% — En riesgo, requiere acciones correctivas',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Incumplimiento crítico de seguridad',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Todas las muestras alcanzan o superan f\'c de diseño', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Alerta (Amarillo)', 'min_value' => 95, 'max_value' => 99.99, 'qualification' => '95% – 99.99% — Ensayos bajo seguimiento patológico', 'color' => 'acceptable', 'score' => 70],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 0, 'max_value' => 94.99, 'qualification' => '< 95% — Bajas resistencias críticas', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Empresa / Contratista', 'Puntuación SG-SST', 'Estado', 'Observaciones'],
-                            'rows' => [
-                                ['INVERCONSTRUCCIÓN', '99.50%', '🟢 Verde (Excelente)', 'Cultura preventiva sólida en frente de estructura'],
-                                ['EMELECT', '88.75% – 91.00%', '🟡 En seguimiento', 'Pendiente cierre de acciones en instalaciones'],
-                                ['IHC', '87.25%', '🟡 En seguimiento', 'Plan de mejora en señalización'],
-                                ['IASS', '65.00%', '🔴 Requiere intervención', 'Plan de choque en estándares de seguridad'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE C: Gestión de Información y Coordinación (15%)
-            // =========================================================================
             [
                 'name' => 'C. Gestión de Información y Coordinación',
-                'description' => 'Mide la agilidad en resolución de consultas técnicas, puntualidad en bitácora de obra, contribución al clima laboral y orden en la documentación técnica.',
-                'formula' => 'Promedio de atención técnica, bitácora al día, evaluación 360 y archivo Drive',
+                'description' => 'Mide la puntualidad en reportes técnicos, resolución ágil de solicitudes en Dashboard, archivo de planos As-Built en Drive y clima laboral.',
+                'formula' => 'Promedio de atención Dashboard, informes semanales, evaluación 360 y As-Built',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'C. Gestión de Información y Coordinación',
@@ -748,170 +523,67 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Tiempo Promedio de Resolución de Dudas Técnicas',
-                        'definition' => 'Mide la agilidad en respuestas de diseño / especialistas y atención a tareas técnicas en obra. Meta: ≤ 24 horas hábiles.',
-                        'formula' => '(Solicitudes_a_Tiempo / Total_Solicitudes) * 100',
-                        'unit' => '%',
+                        'name' => 'Resolución Oportuna de Consultas Técnicas en Dashboard',
+                        'definition' => 'Tiempo de respuesta a requerimientos técnicos, RFI y dudas de contratistas registradas en el sistema.',
+                        'formula' => 'Tiempo_Resolucion_Consultas_Horas',
+                        'unit' => 'horas',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Solicitudes_a_Tiempo', 'value' => 21],
-                            ['name' => 'Total_Solicitudes', 'value' => 24],
+                            ['name' => 'Tiempo_Resolucion_Consultas_Horas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 90,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 90% resueltas en ≤ 24 horas — Cumplimiento óptimo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 70,
-                                'max_value' => 89.99,
-                                'qualification' => '70% – 89% resueltas en plazo — Cumplimiento aceptable, requiere atención',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 69.99,
-                                'qualification' => '< 70% resueltas — Incumplimiento crítico, requiere plan de mejora',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
-                        ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo / Dashboard', 'Total Tareas / Dudas', 'Completadas', 'En Progreso / Pendientes', '% Cumplimiento'],
-                            'rows' => [
-                                ['Dashboard Inicial', '20 tareas registradas', '16 completadas', '4 por hacer', '100%'],
-                                ['Dashboard Intermedio', '31 solicitudes', '27 resueltas', '3 en progreso, 1 pendiente', '100%'],
-                                ['Dashboard Consolidado', '118 tareas', '112 completadas', '4 en progreso, 2 por hacer', '100%'],
-                                ['Dashboard Reciente', '24 solicitudes', '21 completadas', '3 en progreso', '100%'],
-                            ]
-                        ]
-                    ],
-                    [
-                        'name' => 'Puntualidad en Entrega de Informes de Avance - Bitácora de obra',
-                        'definition' => 'Mide la disciplina en reportes de avance de obra y actualización continua de la bitácora física y digital.',
-                        'formula' => '(Informes_a_Tiempo / Total_Informes) * 100',
-                        'unit' => '%',
-                        'parameters' => [
-                            ['name' => 'Informes_a_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Informes', 'value' => 100],
-                        ],
-                        'conditional_goals' => [
-                            [
-                                'level' => 'Total (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% de informes entregados a tiempo — Disciplina documental ejemplar',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Buen Cumplimiento (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 99.99,
-                                'qualification' => '90% – 99% — Buen cumplimiento, pero requiere mejorar para llegar al estándar',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Incumplimiento significativo, bitácora desactualizada',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 24.0, 'qualification' => '≤ 24 horas — Respuesta ágil y oportuna', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 24.01, 'max_value' => 48.0, 'qualification' => '24.1 – 48 horas — Respuesta dentro del tiempo estándar', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 48.01, 'max_value' => 1000, 'qualification' => '> 48 horas — Retraso en definiciones técnicas', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Contribución al Ambiente Laboral (Evaluación 360°)',
-                        'definition' => 'Evaluación de colaboración, actitud y liderazgo operativo en obra (escala 1 a 5).',
-                        'formula' => 'Puntuacion_360',
-                        'unit' => 'Puntos',
-                        'parameters' => [
-                            ['name' => 'Puntuacion_360', 'value' => 4.94],
-                        ],
-                        'conditional_goals' => [
-                            [
-                                'level' => 'Excelente (Verde)',
-                                'min_value' => 4.5,
-                                'max_value' => 5.0,
-                                'qualification' => '≥ 4.5 / 5.0 — Liderazgo sobresaliente, cooperación y excelente clima de equipo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 3.5,
-                                'max_value' => 4.49,
-                                'qualification' => '3.5 – 4.49 — Buen desempeño en trabajo colaborativo',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Deficiente (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 3.49,
-                                'qualification' => '< 3.5 — Oportunidades en comunicación y trabajo en equipo',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
-                        ],
-                        'tablaDetalle' => [
-                            'headers' => ['Evaluador / Periodo', 'Puntuación (1-5)', 'Fortalezas Destacadas', 'Oportunidades de Mejora'],
-                            'rows' => [
-                                ['Evaluación Inicial (2025)', '4.97 / 5.00', 'Compromiso, rápido aprendizaje, actitud colaborativa y cooperación con cuadrillas', 'Breves espacios de feedback diario y formalización de directrices'],
-                                ['Evaluación Junio 2026', '4.94 / 5.00', 'Sólidos conocimientos técnicos, liderazgo, organización y generosidad al compartir saberes', 'Receptividad continua a solicitudes del equipo de obra'],
-                            ]
-                        ]
-                    ],
-                    [
-                        'name' => '% Documentación Técnica Archivada y Accesible',
-                        'definition' => 'Evalúa la organización y accesibilidad de archivos técnicos en Drive y carpetas oficiales del proyecto (planos, cortes, contratos, especificaciones).',
-                        'formula' => '(Docs_Archivados_Correctamente / Total_Docs) * 100',
+                        'name' => 'Puntualidad en la Entrega de Informes de Avance Semanal',
+                        'definition' => 'Cumplimiento en fecha y formato establecido para los informes semanales de vaciados, avance físico y consumos de obra.',
+                        'formula' => '(Informes_Entregados_ATiempo / Total_Informes_Programados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Docs_Archivados_Correctamente', 'value' => 100],
-                            ['name' => 'Total_Docs', 'value' => 100],
+                            ['name' => 'Informes_Entregados_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Informes_Programados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% — Organización y accesibilidad óptima en rutas oficiales',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Adecuada (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 99.99,
-                                'qualification' => '90% – 99% — Gestión adecuada, con leves oportunidades de orden',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'No Cumple (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Desorganización o documentación en rutas personales',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Entregas puntuales en todos los cortes', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99.99% — Retraso menor justificado', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Incumplimiento en reporte de obra', 'color' => 'deficient', 'score' => 0],
+                        ],
+                    ],
+                    [
+                        'name' => 'Contribución al Clima Laboral y Coordinación de Equipos (Evaluación 360°)',
+                        'definition' => 'Evaluación de competencias de liderazgo, trabajo en equipo, comunicación con cuadrillas y contratistas.',
+                        'formula' => 'Puntuacion_Evaluacion_360',
+                        'unit' => 'pts',
+                        'parameters' => [
+                            ['name' => 'Puntuacion_Evaluacion_360', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Sobresaliente (Verde)', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => '≥ 4.5 pts — Liderazgo y coordinación sobresaliente', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => '3.5 – 4.49 pts — Desempeño adecuado con oportunidades de mejora', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente (Rojo)', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => '< 3.5 pts — Oportunidad de fortalecimiento en liderazgo', 'color' => 'deficient', 'score' => 0],
+                        ],
+                    ],
+                    [
+                        'name' => 'Gestión y Archivo de Planos As-Built y Modificaciones en Drive',
+                        'definition' => 'Actualización y cargue oportuno en Google Drive de modificaciones aprobadas en planos y detalles constructivos.',
+                        'formula' => '(Planos_Actualizados_Drive / Total_Modificaciones_Obra) * 100',
+                        'unit' => '%',
+                        'parameters' => [
+                            ['name' => 'Planos_Actualizados_Drive', 'value' => 0],
+                            ['name' => 'Total_Modificaciones_Obra', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Planos As-Built actualizados semanalmente en Drive', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99.99% — Actualización parcial', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Desorganización o documentación desactualizada', 'color' => 'deficient', 'score' => 0],
                         ],
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE D: Control Presupuestal y Administrativo (15%)
-            // =========================================================================
             [
                 'name' => 'D. Control Presupuestal y Administrativo',
                 'description' => 'Control de costos y proyección financiera en la fase de estructura y urbanismo. Meta: Desviación ≤ 2% y margen de P&G positivo.',
@@ -929,45 +601,14 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '((Costo_Real - Presupuesto_Aprobado) / Presupuesto_Aprobado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Presupuesto_Aprobado_Estructura', 'value' => 22454184688],
-                            ['name' => 'Costo_Real_Proyectado', 'value' => 22381941286],
+                            ['name' => 'Presupuesto_Aprobado_Estructura', 'value' => 0],
+                            ['name' => 'Costo_Real_Proyectado', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 2.0,
-                                'qualification' => '0% – 2% — Control presupuestal óptimo, dentro de la meta y P&G positivo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Alerta (Amarillo)',
-                                'min_value' => 2.01,
-                                'max_value' => 5.0,
-                                'qualification' => '2.01% – 5% — Alerta: desviación moderada, requiere seguimiento de costos',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 5.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 5% — Desviación crítica, sobrecostos en obra',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '0% – 2% — Control presupuestal óptimo, dentro de la meta y P&G positivo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Alerta (Amarillo)', 'min_value' => 2.01, 'max_value' => 5.0, 'qualification' => '> 2% – 5% — Desviación moderada bajo control', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5% — Sobrecostos en estructura/urbanismo', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Fase / Elemento', 'Presupuesto Aprobado', 'Proyección / Costo Real', 'P&G / Margen', '% Desviación'],
-                            'rows' => [
-                                ['Urbanismo Inicial', '$ 6,919,732,896', '$ 6,919,732,896', 'Equilibrado', '0.00%'],
-                                ['Urbanismo Actualizado', '$ 7,650,464,996', '$ 7,650,464,996', 'Equilibrado', '0.00%'],
-                                ['Estructura Torre 2 (Corte 1)', '$ 22,000,974,415', '$ 22,000,974,415', '+$ 218,716,963 (Positivo)', '-1.00%'],
-                                ['Estructura Torre 2 (Corte 2)', '$ 22,454,184,688', '$ 22,381,941,286', '+$ 70,814,726 (Positivo)', '-0.32%'],
-                                ['Estructura Torre 2 (Cierre)', '$ 22,454,184,688', '$ 22,454,184,688', 'P&G Positivo / Sin sobrecostos', '0.00%'],
-                            ]
-                        ]
                     ]
                 ]
             ]
@@ -1014,9 +655,7 @@ class TecnicaAreaSeeder extends Seeder
         }
 
         $kpisDirector = [
-            // =========================================================================
             // BLOQUE A: Cumplimiento de Plazo y Programación (50%)
-            // =========================================================================
             [
                 'name' => 'A. Cumplimiento de Plazo y Programación',
                 'description' => 'Mide el avance físico acumulado de la obra frente a la curva S programada, el cumplimiento de hitos críticos y la resolución oportuna de desvíos técnicos en campo.',
@@ -1030,153 +669,56 @@ class TecnicaAreaSeeder extends Seeder
                 'indicators' => [
                     [
                         'name' => 'Porcentaje de Avance Físico vs. Programado (Curva S)',
-                        'definition' => 'Mide el progreso real de la obra vs. cronograma planificado (Curva S) para Torre 1, Torre 2 y Urbanismo. Meta: Dentro de ±5% del avance programado.',
+                        'definition' => 'Mide el progreso real de la obra frente al cronograma planificado maestro. Meta: Dentro de ±5% del avance programado.',
                         'formula' => '(Avance_Fisico_Real_Acumulado / Avance_Fisico_Programado_Acumulado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Avance_Fisico_Real_Acumulado', 'value' => 99.24],
-                            ['name' => 'Avance_Fisico_Programado_Acumulado', 'value' => 100.00],
+                            ['name' => 'Avance_Fisico_Real_Acumulado', 'value' => 0],
+                            ['name' => 'Avance_Fisico_Programado_Acumulado', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Verde (Cumple Rango)',
-                                'min_value' => 95,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 95% del programado (diferencia ≤ ±5%) — Avance dentro de parámetros aceptables',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Amarillo (Seguimiento)',
-                                'min_value' => 90,
-                                'max_value' => 94.99,
-                                'qualification' => '90% – 94.9% del programado — Ligeramente por debajo, requiere seguimiento',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Rojo (Incumplimiento)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% del programado — Incumplimiento significativo, retraso que afecta hitos',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Verde (Cumple)', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Dentro de parámetros aceptables (desviación ≤ ±5%)', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Amarillo (Alerta)', 'min_value' => 90, 'max_value' => 94.99, 'qualification' => '90% – 94.9% — Ligeramente por debajo, requiere seguimiento', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Rojo (Incumplimiento)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Incumplimiento significativo, retraso que afecta hitos', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente de Obra', 'Avance Ejecutado', 'Avance Programado', '% Cumplimiento', 'Estado'],
-                            'rows' => [
-                                ['Torre 1 (Cierre Obra Gris y Acabados)', '99.24% – 99.90%', '100.00%', '99.24% – 99.90%', '🟢 Verde (En tolerancia ±5%)'],
-                                ['Torre 2 (Fase Estructura Inicial)', '24.02%', '20.21%', '119.00%', '🟢 Verde (Adelantada)'],
-                                ['Torre 2 (Fase Estructura Intermedia)', '37.09%', '32.70%', '113.00%', '🟢 Verde (Adelantada)'],
-                                ['Torre 2 (Fase Estructura Avanzada)', '58.23%', '49.47%', '117.70%', '🟢 Verde (Adelantada +15 días)'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Cumplimiento de Hitos Clave',
-                        'definition' => 'Porcentaje de hitos importantes entregados en la fecha planificada o antes (Fundaciones, Estructura, Acabados, Certificaciones). Meta: ≥ 95% a tiempo o con atraso ≤ 3 semanas.',
-                        'formula' => '(Hitos_Cumplidos_a_Tiempo / Total_Hitos) * 100',
+                        'definition' => 'Porcentaje de hitos mayores (Fundaciones, Estructura, Acabados y Urbanismo) entregados en la fecha planificada o antes.',
+                        'formula' => '(Hitos_Entregados_ATiempo / Total_Hitos_Programados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Hitos_Cumplidos_a_Tiempo', 'value' => 95],
-                            ['name' => 'Total_Hitos', 'value' => 100],
+                            ['name' => 'Hitos_Entregados_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Hitos_Programados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Verde (A tiempo)',
-                                'min_value' => 90,
-                                'max_value' => 1000,
-                                'qualification' => 'A tiempo hasta –3 semanas de atraso — Avance dentro de tolerancia técnica',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Amarillo / Naranja (Riesgo Moderado)',
-                                'min_value' => 70,
-                                'max_value' => 89.99,
-                                'qualification' => '–4 a –8 semanas de atraso — Atraso moderado que requiere plan de impulso',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Rojo (Atraso Crítico)',
-                                'min_value' => 0,
-                                'max_value' => 69.99,
-                                'qualification' => 'Más de –9 semanas de atraso — Atraso crítico en ruta crítica y entregas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Verde', 'min_value' => 90, 'max_value' => 100, 'qualification' => '90 – 100% — A tiempo o hasta -3 semanas de atraso (tolerancia técnica)', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Naranja', 'min_value' => 70, 'max_value' => 89.99, 'qualification' => '70 – 89% — Atraso moderado (-4 a -8 sem), requiere plan de impulso', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Rojo', 'min_value' => 0, 'max_value' => 69.99, 'qualification' => '< 70% — Más de -9 semanas de atraso, impacto en ruta crítica', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Hito / Frente', 'Fecha Programada', 'Fecha Ejecución / Estado', 'Desviación', 'Estado'],
-                            'rows' => [
-                                ['Estructura Torre 1', '15/08/2025', '29/05/2025', '78 días de adelanto', '🟢 Cumplido'],
-                                ['Impermeabilizaciones y Cubierta', 'Programa Maestro', '100% ejecutado (manto y regatas)', '0 sem', '🟢 Cerrado'],
-                                ['Obra Gris y Mampostería', 'Programa Maestro', '100% finalizado', '0 sem', '🟢 Cerrado'],
-                                ['Sistema de Detección y Alarmas', 'Programa Maestro', '100% funcional en zonas comunes', '0 sem', '🟢 Cerrado'],
-                                ['Acabados Interiores T1', 'Programa Maestro', '99% – 100% (remates en punto fijo)', '0 sem', '🟢 Cerrado'],
-                                ['RCI y Bombeo', 'Programa Maestro', 'Pendiente presurización y motobombas', '–15 sem', '🟡 En recuperación'],
-                                ['RETIE y Energización Trafo', 'Programa Maestro', 'Acometida 90%, trámite Servimeter/EPM', '–5 sem', '🟡 En gestión'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Tiempo Promedio de Resolución de Desvíos',
-                        'definition' => 'Días promedio para corregir desviaciones críticas e implementar soluciones técnicas en obra. Meta: ≤ 5 días hábiles.',
+                        'definition' => 'Días promedio requeridos para corregir y cerrar desviaciones y contingencias críticas en obra. Meta: ≤ 5 días hábiles.',
                         'formula' => 'Dias_Promedio_Resolucion_Desvios',
-                        'unit' => 'Días',
+                        'unit' => 'días hábiles',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Dias_Promedio_Resolucion_Desvios', 'value' => 1],
+                            ['name' => 'Dias_Promedio_Resolucion_Desvios', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 5.0,
-                                'qualification' => '≤ 5 días hábiles — Resolución oportuna y efectiva de contingencias',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 5.01,
-                                'max_value' => 10.0,
-                                'qualification' => '5.1 – 10 días hábiles — Demora moderada en gestión de solución',
-                                'color' => 'acceptable',
-                                'score' => 70
-                            ],
-                            [
-                                'level' => 'Deficiente (Rojo)',
-                                'min_value' => 10.01,
-                                'max_value' => 999,
-                                'qualification' => '> 10 días hábiles — Desvío crítico no resuelto en plazo',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 5.0, 'qualification' => '≤ 5 días hábiles — Solución en el mes del hallazgo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 5.01, 'max_value' => 10.0, 'qualification' => '5.1 – 10 días hábiles — Gestión técnica en proceso', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 10.01, 'max_value' => 1000, 'qualification' => '> 10 días hábiles — Desvío crítico abierto sin cierre', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Desvío / Contingencia Identificada', 'Acción Técnica Implementada', 'Tiempo de Respuesta'],
-                            'rows' => [
-                                ['Agosto', 'Situación Tanque y vías internas', 'Reunión presencial y plan de acción de frentes', '0 días (En el mes)'],
-                                ['Septiembre', 'Fibras y figuras entrega shut y tanque', 'Resolución inmediata en comité técnico', '0 días (En el mes)'],
-                                ['Octubre', 'Derrumbe contra sala de ventas', 'Reunión con calculista IPI y diseño de contención', '1 día (Gestionado)'],
-                                ['Diciembre - Enero', 'Afectación viviendas vecinas por vía interna', 'Actas de inspección, radicación SURA y diseño muro pilas', '1 día (Gestionado)'],
-                                ['Marzo - Abril', 'Ejecución muro contención y cambio contratista', 'Finalización con Hidrodinámica e inicio con Quintana', '1 día (Gestionado)'],
-                                ['Junio - Agosto', 'Resistencias tanque y propuesta Vitaa', 'Rechazo de impermeabilización y peritaje con Ing. Julio Garcés', 'En seguimiento'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE B: Control Presupuestal y Rentabilidad (20%)
-            // =========================================================================
             [
                 'name' => 'B. Control Presupuestal y Rentabilidad',
-                'description' => 'Garantiza el control de costos frente al presupuesto aprobado en Torre 1, Torre 2 y Urbanismo, el margen de rentabilidad bruta (P&G positivo) y la productividad de la mano de obra.',
-                'formula' => 'Promedio de desviación presupuestal, margen P&G y productividad de mano de obra',
+                'description' => 'Control de costos acumulados frente al presupuesto aprobado en todos los frentes del proyecto, rentabilidad bruta proyectada y productividad de mano de obra.',
+                'formula' => 'Promedio ponderado de desviación presupuestal, margen P&G e índice de productividad',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'B. Control Presupuestal y Rentabilidad',
@@ -1185,152 +727,58 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Desviación Presupuestal del Proyecto (T1, T2 y Urbanismo)',
-                        'definition' => 'Control de costos consolidado frente al presupuesto aprobado acumulado. Meta: Desviación ≤ 2%.',
-                        'formula' => '((Costo_Real_Acumulado - Presupuesto_Aprobado_Acumulado) / Presupuesto_Aprobado_Acumulado) * 100',
+                        'name' => 'Desviación Presupuestal del Proyecto (Torre 1, Torre 2 y Urbanismo)',
+                        'definition' => 'Mide la variación entre el costo real acumulado/proyectado y el presupuesto aprobado. Meta: Desviación ≤ 2%.',
+                        'formula' => '((Costo_Real_Acumulado - Presupuesto_Aprobado) / Presupuesto_Aprobado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Presupuesto_Aprobado_Total', 'value' => 50085554610],
-                            ['name' => 'Costo_Real_Total', 'value' => 50492552251],
+                            ['name' => 'Presupuesto_Aprobado_Global', 'value' => 0],
+                            ['name' => 'Costo_Real_Proyectado_Global', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 2.0,
-                                'qualification' => '0% – 2% — Control presupuestal óptimo, dentro de la meta',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Alerta (Amarillo)',
-                                'min_value' => 2.01,
-                                'max_value' => 5.0,
-                                'qualification' => '> 2% – 5% — Alerta: desviación moderada, requiere seguimiento',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 5.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 5% — Desviación crítica, sobrecostos que afectan rentabilidad',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Verde', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '0% – 2% — Control presupuestal óptimo dentro de la meta', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Amarillo', 'min_value' => 2.01, 'max_value' => 5.0, 'qualification' => '> 2% – 5% — Alerta: desviación moderada bajo seguimiento', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Rojo', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5% — Desviación crítica que requiere acción inmediata', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Proyecto / Frente', 'Presupuesto Aprobado', 'Proyección / Costo Real', 'Variación / Ahorro', 'P&G Proyectado'],
-                            'rows' => [
-                                ['Torre 1', '$ 19,980,904,926', '$ 20,470,215,377', '-$ 489,310,451 (+2.45%)', '+$ 239,872,694 (Positivo)'],
-                                ['Torre 2', '$ 22,454,184,688', '$ 22,371,871,878', '+$ 82,312,810 (-0.37%)', '+$ 218,716,963 (Positivo)'],
-                                ['Urbanismo', '$ 7,650,464,996', '$ 7,650,464,996', '$ 0.00 (0.00%)', 'Equilibrado'],
-                            ]
-                        ]
                     ],
                     [
-                        'name' => 'Rentabilidad Bruta de la Obra (Margen de Contribución P&G)',
-                        'definition' => 'Mide la rentabilidad económica y margen de contribución positivo por frente de obra.',
-                        'formula' => 'Margen_Contribucion_Total',
+                        'name' => 'Rentabilidad Bruta de la Obra (Margen de Contribución)',
+                        'definition' => 'Mide la conservación del margen de contribución proyectado y P&G positivo en las líneas analizadas del proyecto.',
+                        'formula' => 'Margen_Contribucion_Real_PG',
                         'unit' => '$',
                         'parameters' => [
-                            ['name' => 'Margen_Contribucion_Total', 'value' => 458589657],
+                            ['name' => 'Margen_Contribucion_Real_PG', 'value' => 0],
+                            ['name' => 'Margen_Proyectado_Esperado', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (P&G Positivo)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => 'P&G Positivo en todas las líneas analizadas — Viabilidad y rentabilidad asegurada',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Equilibrado',
-                                'min_value' => 50,
-                                'max_value' => 99.99,
-                                'qualification' => 'Margen equilibrado en línea con lo proyectado',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Negativo (Pérdida)',
-                                'min_value' => 0,
-                                'max_value' => 49.99,
-                                'qualification' => 'Margen negativo o sobrecosto no compensado',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 999999999999, 'qualification' => '≥ margen proyectado — P&G positivo y margen de rentabilidad saludable', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Riesgo (Amarillo)', 'min_value' => -100000000, 'max_value' => -0.01, 'qualification' => 'Margen positivo pero inferior a la meta', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Deficiente (Rojo)', 'min_value' => -999999999999, 'max_value' => -100000001, 'qualification' => 'P&G negativo con sobrecostos acumulados', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente', 'Margen P&G Proyectado', 'Estado'],
-                            'rows' => [
-                                ['Torre 1', '$ 239,872,694.00', '🟢 P&G Positivo'],
-                                ['Torre 2', '$ 218,716,963.00', '🟢 P&G Positivo'],
-                                ['Urbanismo', '$ 0.00', '🟢 P&G Nivelado'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Índice de Productividad de Mano de Obra',
-                        'definition' => 'Eficiencia del uso de mano de obra y porcentaje de actividades incumplidas por rendimiento de subcontratistas. Meta: ≤ 20% mensual.',
+                        'definition' => 'Eficiencia en el uso de mano de obra y porcentaje de actividades con incumplimiento atribuible al rendimiento del contratista.',
                         'formula' => '(Actividades_Incumplidas_Rendimiento / Total_Actividades_Programadas) * 100',
                         'unit' => '%',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Actividades_Incumplidas_Rendimiento', 'value' => 17],
-                            ['name' => 'Total_Actividades_Programadas', 'value' => 84],
+                            ['name' => 'Actividades_Incumplidas_Rendimiento', 'value' => 0],
+                            ['name' => 'Total_Actividades_Programadas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumple (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 20.0,
-                                'qualification' => '≤ 20% — Rendimiento adecuado de mano de obra y cuadrillas',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Riesgo Moderado (Amarillo)',
-                                'min_value' => 20.01,
-                                'max_value' => 30.0,
-                                'qualification' => '21% – 30% — Riesgo moderado en rendimiento de subcontratistas',
-                                'color' => 'acceptable',
-                                'score' => 70
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 30.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 30% — Bajo rendimiento crítico de mano de obra',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumple (Verde)', 'min_value' => 0, 'max_value' => 20.0, 'qualification' => '≤ 20% — Productividad de mano de obra controlada', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Riesgo Moderado (Amarillo)', 'min_value' => 20.01, 'max_value' => 30.0, 'qualification' => '21% – 30% — Rendimientos por debajo de lo esperado', 'color' => 'acceptable', 'score' => 71],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 30.01, 'max_value' => 1000, 'qualification' => '> 30% — Afectación severa por bajo rendimiento de cuadrillas', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Actividades Programadas', 'Incumplidas por Rendimiento', '% Incumplimiento MO', 'Calificación'],
-                            'rows' => [
-                                ['Agosto', 'Promedio Sector', 'Subcontratistas MO', '14.00%', '100% (Verde)'],
-                                ['Septiembre', '386 actividades', '63.0 actividades', '16.00%', '100% (Verde)'],
-                                ['Octubre', '425 actividades', '62.5 actividades', '15.00%', '100% (Verde)'],
-                                ['Noviembre', '196 actividades', '20.5 actividades', '10.00%', '100% (Verde)'],
-                                ['Diciembre - Enero', '127 actividades', '15.5 actividades', '12.00%', '100% (Verde)'],
-                                ['Marzo', '103 actividades', '16.0 actividades', '16.00%', '100% (Verde)'],
-                                ['Abril', '233 actividades', '29.0 actividades', '12.00%', '100% (Verde)'],
-                                ['Mayo', '84 actividades', '17.0 actividades', '20.00%', '100% (Verde)'],
-                                ['Junio', '72 actividades', '21.0 actividades', '29.00%', '71% (Amarillo)'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE C: Calidad y Seguridad (10%)
-            // =========================================================================
             [
                 'name' => 'C. Calidad y Seguridad',
-                'description' => 'Mide la ausencia de no conformidades críticas al cierre de cada etapa, el control de la accidentalidad (IF) por debajo del sector y la puntuación sobresaliente en auditorías SG-SST.',
-                'formula' => 'Promedio de cero no conformidades críticas, índice IF y cumplimiento SG-SST',
+                'description' => 'Monitoreo de no conformidades críticas de calidad, índice de frecuencia de accidentalidad laboral (IF) y cumplimiento en auditorías SG-SST.',
+                'formula' => 'Promedio de no conformidades resueltas, índice de frecuencia IF y auditoría SST',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'C. Calidad y Seguridad',
@@ -1340,146 +788,56 @@ class TecnicaAreaSeeder extends Seeder
                 'indicators' => [
                     [
                         'name' => 'No Conformidades Críticas de Calidad',
-                        'definition' => 'Defectos graves de calidad detectados en obra. Meta: 0 al cierre de cada etapa constructiva.',
-                        'formula' => 'No_Conformidades_Criticas',
-                        'unit' => 'No Conformidades',
+                        'definition' => 'Defectos graves de calidad detectados en obra al cierre de cada etapa constructiva.',
+                        'formula' => 'Numero_No_Conformidades_Criticas',
+                        'unit' => 'NC',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'No_Conformidades_Criticas', 'value' => 0],
+                            ['name' => 'Numero_No_Conformidades_Criticas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumplimiento Total (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 0,
-                                'qualification' => '0% — Cumplimiento total, sin no conformidades críticas',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Riesgo Moderado (Amarillo)',
-                                'min_value' => 1,
-                                'max_value' => 1,
-                                'qualification' => '1 caso en gestión técnica y plan correctivo',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 2,
-                                'max_value' => 999,
-                                'qualification' => '≥ 2 casos críticos sin resolver',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumplimiento Total (Verde)', 'min_value' => 0, 'max_value' => 0.0, 'qualification' => '0 NC — Sin no conformidades críticas al cierre de etapa', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Riesgo Moderado (Amarillo)', 'min_value' => 1.0, 'max_value' => 5.0, 'qualification' => '1 – 5% / 1 NC — Requiere seguimiento y cierre técnico', 'color' => 'acceptable', 'score' => 63],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5% / > 1 NC crítica sin resolver', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Hallazgo / Elemento', 'Tratamiento Técnico', 'Estado'],
-                            'rows' => [
-                                ['Agosto', 'Alabeo de enchape', 'Gestión y reposición con proveedor Corona', 'Cerrado'],
-                                ['Septiembre - Mayo', 'Sin novedades críticas', 'Control preventivo en vaciados y acabados', '0 No conformidades'],
-                                ['Junio - Agosto', 'Resistencias tanque agua', 'Segunda evaluación con Ing. Julio Garcés (Patología)', 'En seguimiento'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Índice de Frecuencia de Accidentes (IF)',
-                        'definition' => 'Frecuencia de accidentes laborales por cada 100 trabajadores. Meta: Por debajo del promedio del sector (7.488).',
-                        'formula' => 'Accidentes_Reportados',
-                        'unit' => 'Accidentes',
+                        'definition' => 'Frecuencia de accidentes laborales de contratistas y personal propio frente al promedio sectorial de referencia.',
+                        'formula' => 'Accidentes_Registrados_Periodo',
+                        'unit' => 'accidentes',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Accidentes_Reportados', 'value' => 0],
-                            ['name' => 'Promedio_Sector', 'value' => 7.488],
+                            ['name' => 'Accidentes_Registrados_Periodo', 'value' => 0],
+                            ['name' => 'Promedio_Sector_Referencia', 'value' => 7.49],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Cumplimiento Total (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 0,
-                                'qualification' => '0 accidentes — Cumplimiento total, cero accidentes',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Riesgo Moderado (Amarillo)',
-                                'min_value' => 0.1,
-                                'max_value' => 4.0,
-                                'qualification' => '0.1 – 4.0 — Muy por debajo del promedio sectorial (7.49)',
-                                'color' => 'acceptable',
-                                'score' => 90
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 4.01,
-                                'max_value' => 999,
-                                'qualification' => '> 4.0 — Por encima del estándar sectorial',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumplimiento Total (Verde)', 'min_value' => 0, 'max_value' => 0.0, 'qualification' => '0 accidentes — Cumplimiento total, meta cero accidentes', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Riesgo Moderado (Amarillo)', 'min_value' => 0.1, 'max_value' => 4.0, 'qualification' => '0.1 – 4.0 (1-2 eventos) — Por debajo del sector (7.49), requiere refuerzos', 'color' => 'acceptable', 'score' => 90],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 4.01, 'max_value' => 1000, 'qualification' => '> 4.0 — Por encima del estándar sectorial', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Trabajadores en Obra', 'Promedio Sector', 'Accidentes Registrados', 'Calificación'],
-                            'rows' => [
-                                ['Agosto', '117 trabajadores', '7.488', '2 (Contratistas)', '100% (Bajo promedio)'],
-                                ['Septiembre - Marzo', '~120 trabajadores', '7.488', '0 accidentes', '100% (Cero accidentes)'],
-                                ['Abril', '~130 trabajadores', '7.488', '2 (Subcontratistas)', '100% (Bajo promedio)'],
-                                ['Mayo', '~130 trabajadores', '7.488', '1 (Inverconstrucción)', '90% (Bajo promedio)'],
-                                ['Junio', '~130 trabajadores', '7.488', '1 (Emelect)', '90% (Bajo promedio)'],
-                                ['Agosto', '~130 trabajadores', '6.400', '0 accidentes', '100% (Cero accidentes)'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Puntuación Auditorías SG-SST',
-                        'definition' => 'Cumplimiento normativo del Sistema de Gestión de Seguridad y Salud en el Trabajo. Meta: ≥ 90% (Promedio del sector).',
-                        'formula' => 'Puntuacion_Auditoria_SST',
+                        'definition' => 'Porcentaje de cumplimiento normativo obtenido en la última auditoría del Sistema de Gestión de Seguridad y Salud en el Trabajo.',
+                        'formula' => 'Calificacion_Auditoria_SST',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Puntuacion_Auditoria_SST', 'value' => 99.5],
+                            ['name' => 'Calificacion_Auditoria_SST', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Alto (Verde)',
-                                'min_value' => 90,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 90% — Cumplimiento alto, supera o iguala estándar del sector',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Parcial (Amarillo)',
-                                'min_value' => 80,
-                                'max_value' => 89.99,
-                                'qualification' => '80% – 89% — Cumplimiento parcial, requiere ajustes',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 79.99,
-                                'qualification' => '< 80% — Incumplimiento normativo',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Cumplimiento Alto (Verde)', 'min_value' => 90, 'max_value' => 1000, 'qualification' => '≥ 90% — Supera o iguala estándar normativo del sector', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Cumplimiento Parcial (Amarillo)', 'min_value' => 80, 'max_value' => 89.99, 'qualification' => '80% – 89% — Requiere ajustes en evidencias y campo', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 0, 'max_value' => 79.99, 'qualification' => '< 80% — No conforme con lineamientos de SST', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Auditoría / Periodo', 'Puntuación Esperada', 'Calificación Obtenida', 'Resultado'],
-                            'rows' => [
-                                ['Auditoría Inicial (Abril 2025)', '≥ 90.0%', '92.0%', '🟢 Verde (Supera estándar)'],
-                                ['Auditorías de Seguimiento (Nov - Ago)', '≥ 90.0%', '99.5%', '🟢 Verde (Desempeño sobresaliente)'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE D: Gestión de Recursos y Relaciones (20%)
-            // =========================================================================
             [
                 'name' => 'D. Gestión de Recursos y Relaciones',
-                'description' => 'Mide la optimización en consumo de materiales (desperdicio ≤ 5%), el liderazgo en clima laboral (360°), la puntualidad en informes de cierre y el seguimiento de tareas en Dashboard y Drive.',
-                'formula' => 'Promedio de control de desperdicios, evaluación 360, informes y tareas semanales',
+                'description' => 'Optimización en consumo de materiales (desperdicio ≤ 5%), liderazgo y clima laboral (360°), puntualidad en informes de cierre y tareas semanales.',
+                'formula' => 'Promedio de control de desperdicio, evaluación 360, informes a tiempo y tareas Dashboard/Drive',
                 'target' => 100,
                 'unit' => '%',
                 'stage' => 'D. Gestión de Recursos y Relaciones',
@@ -1488,171 +846,63 @@ class TecnicaAreaSeeder extends Seeder
                 'lower_is_better' => false,
                 'indicators' => [
                     [
-                        'name' => 'Uso Eficiente de Recursos (Control de Desperdicio)',
-                        'definition' => 'Optimización en consumo de materiales y uso de equipos. Meta: Desperdicio promedio general ≤ 5%.',
-                        'formula' => 'Promedio_Desperdicio_Real',
+                        'name' => 'Uso Eficiente de Recursos (Desperdicio de Materiales)',
+                        'definition' => 'Promedio general de desperdicio real de materiales e insumos críticos de obra frente al estándar presupuestado (≤ 5%).',
+                        'formula' => 'Promedio_Desperdicio_Real_Materiales',
                         'unit' => '%',
+                        'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Promedio_Desperdicio_Real', 'value' => 1.64],
+                            ['name' => 'Promedio_Desperdicio_Real_Materiales', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => -100,
-                                'max_value' => 5.0,
-                                'qualification' => 'Desperdicio ≤ 5% — Eficiencia en el uso global de recursos y ahorro presupuestal',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Moderado (Amarillo)',
-                                'min_value' => 5.01,
-                                'max_value' => 10.0,
-                                'qualification' => '5.1% – 10% — Desviación moderada en consumo',
-                                'color' => 'acceptable',
-                                'score' => 75
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 10.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 10% — Desperdicio excesivo de materiales',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
-                        ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Desperdicio Promedio Real', 'Materiales en Rango (±5%)', 'Materiales con Ahorro', 'Estado'],
-                            'rows' => [
-                                ['Agosto - Septiembre', '4.46%', '73.00%', '6.00%', '100% (Verde)'],
-                                ['Octubre - Noviembre', '3.59%', '47.10%', '17.60%', '100% (Verde)'],
-                                ['Noviembre - Enero', '-10.45% (Ahorro)', '26.70%', '53.30%', '100% (Ahorro global)'],
-                                ['Abril - Mayo', '1.64%', '52.94%', '29.41%', '100% (Verde)'],
-                            ]
-                        ]
-                    ],
-                    [
-                        'name' => 'Contribución al Ambiente Laboral (Evaluación 360°)',
-                        'definition' => 'Evaluación de liderazgo, actitud, serenidad bajo presión y colaboración en obra (escala 1 a 5).',
-                        'formula' => 'Calificacion_360',
-                        'unit' => 'Puntos',
-                        'parameters' => [
-                            ['name' => 'Calificacion_360', 'value' => 4.92],
-                        ],
-                        'conditional_goals' => [
-                            [
-                                'level' => 'Sobresaliente (Verde)',
-                                'min_value' => 4.5,
-                                'max_value' => 5.0,
-                                'qualification' => '≥ 4.50 — Liderazgo operativo sobresaliente, resolución y serenidad bajo presión',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Adecuado (Amarillo)',
-                                'min_value' => 3.5,
-                                'max_value' => 4.49,
-                                'qualification' => '3.50 – 4.49 — Desempeño adecuado, fortalecimiento de escucha activa',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Oportunidad (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 3.49,
-                                'qualification' => '< 3.50 — Oportunidad de fortalecimiento en relaciones humanas',
-                                'color' => 'deficient',
-                                'score' => 67
-                            ],
-                        ],
-                        'tablaDetalle' => [
-                            'headers' => ['Evaluación', 'Calificación', 'Aspectos Destacados', 'Recomendaciones'],
-                            'rows' => [
-                                ['Evaluación Inicial 360°', '4.92 / 5.00', 'Liderazgo operativo unánime, serenidad ante la presión y resolución práctica', 'Promover espacios de escucha activa y delegación'],
-                                ['Evaluación de Seguimiento', '3.33 / 5.00', 'Compromiso y orientación al resultado', 'Acompañamiento cercano y comunicación abierta'],
-                            ]
-                        ]
-                    ],
-                    [
-                        'name' => 'Puntualidad en Presentación de Informes',
-                        'definition' => 'Entrega de informes de cierre mensual del área técnica en fecha y formato. Meta: 100%.',
-                        'formula' => '(Informes_a_Tiempo / Total_Informes) * 100',
-                        'unit' => '%',
-                        'parameters' => [
-                            ['name' => 'Informes_a_Tiempo', 'value' => 100],
-                            ['name' => 'Total_Informes', 'value' => 100],
-                        ],
-                        'conditional_goals' => [
-                            [
-                                'level' => 'Total (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% — Cumplimiento total, informes entregados a tiempo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Parcial (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 99.99,
-                                'qualification' => '90% – 99% — Cumplimiento parcial con leves demoras',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Incumplimiento en entrega de informes',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 5.0, 'qualification' => '≤ 5% — Eficiencia en consumo y ahorro presupuestal', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Alerta (Amarillo)', 'min_value' => 5.01, 'max_value' => 10.0, 'qualification' => '5.1% – 10% — Desviación moderada en insumos clave', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 10.01, 'max_value' => 1000, 'qualification' => '> 10% — Pérdida de control en consumo de materiales', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
-                        'name' => 'Tareas con Seguimiento Semanal y Cumplidas en Drive / Dashboard',
-                        'definition' => 'Porcentaje de tareas con seguimiento registrado semanalmente en Dashboard y Drive. Meta: 100%.',
-                        'formula' => '(Tareas_Seguimiento / Total_Tareas) * 100',
-                        'unit' => '%',
+                        'name' => 'Contribución al Ambiente Laboral (Evaluación 360° / Feedback Interno)',
+                        'definition' => 'Evaluación integral de competencias de liderazgo directivo, toma de decisiones bajo presión, articulación de frentes y soporte al equipo.',
+                        'formula' => 'Puntaje_Evaluacion_360',
+                        'unit' => 'pts',
                         'parameters' => [
-                            ['name' => 'Tareas_Seguimiento', 'value' => 100],
-                            ['name' => 'Total_Tareas', 'value' => 100],
+                            ['name' => 'Puntaje_Evaluacion_360', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Total (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% — Todas las tareas con seguimiento registrado en Dashboard y Drive',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Parcial (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 99.99,
-                                'qualification' => '90% – 99% — Cumplimiento parcial en actualización',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Tareas sin seguimiento registrado',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Sobresaliente (Verde)', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => '≥ 4.5 pts — Liderazgo integral y apoyo al equipo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => '3.5 – 4.49 pts — Cumplimiento técnico con oportunidad en cercanía y escucha', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Deficiente (Rojo)', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => '< 3.5 pts — Desalineación en clima laboral', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Periodo', 'Tareas Programadas', 'Seguimientos Registrados', '% Cumplimiento', 'Estado'],
-                            'rows' => [
-                                ['Agosto - Noviembre', '14 – 19 tareas/sem', '100% de tareas con seguimiento', '100%', '🟢 Verde'],
-                                ['Diciembre - Enero', '19 tareas/sem', '100% en Dashboard y Drive', '100%', '🟢 Verde'],
-                                ['Marzo - Abril', '27 – 30 tareas/sem', '245 y 117 seguimientos', '100%', '🟢 Verde'],
-                                ['Mayo - Junio', '10 tareas/sem', '102 y 69 seguimientos', '100%', '🟢 Verde'],
-                            ]
-                        ]
+                    ],
+                    [
+                        'name' => 'Puntualidad en Presentación de Informes de Cierre',
+                        'definition' => 'Cumplimiento en fecha y formato establecido para la entrega de informes técnicos y financieros mensuales de cierre de obra.',
+                        'formula' => '(Informes_Cierre_ATiempo / Total_Informes_Cierre_Requeridos) * 100',
+                        'unit' => '%',
+                        'parameters' => [
+                            ['name' => 'Informes_Cierre_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Informes_Cierre_Requeridos', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Cumplimiento Total (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Informes de cierre presentados en fecha y formato', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Cumplimiento Parcial (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99% — Entrega parcial o con desfase menor', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Incumplimiento en reporte de cierre', 'color' => 'deficient', 'score' => 0],
+                        ],
+                    ],
+                    [
+                        'name' => 'Tareas con Seguimiento Registrado en Dashboard y Drive',
+                        'definition' => 'Porcentaje de tareas programadas semanalmente que cuentan con actualización de estado y seguimiento documentado.',
+                        'formula' => '(Tareas_Con_Seguimiento_Registrado / Total_Tareas_Programadas) * 100',
+                        'unit' => '%',
+                        'parameters' => [
+                            ['name' => 'Tareas_Con_Seguimiento_Registrado', 'value' => 0],
+                            ['name' => 'Total_Tareas_Programadas', 'value' => 0],
+                        ],
+                        'conditional_goals' => [
+                            ['level' => 'Cumplimiento Total (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Todas las tareas con seguimiento registrado', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99.99% — Cumplimiento parcial en actualización', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Tareas sin seguimiento registrado', 'color' => 'deficient', 'score' => 0],
+                        ],
                     ]
                 ]
             ]
@@ -1699,9 +949,7 @@ class TecnicaAreaSeeder extends Seeder
         }
 
         $kpisAcabados = [
-            // =========================================================================
             // BLOQUE A: Cumplimiento de Plazo y Programación (30%)
-            // =========================================================================
             [
                 'name' => 'A. Cumplimiento de Plazo y Programación',
                 'description' => 'Mide el avance físico real de la fase de acabados frente a la programación oficial y el cumplimiento de entrega de unidades y zonas comunes al área comercial.',
@@ -1719,49 +967,14 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '(Avance_Fisico_Real_Acumulado / Avance_Fisico_Programado_Acumulado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Avance_Real_Acabados', 'value' => 95],
-                            ['name' => 'Avance_Programado_Acabados', 'value' => 100],
+                            ['name' => 'Avance_Fisico_Real_Acumulado', 'value' => 0],
+                            ['name' => 'Avance_Fisico_Programado_Acumulado', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 90,
-                                'max_value' => 1000,
-                                'qualification' => 'Cumplimiento ≥ 90% — Proyecto bajo control y en parámetros aceptables',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Riesgo (Amarillo)',
-                                'min_value' => 70,
-                                'max_value' => 89.99,
-                                'qualification' => 'Cumplimiento 70% – 89% — Requiere ajustes inmediatos en frentes de trabajo',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 69.99,
-                                'qualification' => 'Cumplimiento < 70% — Plan de acción obligatorio por atraso crítico',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 90, 'max_value' => 1000, 'qualification' => 'Cumplimiento ≥ 90% — Proyecto bajo control y en parámetros aceptables', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Riesgo (Amarillo)', 'min_value' => 70, 'max_value' => 89.99, 'qualification' => 'Cumplimiento 70% – 89% — Requiere ajustes inmediatos en frentes de trabajo', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 0, 'max_value' => 69.99, 'qualification' => 'Cumplimiento < 70% — Plan de acción obligatorio por atraso crítico', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente / Actividad', 'Avance Real', 'Programado', '% Ejecución', 'Desviación / Estado'],
-                            'rows' => [
-                                ['Impermeabilización Cubierta y Duchas', '100%', '100%', '100%', '0 sem (Terminada)'],
-                                ['Mampostería Interna y Dovelas', '100%', '100%', '100%', '0 sem (Terminada)'],
-                                ['Red Contra Incendio (RCI Tub/Válv/Gab)', '99%', '100%', '99%', 'En fase de pruebas y bomba'],
-                                ['Sistema Detección y Alarmas', '100%', '100%', '100%', 'Instalación 100% terminada'],
-                                ['Instalaciones Eléctricas Internas / TGA', '90% - 100%', '100%', '95%', 'Pendiente acometida y RETIE'],
-                                ['Enchapes y Morteros (Baños/Cocinas/PF)', '100%', '100%', '100%', '100% Ejecutado'],
-                                ['Ventanería, Vidrieras y Puertas', '100%', '100%', '100%', '100% Ejecutado'],
-                                ['Ascensores y Tanques', '100%', '100%', '100%', '100% Ejecutado'],
-                                ['Frente Torre 2 (Fase Inicial Acabados)', '29%', '29%', '100%', '🟢 En programa / Abasto y desague (+15d)'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Cumplimiento de Hitos de Entrega de Unidades/Zonas Comunes (Acabados)',
@@ -1769,51 +982,18 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '(Unidades_Entregadas_ATiempo / Total_Unidades_Programadas) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Unidades_Entregadas', 'value' => 200],
-                            ['name' => 'Unidades_Programadas', 'value' => 200],
+                            ['name' => 'Unidades_Entregadas_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Unidades_Programadas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 90,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 90% — Entregas a tiempo y controladas',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Riesgo (Amarillo)',
-                                'min_value' => 75,
-                                'max_value' => 89.99,
-                                'qualification' => '75% – 89% — Desviaciones menores con capacidad de ajuste semanal',
-                                'color' => 'acceptable',
-                                'score' => 75
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 74.99,
-                                'qualification' => '< 75% — Afectación a la promesa comercial y entregas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 90, 'max_value' => 1000, 'qualification' => '≥ 90% — Entregas a tiempo y controladas', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Riesgo (Amarillo)', 'min_value' => 75, 'max_value' => 89.99, 'qualification' => '75% – 89% — Desviaciones menores con capacidad de ajuste semanal', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 0, 'max_value' => 74.99, 'qualification' => '< 75% — Afectación a la promesa comercial y entregas', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente de Entrega', 'Aptos Programados', 'Aptos Entregados', '% Cumplimiento', 'Observaciones'],
-                            'rows' => [
-                                ['Torre 1 - Noviembre 2025', '87', '84', '97%', 'Entregas al área comercial con desviaciones menores'],
-                                ['Torre 1 - Diciembre / Enero 2026', '113', '105', '93%', 'Cierre de entregas programadas'],
-                                ['Torre 1 - Febrero 2026', '6', '6', '100%', '100% de unidades programadas entregadas'],
-                                ['Cierre Total Torre 1', '200', '200', '100%', '🟢 100% de unidades entregadas al área comercial y Croma'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE B: Control de Calidad y No Conformidades (30%)
-            // =========================================================================
             [
                 'name' => 'B. Control de Calidad y No Conformidades',
                 'description' => 'Garantiza la entrega de acabados sin defectos, control estricto de reprocesos y atención inmediata a observaciones de entrega.',
@@ -1828,38 +1008,16 @@ class TecnicaAreaSeeder extends Seeder
                     [
                         'name' => 'Número de No Conformidades de Calidad en Acabados',
                         'definition' => 'Cuantifica defectos graves detectados interna y externamente en acabados. Meta: < 2 no conformidades internas/mes y 0 críticas externas.',
-                        'formula' => 'Conteo mensual de no conformidades',
+                        'formula' => 'Numero_No_Conformidades_Mes',
                         'unit' => 'NC',
                         'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'No_Conformidades_Mes', 'value' => 0],
-                            ['name' => 'Meta_Max_NC', 'value' => 2],
+                            ['name' => 'Numero_No_Conformidades_Mes', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 1.0,
-                                'qualification' => '≤ 1 NC — Control adecuado sin reprocesos formales ni fallas reportadas',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 1.01,
-                                'max_value' => 2.0,
-                                'qualification' => '2 NC — Riesgo moderado con plan de acción correctivo',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 2.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 2 NC internas o críticas externas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 1.0, 'qualification' => '≤ 1 NC — Control adecuado sin reprocesos formales ni fallas reportadas', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 1.01, 'max_value' => 2.0, 'qualification' => '2 NC — Riesgo moderado con plan de acción correctivo', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 2.01, 'max_value' => 1000, 'qualification' => '> 2 NC internas o críticas externas', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
@@ -1869,44 +1027,14 @@ class TecnicaAreaSeeder extends Seeder
                         'unit' => '%',
                         'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Costo_Reproceso', 'value' => 735003],
-                            ['name' => 'Costo_Total_Actividad', 'value' => 45937732],
+                            ['name' => 'Costo_Reprocesos', 'value' => 0],
+                            ['name' => 'Costo_Total_Acabados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 3.0,
-                                'qualification' => '< 3% — Calidad óptima en primera ejecución sin sobrecostos significativos',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Moderado (Amarillo)',
-                                'min_value' => 3.01,
-                                'max_value' => 5.0,
-                                'qualification' => '3% – 5% — Requiere supervisión en frentes puntuales',
-                                'color' => 'acceptable',
-                                'score' => 75
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 5.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 5% — Alto sobrecosto por reprocesos',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 3.0, 'qualification' => '< 3% — Calidad óptima en primera ejecución sin sobrecostos significativos', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Moderado (Amarillo)', 'min_value' => 3.01, 'max_value' => 5.0, 'qualification' => '3% – 5% — Requiere supervisión en frentes puntuales', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5% — Alto sobrecosto por reprocesos', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Frente Evaluado', 'Costo Total Actividad', 'Costo Reproceso', '% Reproceso', 'Estado / Resolución'],
-                            'rows' => [
-                                ['Revoque Baños Piso 9 al 17', '$ 52,000 / baño', '$ 1,263 / baño', '2.80%', 'Mano de obra asumida por contratista'],
-                                ['Enchape Baños Piso 2 al 18', '$ 43,385,636', '$ 735,003', '1.69%', 'Subsanado oportunamente'],
-                                ['Enchape Baños Piso 2 al 19', '$ 45,937,732', '$ 735,003', '1.60%', '🟢 Dentro de meta (< 3%)'],
-                                ['Cortes Subsiguientes (Feb-Jun)', '$ 0', '$ 0', '0.00%', '🟢 Sin hallazgos de reproceso'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Tiempo y Cumplimiento de Respuesta a Observaciones en Entregas de Obra al Área Comercial',
@@ -1914,42 +1042,18 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '(Observaciones_Subsanadas / Observaciones_Detectadas) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Observaciones_Subsanadas', 'value' => 9],
-                            ['name' => 'Observaciones_Detectadas', 'value' => 9],
+                            ['name' => 'Observaciones_Subsanadas', 'value' => 0],
+                            ['name' => 'Observaciones_Detectadas', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 95,
-                                'max_value' => 1000,
-                                'qualification' => '≥ 95% — Respuesta oportuna, entregas controladas sin reclamos comerciales',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 85,
-                                'max_value' => 94.99,
-                                'qualification' => '85% – 94% — Se corrige la mayoría, pero con rezagos menores',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 84.99,
-                                'qualification' => '< 85% — Alto riesgo de reclamos y reprocesos post-entrega',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Respuesta oportuna, entregas controladas sin reclamos comerciales', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 85, 'max_value' => 94.99, 'qualification' => '85% – 94.99% — Se corrige la mayoría, pero con rezagos menores', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 0, 'max_value' => 84.99, 'qualification' => '< 85% — Alto riesgo de reclamos y reprocesos post-entrega', 'color' => 'deficient', 'score' => 0],
                         ],
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE C: Control Presupuestal y Uso de Recursos (20%)
-            // =========================================================================
             [
                 'name' => 'C. Control Presupuestal y Uso de Recursos',
                 'description' => 'Monitoreo de la inversión de acabados frente al presupuesto aprobado y control estricto del porcentaje de desperdicio de materiales clave.',
@@ -1967,52 +1071,14 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '((Costo_Real_Acumulado - Presupuesto_Aprobado) / Presupuesto_Aprobado) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Presupuesto_Aprobado_Acabados', 'value' => 6500000000],
-                            ['name' => 'Costo_Real_Acabados', 'value' => 6500000000],
+                            ['name' => 'Presupuesto_Aprobado_Acabados', 'value' => 0],
+                            ['name' => 'Costo_Real_Acabados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 2.0,
-                                'qualification' => '≤ 2% — Control presupuestal óptimo con P&G positivo',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'En Alerta (Amarillo)',
-                                'min_value' => 2.01,
-                                'max_value' => 5.0,
-                                'qualification' => '> 2% – 5% — Desviación moderada bajo seguimiento',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 5.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 5% — Sobrecostos que afectan la rentabilidad',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '≤ 2% — Control presupuestal óptimo con P&G positivo', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'En Alerta (Amarillo)', 'min_value' => 2.01, 'max_value' => 5.0, 'qualification' => '> 2% – 5% — Desviación moderada bajo seguimiento', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 5.01, 'max_value' => 1000, 'qualification' => '> 5% — Sobrecostos que afectan la rentabilidad', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Capítulo de Acabados', 'Presupuesto Aprobado', 'Proyección / Costo', 'P&G / Variación', 'Estado'],
-                            'rows' => [
-                                ['Mampostería (T1)', '$ 662,060,702', '$ 835,298,683', '-$ 181,405,069', '🔴 Sobrecosto MO contratada'],
-                                ['Red Contra Incendios Interna', '$ 207,961,770', '$ 380,574,356', '-$ 146,045,378', '🔴 Ajuste de cantidades/diseño'],
-                                ['Instalaciones Hidrosanitarias y Gas', '$ 1,257,205,176', '$ 1,115,039,991', '+$ 142,165,185', '🟢 Ahorro significativo'],
-                                ['Instalaciones Eléctricas Internas', '$ 1,167,712,042', '$ 1,722,270,243', '-$ 548,846,654', '🔴 Desviación por redes y equipos'],
-                                ['Enchapes y Forros', '$ 213,985,569', '$ 234,954,541', '-$ 21,962,955', '🟡 Variación moderada'],
-                                ['Bases y Pisos', '$ 306,853,995', '$ 306,853,995', '+$ 17,291,622', '🟢 Ahorro / P&G Positivo'],
-                                ['Carpintería Metálica', '$ 681,262,675', '$ 597,492,590', '-$ 3,560,940', '🟢 P&G Controlado'],
-                                ['Carpintería en Madera', '$ 301,849,630', '$ 267,705,425', '+$ 34,144,205', '🟢 Ahorro'],
-                                ['Muebles y Equipos de Cocina', '$ 288,525,892', '$ 144,510,438', '+$ 144,015,454', '🟢 Ahorro sobresaliente'],
-                                ['Estucos y Pinturas', '$ 505,925,223', '$ 396,472,014', '+$ 82,358,071', '🟢 Ahorro'],
-                                ['Aparatos Sanitarios y Grifería', '$ 88,015,100', '$ 86,313,948', '+$ 1,701,152', '🟢 Cumple meta'],
-                                ['Mampostería Torre 2 (Fase Inicial)', '$ 890,356,829', '$ 1,126,512,774', '-$ 236,155,946', '🟡 Monitoreo de rendimientos MO'],
-                            ]
-                        ]
                     ],
                     [
                         'name' => 'Porcentaje de Desperdicios de Materiales de Acabados',
@@ -2021,57 +1087,18 @@ class TecnicaAreaSeeder extends Seeder
                         'unit' => '%',
                         'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Desperdicio_Promedio_Real', 'value' => 4.56],
-                            ['name' => 'Meta_Desperdicio', 'value' => 5.0],
+                            ['name' => 'Valor_Desperdicios', 'value' => 0],
+                            ['name' => 'Valor_Total_Materiales', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 5.0,
-                                'qualification' => '< 5% — Eficiencia en consumo y bajo desperdicio',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Moderado (Amarillo)',
-                                'min_value' => 5.01,
-                                'max_value' => 10.0,
-                                'qualification' => '5% – 10% — Requiere ajuste en cortes y control en frentes',
-                                'color' => 'acceptable',
-                                'score' => 70
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 10.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 10% — Sobrecostos por alto desperdicio o roturas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 5.0, 'qualification' => '< 5% — Eficiencia en consumo y bajo desperdicio', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Moderado (Amarillo)', 'min_value' => 5.01, 'max_value' => 10.0, 'qualification' => '5% – 10% — Requiere ajuste en cortes y control en frentes', 'color' => 'acceptable', 'score' => 70],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 10.01, 'max_value' => 1000, 'qualification' => '> 10% — Sobrecostos por alto desperdicio o roturas', 'color' => 'deficient', 'score' => 0],
                         ],
-                        'tablaDetalle' => [
-                            'headers' => ['Insumo / Material', 'Cantidad Nominal', 'Cantidad Instalada', '% Desperdicio Real', 'Estado / Control'],
-                            'rows' => [
-                                ['Bloque 10×20×40', '63,338 und', '66,226 und', '4.56%', '🟢 Dentro de meta (<5%)'],
-                                ['Bloque 15×20×40', '1,610 und', '1,792 und', '11.30%', '🔴 Desperdicio por cortes específicos'],
-                                ['Bloque 20×20×40', '1,700 und', '1,792 und', '5.41%', '🟡 Desviación leve'],
-                                ['Cerámica Natal', '1,775.36 m²', '1,712.10 m²', '-3.56%', '🟢 Eficiencia / Ahorro'],
-                                ['Cerámica Belaya Beige', '330.00 m²', '395.98 m²', '19.99%', '🔴 Requiere control en colocación'],
-                                ['Cerámica Vancuver', '1,522.00 m²', '1,583.00 m²', '3.98%', '🟢 Dentro de meta'],
-                                ['Megapega', '29,022.40 kg', '28,708.61 kg', '-1.08%', '🟢 Eficiencia / Ahorro'],
-                                ['Concolor Blanco / Beige / Gris', 'Varios', 'Varios', '3.27% / 13.64% / -7.72%', '🟡 Comportamiento mixto'],
-                                ['Sanitarios y Lavamanos', '200 und', '200 und', '0.00%', '🟢 Control total en instalación'],
-                                ['Cemento Mampostería y Morteros', '1,448 sacos', '1,501 sacos', '1.79% – 5.56%', '🟢 Buen control'],
-                            ]
-                        ]
                     ]
                 ]
             ],
-
-            // =========================================================================
             // BLOQUE D: Gestión de Información y Coordinación (20%)
-            // =========================================================================
             [
                 'name' => 'D. Gestión de Información y Coordinación',
                 'description' => 'Eficiencia en resolución de dudas técnicas en Dashboard, puntualidad en actas de comité, evaluación 360° y gestión de quejas posventas post-entrega.',
@@ -2086,38 +1113,16 @@ class TecnicaAreaSeeder extends Seeder
                     [
                         'name' => 'Tiempo Promedio de Resolución de Solicitudes Técnicas Dashboard',
                         'definition' => 'Rapidez y efectividad en dar respuesta a dudas técnicas y tareas operativas asignadas en el Dashboard. Meta: ≤ 2 días hábiles.',
-                        'formula' => 'Tiempo promedio de resolución (días hábiles)',
+                        'formula' => 'Tiempo_Promedio_Resolucion_Dias',
                         'unit' => 'días',
                         'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Tareas_Completadas', 'value' => 192],
-                            ['name' => 'Total_Tareas_Asignadas', 'value' => 208],
+                            ['name' => 'Tiempo_Promedio_Resolucion_Dias', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 2.0,
-                                'qualification' => '≤ 2 días hábiles — Respuesta ágil y gestión oportuna',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 2.01,
-                                'max_value' => 4.0,
-                                'qualification' => '2.1 – 4 días hábiles — Carga operativa con retrasos leves',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 4.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 4 días hábiles — Cuellos de botella en atención técnica',
-                                'color' => 'deficient',
-                                'score' => 20
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '≤ 2 días hábiles — Respuesta ágil y gestión oportuna', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 2.01, 'max_value' => 4.0, 'qualification' => '2.1 – 4 días hábiles — Carga operativa con retrasos leves', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 4.01, 'max_value' => 1000, 'qualification' => '> 4 días hábiles — Cuellos de botella en atención técnica', 'color' => 'deficient', 'score' => 20],
                         ],
                     ],
                     [
@@ -2126,107 +1131,42 @@ class TecnicaAreaSeeder extends Seeder
                         'formula' => '(Informes_Entregados_ATiempo / Total_Informes_Programados) * 100',
                         'unit' => '%',
                         'parameters' => [
-                            ['name' => 'Informes_ATiempo', 'value' => 4],
-                            ['name' => 'Total_Informes', 'value' => 4],
+                            ['name' => 'Informes_Entregados_ATiempo', 'value' => 0],
+                            ['name' => 'Total_Informes_Programados', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 100,
-                                'max_value' => 1000,
-                                'qualification' => '100% — Entregas puntuales en todos los cortes establecidos',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Parcial (Amarillo)',
-                                'min_value' => 90,
-                                'max_value' => 99.99,
-                                'qualification' => '90% – 99% — Entrega con retraso menor',
-                                'color' => 'acceptable',
-                                'score' => 75
-                            ],
-                            [
-                                'level' => 'Incumplimiento (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 89.99,
-                                'qualification' => '< 90% — Incumplimiento en reporte de actas',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Entregas puntuales en todos los cortes establecidos', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Parcial (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99% — Entrega con retraso menor', 'color' => 'acceptable', 'score' => 75],
+                            ['level' => 'Incumplimiento (Rojo)', 'min_value' => 0, 'max_value' => 89.99, 'qualification' => '< 90% — Incumplimiento en reporte de actas', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
                         'name' => 'Contribución al Ambiente Laboral (Evaluación 360° / Feedback Interno)',
                         'definition' => 'Evaluación de competencias de liderazgo, trabajo en equipo, comunicación y coordinación técnica en obra. Meta: ≥ 4.5 / 5.0.',
-                        'formula' => 'Puntaje de evaluación 360° (Escala de 1 a 5)',
+                        'formula' => 'Puntaje_Evaluacion_360',
                         'unit' => 'pts',
                         'parameters' => [
-                            ['name' => 'Calificacion_360', 'value' => 4.46],
-                            ['name' => 'Escala_Maxima', 'value' => 5.0],
+                            ['name' => 'Puntaje_Evaluacion_360', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Sobresaliente (Verde)',
-                                'min_value' => 4.5,
-                                'max_value' => 5.0,
-                                'qualification' => '≥ 4.5 pts — Liderazgo sobresaliente y articulación de equipos',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Aceptable (Amarillo)',
-                                'min_value' => 3.5,
-                                'max_value' => 4.49,
-                                'qualification' => '3.5 – 4.49 pts — Buen desempeño técnico con oportunidad en habilidades blandas',
-                                'color' => 'acceptable',
-                                'score' => 89
-                            ],
-                            [
-                                'level' => 'Deficiente (Rojo)',
-                                'min_value' => 0,
-                                'max_value' => 3.49,
-                                'qualification' => '< 3.5 pts — Desalineación en clima y relaciones de trabajo',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Sobresaliente (Verde)', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => '≥ 4.5 pts — Liderazgo sobresaliente y articulación de equipos', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Aceptable (Amarillo)', 'min_value' => 3.5, 'max_value' => 4.49, 'qualification' => '3.5 – 4.49 pts — Buen desempeño técnico con oportunidad en habilidades blandas', 'color' => 'acceptable', 'score' => 89],
+                            ['level' => 'Deficiente (Rojo)', 'min_value' => 0, 'max_value' => 3.49, 'qualification' => '< 3.5 pts — Desalineación en clima y relaciones de trabajo', 'color' => 'deficient', 'score' => 0],
                         ],
                     ],
                     [
                         'name' => 'Número de Quejas de Clientes por Calidad de Acabados (Post-entrega)',
                         'definition' => 'Control de incidencias y solicitudes posventas radicadas a través de códigos QR Inverconstrucción y QR Croma tras entrega formal. Meta: 0 quejas no resueltas en plazo.',
-                        'formula' => 'Conteo mensual de quejas de calidad no atendidas en plazo de garantía',
+                        'formula' => 'Numero_Quejas_Sin_Resolver',
                         'unit' => 'quejas',
                         'lower_is_better' => true,
                         'parameters' => [
-                            ['name' => 'Quejas_Registradas', 'value' => 1],
-                            ['name' => 'Quejas_Atendidas', 'value' => 1],
+                            ['name' => 'Numero_Quejas_Sin_Resolver', 'value' => 0],
                         ],
                         'conditional_goals' => [
-                            [
-                                'level' => 'Óptimo (Verde)',
-                                'min_value' => 0,
-                                'max_value' => 0.0,
-                                'qualification' => '0 quejas no resueltas — Alta satisfacción y calidad de entrega',
-                                'color' => 'optimal',
-                                'score' => 100
-                            ],
-                            [
-                                'level' => 'Moderado (Amarillo)',
-                                'min_value' => 1.0,
-                                'max_value' => 2.0,
-                                'qualification' => '1 – 2 incidencias atendidas dentro de tiempos de garantía',
-                                'color' => 'acceptable',
-                                'score' => 80
-                            ],
-                            [
-                                'level' => 'Crítico (Rojo)',
-                                'min_value' => 2.01,
-                                'max_value' => 1000,
-                                'qualification' => '> 2 quejas o incumplimiento de tiempos de garantía',
-                                'color' => 'deficient',
-                                'score' => 0
-                            ],
+                            ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 0.0, 'qualification' => '0 quejas no resueltas — Alta satisfacción y calidad de entrega', 'color' => 'optimal', 'score' => 100],
+                            ['level' => 'Moderado (Amarillo)', 'min_value' => 1.0, 'max_value' => 2.0, 'qualification' => '1 – 2 incidencias atendidas dentro de tiempos de garantía', 'color' => 'acceptable', 'score' => 80],
+                            ['level' => 'Crítico (Rojo)', 'min_value' => 2.01, 'max_value' => 1000, 'qualification' => '> 2 quejas o incumplimiento de tiempos de garantía', 'color' => 'deficient', 'score' => 0],
                         ],
                     ]
                 ]
@@ -2241,5 +1181,3 @@ class TecnicaAreaSeeder extends Seeder
         }
     }
 }
-
-
