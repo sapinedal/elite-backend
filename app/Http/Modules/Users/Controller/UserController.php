@@ -16,9 +16,10 @@ class UserController extends Controller
         $this->userService = $userService;
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json($this->userService->getAllUsers());
+        $includeInactive = $request->boolean('include_inactive', true);
+        return response()->json($this->userService->getAllUsers($includeInactive));
     }
 
     public function store(Request $request)
@@ -70,7 +71,19 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         $this->userService->deleteUser($user);
-        return response()->json(null, 204);
+        return response()->json(['message' => 'User deactivated successfully', 'user' => $user->fresh()->load(['area', 'position'])]);
+    }
+
+    public function restore($id)
+    {
+        $user = $this->userService->restoreUser($id);
+        return response()->json(['message' => 'User activated successfully', 'user' => $user]);
+    }
+
+    public function toggleStatus($id)
+    {
+        $user = $this->userService->toggleUserStatus($id);
+        return response()->json(['message' => 'User status updated successfully', 'user' => $user]);
     }
 
     public function me(Request $request)

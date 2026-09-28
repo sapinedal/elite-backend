@@ -7,9 +7,13 @@ use Illuminate\Support\Facades\Hash;
 
 class UserService
 {
-    public function getAllUsers()
+    public function getAllUsers(bool $includeInactive = true)
     {
-        return User::with(['area', 'position'])->get();
+        $query = User::with(['area', 'position']);
+        if ($includeInactive) {
+            $query->withTrashed();
+        }
+        return $query->get();
     }
 
     public function createUser(array $data)
@@ -48,5 +52,23 @@ class UserService
     public function deleteUser(User $user)
     {
         return $user->delete();
+    }
+
+    public function restoreUser(int|string $id)
+    {
+        $user = User::withTrashed()->findOrFail($id);
+        $user->restore();
+        return $user->load(['area', 'position']);
+    }
+
+    public function toggleUserStatus(int|string $id)
+    {
+        $user = User::withTrashed()->findOrFail($id);
+        if ($user->trashed()) {
+            $user->restore();
+        } else {
+            $user->delete();
+        }
+        return $user->fresh()->load(['area', 'position']);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Modules\Users\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -13,7 +14,14 @@ use App\Http\Modules\Plantillas\Models\KPI;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['is_active'];
 
     /**
      * The attributes that are mass assignable.
@@ -50,8 +58,14 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'deleted_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function getIsActiveAttribute(): bool
+    {
+        return is_null($this->deleted_at);
     }
 
     public function area()
