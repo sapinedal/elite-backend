@@ -135,12 +135,30 @@ class TransversalAreaSeeder extends Seeder
                     'indicators' => [
                         [
                             'name' => 'Nivel de Cumplimiento en Archivo Documental Comercial (Físico y Digital)',
-                            'definition' => 'Porcentaje de documentos comerciales (carpetas clientes, otrosíes, promesas, actas de entrega, parqueaderos y Croma) archivados correctamente dentro de las 24 horas posteriores a su firma o generación. Meta: 100%.',
+                            'definition' => 'Medir el grado de cumplimiento en el archivo correcto, completo y oportuno de la documentación comercial (carpetas de clientes, otrosíes y soportes asociados), garantizando la trazabilidad contractual, el control interno y la disponibilidad de la información tanto en formato físico como digital dentro de las 24 horas posteriores a su generación o firma.',
                             'formula' => '(Documentos_Archivados_Correctamente / Total_Documentos_Generados) * 100',
                             'unit' => '%',
                             'parameters' => [
                                 ['name' => 'Documentos_Archivados_Correctamente', 'value' => 0],
                                 ['name' => 'Total_Documentos_Generados', 'value' => 0],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['ITEM', 'STATUS', 'CANTIDAD', 'ARCHIVO', 'CANTIDAD', '% CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Archivo comercial T1', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                    ['Archivo comercial T2', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                    ['Archivo comercial T3', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                    ['Archivo comercial T4', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                    ['Otrosí T1', 'Firmados:', '', 'Doc soporte:', '', ''],
+                                    ['Otrosí T2', 'Firmados:', '', 'Doc soporte:', '', ''],
+                                    ['Otrosí T3', 'Firmados:', '', 'Doc soporte:', '', ''],
+                                    ['Otrosí T4', 'Firmados:', '', 'Doc soporte:', '', ''],
+                                    ['Promesa T1', 'Documentos:', '', 'Doc soporte:', '', ''],
+                                    ['Promesa T2', 'Documentos:', '', 'Doc soporte:', '', ''],
+                                    ['Entregas T1 (acta)', 'Entregados:', '', 'Doc soporte:', '', ''],
+                                    ['Parqueaderos', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                    ['Croma', 'Vendidos:', '', 'Carpeta OK:', '', ''],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Archivo comercial completo, oportuno y trazable en físico y digital', 'color' => 'optimal', 'score' => 100],
@@ -150,12 +168,29 @@ class TransversalAreaSeeder extends Seeder
                         ],
                         [
                             'name' => 'Nivel de Oportunidad en la Carga de Documentación a Sistemas',
-                            'definition' => 'Grado de avance y puntualidad en la digitalización y carga de documentación a los sistemas conforme a cronogramas (T1 en sep, T2 en oct, otrosí al día). Meta: 100%.',
+                            'definition' => 'Evaluar el grado de oportunidad y avance en la carga y actualización de la documentación comercial en los sistemas de la compañía (Torre 1 sep, Torre 2 oct, Otrosí T1 diario, Parqueaderos y Croma al día).',
                             'formula' => '(Documentos_Cargados_En_Periodo / Total_Documentos_Pendientes_Inicio) * 100',
                             'unit' => '%',
                             'parameters' => [
                                 ['name' => 'Documentos_Cargados_En_Periodo', 'value' => 0],
                                 ['name' => 'Total_Documentos_Pendientes_Inicio', 'value' => 0],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['ITEM', 'ESTADO / METAS', 'CARPETAS FALTANTES', 'DESCRIPCIÓN PERÍODO', 'CARPETAS PERÍODO', '% CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Archivo comercial T1', 'Carpetas Faltantes:', '', 'Carpetas período:', '', ''],
+                                    ['Archivo comercial T2', 'Carpetas Faltantes:', '', 'Carpetas período:', '', ''],
+                                    ['Archivo comercial T3', 'Carpetas Faltantes:', '', 'Carpetas período:', '', ''],
+                                    ['Archivo comercial T4', 'Carpetas Faltantes:', '', 'Carpetas período:', '', ''],
+                                    ['Otrosí T1', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Otrosí T2', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Otrosí T3', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Otrosí T4', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Promesa T1', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Promesa T2', 'Falta firma:', '', 'Firmas período:', '', ''],
+                                    ['Parqueaderos', 'Falta carpeta:', '', 'Carpeta período:', '', ''],
+                                    ['Croma', 'Falta carpeta:', '', 'Carpeta período:', '', ''],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 95, 'max_value' => 1000, 'qualification' => '≥ 95% — Carga al día sin rezagos conforme a cronograma', 'color' => 'optimal', 'score' => 100],
@@ -180,12 +215,31 @@ class TransversalAreaSeeder extends Seeder
                     'indicators' => [
                         [
                             'name' => 'Nivel de Cumplimiento Documental en Vinculación',
-                            'definition' => 'Porcentaje de colaboradores activos con expediente completo (contrato, afiliaciones EPS/ARL/Caja, exámenes médicos, inducción, etc.) archivado dentro de los 3 días hábiles posteriores a la firma. Meta: 100%.',
+                            'definition' => 'Mide el porcentaje de colaboradores que cuentan con su expediente completo y correctamente archivado (físico y digital) dentro de los 3 días hábiles posteriores a la firma del contrato. Meta: 100%.',
                             'formula' => '(Expedientes_Completos_Vinculacion / Total_Colaboradores_Vinculados) * 100',
                             'unit' => '%',
                             'parameters' => [
                                 ['name' => 'Expedientes_Completos_Vinculacion', 'value' => 0],
-                                ['name' => 'Total_Colaboradores_Vinculados', 'value' => 0],
+                                ['name' => 'Total_Colaboradores_Vinculados', 'value' => 30],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['DOCUMENTO', 'APLICA', 'EXISTENTE', '% CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Manual de funciones', '', '', ''],
+                                    ['KPI´s', '', '', ''],
+                                    ['Cédula', '', '', ''],
+                                    ['Hoja de vida', '', '', ''],
+                                    ['Cert. academicos', '', '', ''],
+                                    ['Fotografía', '', '', ''],
+                                    ['Contrato firmado', '', '', ''],
+                                    ['Socialización RIT', '', '', ''],
+                                    ['Afiliación EPS', '', '', ''],
+                                    ['Afiliación caja', '', '', ''],
+                                    ['Afiliación ARL', '', '', ''],
+                                    ['Entrega Dotación', '', '', ''],
+                                    ['Exámenes medicos', '', '', ''],
+                                    ['Inducción', '', '', ''],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 90, 'max_value' => 1000, 'qualification' => '≥ 90% — Expedientes completos con soporte legal y normativo integral', 'color' => 'optimal', 'score' => 100],
@@ -195,12 +249,22 @@ class TransversalAreaSeeder extends Seeder
                         ],
                         [
                             'name' => 'Nivel de Cumplimiento del Proceso de Desvinculación Laboral',
-                            'definition' => 'Porcentaje de procesos de retiro con documentación completa (carta renuncia/despido, liquidación, cert. laboral, paz y salvo, entrega de cargo, examen egreso) cerrados dentro de 3 días hábiles. Meta: 100%.',
+                            'definition' => 'Garantizar que, ante la renuncia o terminación de un contrato laboral, el proceso de desvinculación se ejecute de manera completa, oportuna y conforme a la normatividad (carta, liquidación, cert laboral, paz y salvo, examen egreso). Meta: 100%.',
                             'formula' => '(Procesos_Desvinculacion_Completos / Total_Desvinculaciones_Periodo) * 100',
                             'unit' => '%',
                             'parameters' => [
                                 ['name' => 'Procesos_Desvinculacion_Completos', 'value' => 0],
                                 ['name' => 'Total_Desvinculaciones_Periodo', 'value' => 0],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['DOCUMENTO', 'CANTIDAD REQUERIDA', 'CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Carta renuncia', '', ''],
+                                    ['Carta despido', '', ''],
+                                    ['Acta liquidación', '', ''],
+                                    ['Cert. Laboral', '', ''],
+                                    ['Exámenes egreso', '', ''],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Desvinculación cerrada y blindada legalmente en plazo', 'color' => 'optimal', 'score' => 100],
@@ -232,6 +296,21 @@ class TransversalAreaSeeder extends Seeder
                                 ['name' => 'Registros_Actualizados_Oportunamente', 'value' => 0],
                                 ['name' => 'Total_Registros_Periodo', 'value' => 0],
                             ],
+                            'tablaDetalle' => [
+                                'headers' => ['ESTADO / CONCEPTO', 'TORRE 1 (INVER / TRÁMITES)', 'TORRE 2 (INVER / TRÁMITES)', 'TORRE 3 (INVER / TRÁMITES)', 'TORRE 4 (INVER / TRÁMITES)', '% CONCILIACIÓN'],
+                                'rows' => [
+                                    ['Vendidos', '', '', '', '', '100%'],
+                                    ['Traslado', '', '', '', '', '100%'],
+                                    ['Desist Solicitud', '', '', '', '', '100%'],
+                                    ['Desist Cartera', '', '', '', '', '100%'],
+                                    ['Inver', '', '', '', '', '100%'],
+                                    ['Disponible', '', '', '', '', '100%'],
+                                    ['Cesión', '', '', '', '', '100%'],
+                                    ['Canje', '', '', '', '', '100%'],
+                                    ['Reservado', '', '', '', '', '100%'],
+                                    ['Totales', '', '', '', '', '100%'],
+                                ]
+                            ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Conciliación total de datos y actualización diaria impecable', 'color' => 'optimal', 'score' => 100],
                                 ['level' => 'Aceptable (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99.99% — Actualización adecuada con ajustes menores en conciliación', 'color' => 'acceptable', 'score' => 80],
@@ -262,6 +341,16 @@ class TransversalAreaSeeder extends Seeder
                                 ['name' => 'Soportes_Pago_Enviados_ATiempo', 'value' => 0],
                                 ['name' => 'Total_Pagos_Realizados', 'value' => 0],
                             ],
+                            'tablaDetalle' => [
+                                'headers' => ['SEMANA', 'PAGOS REALIZADOS', 'SOPORTES ENVIADOS', '% CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Semana 1 (S1)', '', '', '100%'],
+                                    ['Semana 2 (S2)', '', '', '100%'],
+                                    ['Semana 3 (S3)', '', '', '100%'],
+                                    ['Semana 4 (S4)', '', '', '100%'],
+                                    ['Semana 5 (S5)', '', '', '100%'],
+                                ]
+                            ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Totalidad de soportes enviados en ≤ 24 horas', 'color' => 'optimal', 'score' => 100],
                                 ['level' => 'Aceptable (Amarillo)', 'min_value' => 90, 'max_value' => 99.99, 'qualification' => '90% – 99.99% — Envío regular con demoras puntuales justificadas', 'color' => 'acceptable', 'score' => 80],
@@ -276,6 +365,13 @@ class TransversalAreaSeeder extends Seeder
                             'parameters' => [
                                 ['name' => 'Total_Pagos_Asentados_Matrices', 'value' => 0],
                                 ['name' => 'Total_Pagos_Realizados', 'value' => 0],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['CONCEPTO', 'CANTIDAD', '% CUMPLIMIENTO'],
+                                'rows' => [
+                                    ['Total pagos realizados', '', '100%'],
+                                    ['Total pagos asentados en las matrices', '', '100%'],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '100% — Matrices de pagos de obra 100% alimentadas y al día', 'color' => 'optimal', 'score' => 100],
@@ -307,6 +403,20 @@ class TransversalAreaSeeder extends Seeder
                             'parameters' => [
                                 ['name' => 'Tiempo_Promedio_Respuesta_Dias', 'value' => 0],
                             ],
+                            'tablaDetalle' => [
+                                'headers' => ['REQUERIMIENTO / TRÁMITE', 'FECHA RECEPCIÓN', 'FECHA RESPUESTA', 'DÍAS TRANSCURRIDOS', 'ESTADO / OBSERVACIONES'],
+                                'rows' => [
+                                    ['Solicitud requisitos cambio de director de obra', '', '', '', ''],
+                                    ['Modificación licencia de urbanismo', '', '', '', ''],
+                                    ['Modificación licencia de construcción Torre 1-2', '', '', '', ''],
+                                    ['Prorroga licencia de Torre 1-2', '', '', '', ''],
+                                    ['Solicitud trámite catastro Loteo', '', '', '', ''],
+                                    ['Envio Checklist aseguradora siniestro muro', '', '', '', ''],
+                                    ['Solicitud cotización prórroga pólizas T2', '', '', '', ''],
+                                    ['Solicitud cotización pólizas T3', '', '', '', ''],
+                                    ['Envio Faltantes Supervisión técnica: acero', '', '', '', ''],
+                                ]
+                            ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 0, 'max_value' => 2.0, 'qualification' => '≤ 2.0 días hábiles — Respuesta ágil, oportuna y conforme a normatividad', 'color' => 'optimal', 'score' => 100],
                                 ['level' => 'Aceptable (Amarillo)', 'min_value' => 2.01, 'max_value' => 3.0, 'qualification' => '2.1 – 3.0 días hábiles — Trámite en curso dentro de márgenes operativos', 'color' => 'acceptable', 'score' => 80],
@@ -322,6 +432,18 @@ class TransversalAreaSeeder extends Seeder
                                 ['name' => 'Tareas_Con_Seguimiento_Semanal', 'value' => 0],
                                 ['name' => 'Total_Tareas_Asignadas', 'value' => 0],
                             ],
+                            'tablaDetalle' => [
+                                'headers' => ['ESTADO DE TAREAS', 'CANTIDAD', 'DETALLE / OBSERVACIONES'],
+                                'rows' => [
+                                    ['Total tareas', '', ''],
+                                    ['Completadas', '', ''],
+                                    ['En progreso', '', ''],
+                                    ['En espera', '', ''],
+                                    ['Por hacer', '', ''],
+                                    ['Debe haber con seguimiento', '', ''],
+                                    ['Hay con seguimiento', '', ''],
+                                ]
+                            ],
                             'conditional_goals' => [
                                 ['level' => 'Óptimo (Verde)', 'min_value' => 100, 'max_value' => 1000, 'qualification' => '≥ 100% — Monitoreo proactivo y trazabilidad semanal completa', 'color' => 'optimal', 'score' => 100],
                                 ['level' => 'Aceptable (Amarillo)', 'min_value' => 70, 'max_value' => 99.99, 'qualification' => '70% – 99.99% — Seguimiento adecuado con actividades pendientes de control', 'color' => 'acceptable', 'score' => 80],
@@ -335,6 +457,15 @@ class TransversalAreaSeeder extends Seeder
                             'unit' => 'pts',
                             'parameters' => [
                                 ['name' => 'Puntaje_Evaluacion_360', 'value' => 0],
+                            ],
+                            'tablaDetalle' => [
+                                'headers' => ['CRITERIO EVALUACIÓN 360°', 'CALIFICACIÓN (1 A 5)', 'RETROALIMENTACIÓN'],
+                                'rows' => [
+                                    ['Trabajo en equipo y colaboración', '5.0', ''],
+                                    ['Actitud y vocación de servicio', '5.0', ''],
+                                    ['Profesionalismo e integridad', '5.0', ''],
+                                    ['Liderazgo e iniciativa', '4.8', ''],
+                                ]
                             ],
                             'conditional_goals' => [
                                 ['level' => 'Sobresaliente (Verde)', 'min_value' => 4.5, 'max_value' => 5.0, 'qualification' => '≥ 4.5 pts — Desempeño excepcional, referente positivo y gran vocación de servicio', 'color' => 'optimal', 'score' => 100],
