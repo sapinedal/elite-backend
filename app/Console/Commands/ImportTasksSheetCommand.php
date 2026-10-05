@@ -259,23 +259,30 @@ class ImportTasksSheetCommand extends Command
                         ]
                     ]);
 
-                    // Observaciones
-                    $observerUserId = $responsibleId ?: $adminUser->id;
-                    foreach ($taskItem['observations'] as $obs) {
-                        $obsDate = !empty($obs['date']) ? Carbon::parse($obs['date'])->setTime(12, 0, 0) : Carbon::now();
-                        
-                        TaskObservation::create([
-                            'task_id' => $task->id,
-                            'user_id' => $observerUserId,
-                            'observation' => $obs['text'],
-                            'created_at' => $obsDate,
-                            'updated_at' => $obsDate,
-                        ]);
-                        $importedObsCount++;
-                    }
+                // Batch insert observations
+                $observerUserId = $responsibleId ?: $adminUser->id;
+                $obsRecords = [];
+                foreach ($taskItem['observations'] as $obs) {
+                    $obsDate = !empty($obs['date']) ? Carbon::parse($obs['date'])->setTime(12, 0, 0)->toDateTimeString() : Carbon::now()->toDateTimeString();
+                    $obsRecords[] = [
+                        'task_id' => $task->id,
+                        'user_id' => $observerUserId,
+                        'observation' => $obs['text'],
+                        'created_at' => $obsDate,
+                        'updated_at' => $obsDate,
+                    ];
+                }
 
-                    $importedTasksCount++;
-                    $this->info("  ✓ Tarea creada exitosamente con ID: {$task->id}");
+                if (!empty($obsRecords)) {
+                    TaskObservation::insert($obsRecords);
+                    $importedObsCount += count($obsRecords);
+                }
+
+                $importedTasksCount++;
+
+                if ($importedTasksCount % 50 === 0 || $importedTasksCount === $totalTasks) {
+                    $this->info("  -> Procesadas {$importedTasksCount} / {$totalTasks} tareas ({$importedObsCount} observaciones)...");
+                }
                 } else {
                     $importedTasksCount++;
                     $importedObsCount += count($taskItem['observations']);
