@@ -87,6 +87,7 @@ class CommercialAreaSeeder extends Seeder
                         'unit' => '%',
                         'stage' => 'A. Estrategia y Planificación Comercial',
                         'weight' => 30,
+                        'incidence' => 30,
                         'lower_is_better' => false,
                         'indicators' => [
                             [
@@ -376,6 +377,7 @@ class CommercialAreaSeeder extends Seeder
                         'unit' => '%',
                         'stage' => 'B. Liderazgo y Gestión del Equipo Comercial',
                         'weight' => 30,
+                        'incidence' => 30,
                         'lower_is_better' => false,
                         'indicators' => [
                             [
@@ -471,6 +473,7 @@ class CommercialAreaSeeder extends Seeder
                         'unit' => '%',
                         'stage' => 'C. Gestión Operativa y Control de Ventas',
                         'weight' => 30,
+                        'incidence' => 30,
                         'lower_is_better' => false,
                         'indicators' => [
                             [
@@ -550,6 +553,7 @@ class CommercialAreaSeeder extends Seeder
                         'unit' => '%',
                         'stage' => 'D. Gestión Documental y Procesos Legales/Internos',
                         'weight' => 10,
+                        'incidence' => 10,
                         'lower_is_better' => false,
                         'indicators' => [
                             [

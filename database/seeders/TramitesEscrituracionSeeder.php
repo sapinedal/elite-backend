@@ -61,7 +61,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
                 'weight' => 10,
-                'incidence' => 50,
+                'incidence' => 10,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -89,7 +89,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -116,7 +116,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -143,7 +143,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => 'Días',
                 'stage' => 'Pre-Concreción',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -171,7 +171,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Pre-Concreción',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -198,7 +198,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => 'Puntos',
                 'stage' => 'Pre-Concreción',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -227,7 +227,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Escrituración',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -254,7 +254,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => 'Días',
                 'stage' => 'Escrituración',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -281,7 +281,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Escrituración',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -308,7 +308,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => 'Días',
                 'stage' => 'Escrituración',
                 'weight' => 8,
-                'incidence' => 50,
+                'incidence' => 8,
                 'lower_is_better' => true,
                 'indicators' => [
                     [
@@ -335,7 +335,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Escrituración',
                 'weight' => 6,
-                'incidence' => 50,
+                'incidence' => 6,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -362,7 +362,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Escrituración',
                 'weight' => 6,
-                'incidence' => 50,
+                'incidence' => 6,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
@@ -389,7 +389,7 @@ class TramitesEscrituracionSeeder extends Seeder
                 'unit' => '%',
                 'stage' => 'Escrituración',
                 'weight' => 6,
-                'incidence' => 50,
+                'incidence' => 6,
                 'lower_is_better' => false,
                 'indicators' => [
                     [
