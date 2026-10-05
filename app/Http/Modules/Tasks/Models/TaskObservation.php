@@ -14,6 +14,8 @@ class TaskObservation extends Model
         'task_id',
         'user_id',
         'observation',
+        'created_at',
+        'updated_at',
     ];
 
     /**
