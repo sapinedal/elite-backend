@@ -15,12 +15,19 @@ class TransversalAreaSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Asegurar el Área Transversal / Gestión Documental
-        $area = Area::whereRaw('LOWER(name) IN (?, ?, ?, ?)', ['transversal', 'procesos y gestión documental', 'gestión documental', 'contratación y gestión documental'])->first()
+        // 1. Asegurar el Área de Procesos y Gestión Documental
+        $area = Area::whereRaw('LOWER(name) IN (?, ?, ?, ?)', ['procesos y gestión documental', 'gestión documental', 'contratación y gestión documental', 'transversal'])->first()
             ?? Area::firstOrCreate(
-                ['name' => 'Transversal'],
-                ['description' => 'Área transversal encargada de contratación, gestión documental, soporte financiero a obra y cumplimiento normativo']
+                ['name' => 'Procesos y Gestión Documental'],
+                ['description' => 'Área encargada de control documental, archivo comercial y TH, soporte técnico financiero y cumplimiento normativo']
             );
+
+        if ($area->name !== 'Procesos y Gestión Documental' || empty($area->description)) {
+            $area->update([
+                'name' => 'Procesos y Gestión Documental',
+                'description' => 'Área encargada de control documental, archivo comercial y TH, soporte técnico financiero y cumplimiento normativo'
+            ]);
+        }
 
         // 2. Cargos pertenecientes al área
         $positions = [
@@ -43,7 +50,7 @@ class TransversalAreaSeeder extends Seeder
         }
 
         // =========================================================================
-        // USUARIOS DEL ÁREA TRANSVERSAL
+        // USUARIOS DEL ÁREA DE PROCESOS Y GESTIÓN DOCUMENTAL
         // =========================================================================
         $colaboradores = [
             [
@@ -61,9 +68,12 @@ class TransversalAreaSeeder extends Seeder
             $user = User::withTrashed()
                 ->where(function ($q) use ($colab) {
                     if (!empty($colab['document'])) {
-                        $q->where('document', $colab['document']);
+                        $q->where('document', $colab['document'])
+                          ->orWhere('document', 'santiago.sanchez@elite.com');
                     }
-                    $q->orWhereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower(trim($colab['email']))]);
+                    $q->orWhereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower(trim($colab['email']))])
+                      ->orWhereRaw('LOWER(TRIM(email)) = ?', ['santiago.sanchez@elite.com'])
+                      ->orWhereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($colab['name']))]);
                 })
                 ->first();
 
@@ -98,8 +108,15 @@ class TransversalAreaSeeder extends Seeder
             $instantiatedUsers[$colab['document']] = $user;
         }
 
+        // Limpiar usuario placeholder antiguo (User 7) si no tiene evaluaciones reales
+        $oldPlaceholder = User::where('email', 'gestion.documental@elite.com')->first();
+        if ($oldPlaceholder && $oldPlaceholder->id !== ($instantiatedUsers['1152470931']->id ?? null)) {
+            $oldPlaceholder->kpis()->delete();
+            $oldPlaceholder->delete();
+        }
+
         // =========================================================================
-        // KPIS: LÍDER DE CONTRATACIÓN Y GESTIÓN DOCUMENTAL (CC: 1152470931 - Santiago Sanchez Villa)
+        // KPIS: LÍDER DE CONTRATACIÓN Y GESTIÓN DOCUMENTAL (Santiago Sanchez Villa)
         // =========================================================================
         $userSantiago = $instantiatedUsers['1152470931'] ?? null;
         if ($userSantiago) {
