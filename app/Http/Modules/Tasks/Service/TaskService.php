@@ -140,6 +140,13 @@ class TaskService
                 ]
             ]);
 
+            $task->load([
+                'requestedBy:id,name',
+                'responsible:id,name',
+                'area:id,name'
+            ]);
+            $task->loadCount('observations');
+
             return $task;
         });
     }
@@ -202,6 +209,13 @@ class TaskService
                     'changes' => $changes
                 ]);
             }
+
+            $task->load([
+                'requestedBy:id,name',
+                'responsible:id,name',
+                'area:id,name'
+            ]);
+            $task->loadCount('observations');
 
             return $task;
         });

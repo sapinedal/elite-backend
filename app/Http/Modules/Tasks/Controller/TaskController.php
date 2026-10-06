@@ -62,6 +62,7 @@ class TaskController extends Controller
             'auditLogs:id,task_id,user_id,action,changes,created_at',
             'auditLogs.user:id,name'
         ]);
+        $task->loadCount('observations');
 
         return response()->json($task);
     }
