@@ -23,7 +23,7 @@ class ContractorController extends Controller
      */
     protected function checkEditorPermission()
     {
-        return true; // Forzado a true temporalmente para permitir pruebas de CRUD sin Spatie
+        return auth()->user()?->can('ftra.parametrizar') ?? false;
     }
 
     /**
