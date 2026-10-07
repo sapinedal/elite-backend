@@ -5,7 +5,7 @@ use App\Http\Modules\Users\Controller\RoleController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('users')->middleware('auth:sanctum')->group(function () {
-    Route::get('/', [UserController::class, 'index'])->middleware('permission:usuarios.ver');
+    Route::get('/', [UserController::class, 'index']);
     Route::post('/', [UserController::class, 'store'])->middleware('permission:usuarios.crear');
     Route::get('/me', [UserController::class, 'me']);
     Route::post('/{id}/restore', [UserController::class, 'restore'])->middleware('permission:usuarios.editar');
