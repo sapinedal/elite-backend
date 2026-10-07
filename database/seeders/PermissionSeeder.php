@@ -118,10 +118,10 @@ class PermissionSeeder extends Seeder
 
         // Empleado / Colaborador General
         $empleadoRole->syncPermissions([
-            'obra.ver',
-            'bitacora.ver', 'bitacora.crear',
+            'bitacora.ver',
+            'bitacora.crear',
+            'bitacora.editar',
             'kpi.ver',
-            'ftra.ver',
         ]);
 
         $this->command->info('Roles sincronizados con sus permisos correspondientes.');
