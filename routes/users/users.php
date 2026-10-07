@@ -17,7 +17,7 @@ Route::prefix('users')->middleware('auth:sanctum')->group(function () {
 });
 
 Route::prefix('roles')->middleware('auth:sanctum')->group(function () {
-    Route::get('/', [RoleController::class, 'index'])->middleware('permission:roles.ver');
+    Route::get('/', [RoleController::class, 'index'])->middleware('permission:roles.ver|roles.editar|usuarios.ver|usuarios.crear|usuarios.editar');
     Route::post('/', [RoleController::class, 'store'])->middleware('permission:roles.editar');
     Route::get('/{role}', [RoleController::class, 'show'])->middleware('permission:roles.ver');
     Route::put('/{role}', [RoleController::class, 'update'])->middleware('permission:roles.editar');

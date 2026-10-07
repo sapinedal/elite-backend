@@ -18,6 +18,13 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes, HasRoles;
 
     /**
+     * Spatie Permission guard name.
+     *
+     * @var string
+     */
+    protected string $guard_name = 'web';
+
+    /**
      * The accessors to append to the model's array form.
      *
      * @var list<string>
