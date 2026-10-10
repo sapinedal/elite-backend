@@ -62,6 +62,7 @@ class TaskController extends Controller
             'auditLogs:id,task_id,user_id,action,changes,created_at',
             'auditLogs.user:id,name'
         ]);
+        $task->loadCount('observations');
 
         return response()->json($task);
     }
@@ -80,11 +81,8 @@ class TaskController extends Controller
             return response()->json(['message' => 'Usuario no autenticado'], 401);
         }
 
-        // Simulamos la verificación de permisos para bitacora.editar
-        $isEditor = str_contains(strtolower(optional($user->position)->name), 'director') || 
-                    str_contains(strtolower(optional($user->position)->name), 'gerente') ||
-                    $user->email === 'admin@elite.com' ||
-                    str_contains(strtolower($user->name), 'admin');
+        // Verificación de permiso real mediante Spatie
+        $isEditor = $user->can('bitacora.editar');
 
         $validatedData = $request->validated();
 
@@ -125,12 +123,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'Usuario no autenticado'], 401);
         }
 
-        $isEditor = str_contains(strtolower(optional($user->position)->name), 'director') || 
-                    str_contains(strtolower(optional($user->position)->name), 'gerente') ||
-                    $user->email === 'admin@elite.com' ||
-                    str_contains(strtolower($user->name), 'admin');
-
-        if (!$isEditor) {
+        if (!$user->can('bitacora.eliminar')) {
             return response()->json([
                 'message' => 'No tienes permisos para eliminar tareas de la bitácora.'
             ], 403);

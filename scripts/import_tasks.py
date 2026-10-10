@@ -1,40 +1,48 @@
 """
-Importación histórica de TAREAS-PENDIENTES.xlsx a PostgreSQL.
+Importador de tareas históricas desde Excel a PostgreSQL para Elite.
+Excel: excels/Dashboard Seguimiento Inverconstruccion.xlsx (Hoja: Tareas)
 
-Estructura del Excel:
-  Col 1-9  : datos de la tarea (título, prioridad, solicitado, responsable, área, estado, fechas)
-  Col 10+  : observaciones por día de daily/comité (cabecera = fecha del meeting)
-
-Lógica:
-  - Cada fila con título → 1 registro en `tasks`
-  - Cada celda no vacía en columnas 10+ → 1 registro en `task_observations`
-  - Se crean usuarios y áreas que no existan en BD
-  - Se usa ON CONFLICT para usuarios/áreas para ser idempotente
-
-Requirements: pip install openpyxl psycopg2-binary bcrypt
-Ejecutar desde la raíz del proyecto: py scripts/import_tasks.py
+Uso:
+  python3 scripts/import_tasks.py --test            # Importa solo la tarea de prueba (Fila 3: Protocolización CTO T1)
+  python3 scripts/import_tasks.py --row <N>          # Importa una fila específica
+  python3 scripts/import_tasks.py --dry-run          # Simula la importación completa sin modificar la BD
+  python3 scripts/import_tasks.py --all              # Importa todas las tareas del Excel
 """
 
 import openpyxl
 import psycopg2
-import bcrypt
 import re
 import sys
 from datetime import datetime, date
 
-sys.stdout.reconfigure(encoding='utf-8')
-
 # ─────────────────────────────────────────────────────────────
 # 0. Configuración
 # ─────────────────────────────────────────────────────────────
-EXCEL_PATH = 'excels/TAREAS-PENDIENTES.xlsx'
-SYSTEM_USER_ID = 5          # SAMUEL PINEDA LOPEZ — fallback cuando el usuario no se resuelve
-DAILY_COLS_START = 10       # primera columna con observaciones de dailys
+EXCEL_PATH = 'excels/Dashboard Seguimiento Inverconstruccion.xlsx'
+SHEET_NAME = 'Tareas'
+ADMIN_USER_ID = 5           # Samuel Pineda (Administrador por defecto para requested_by_id)
+DAILY_COLS_START = 10       # Primera columna con observaciones de dailys/comités
 
-# Contraseña por defecto para usuarios nuevos (deben cambiarla)
-_raw_password = b'Elite2025!'
-_hashed = bcrypt.hashpw(_raw_password, bcrypt.gensalt(12)).decode('utf-8')
-DEFAULT_PASSWORD_HASH = _hashed.replace('$2b$', '$2y$', 1)  # Laravel usa $2y$
+MONTHS_ES = {
+    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+    'mayo': 5, 'junio': 6, 'juniio': 6,
+    'julio': 7, 'agosto': 8,
+    'septiembre': 9, 'octubre': 10, 'cotubre': 10,
+    'noviembre': 11, 'diciembre': 12, 'dicicembre': 12, 'diciciembre': 12
+}
+
+STATUS_MAP = {
+    'por hacer': 'Por hacer',
+    'en espera': 'En espera',
+    'en progreso': 'En progreso',
+    'en proceso': 'En progreso',
+    'completada': 'Completada',
+    'completado': 'Completada',
+    'finalizada': 'Completada',
+    'finalizado': 'Completada',
+}
+
+PRIORITY_VALID = {'P0', 'P1', 'P2', 'P3'}
 
 # ─────────────────────────────────────────────────────────────
 # 1. Leer .env y conectar a PostgreSQL
@@ -53,430 +61,423 @@ except Exception as e:
 
 try:
     conn = psycopg2.connect(
-        host=env_vars['DB_HOST'], port=env_vars['DB_PORT'],
-        database=env_vars['DB_DATABASE'],
-        user=env_vars['DB_USERNAME'], password=env_vars['DB_PASSWORD']
+        host=env_vars.get('DB_HOST', '127.0.0.1'),
+        port=env_vars.get('DB_PORT', '5432'),
+        database=env_vars.get('DB_DATABASE', 'elite'),
+        user=env_vars.get('DB_USERNAME', 'postgres'),
+        password=env_vars.get('DB_PASSWORD', '')
     )
     cur = conn.cursor()
-    print(f"Conectado a {env_vars['DB_HOST']}/{env_vars['DB_DATABASE']}")
+    print(f"✓ Conectado a base de datos: {env_vars.get('DB_HOST')}/{env_vars.get('DB_DATABASE')}")
 except Exception as e:
-    print(f'Error conectando a BD: {e}')
+    print(f'✗ Error conectando a BD: {e}')
     sys.exit(1)
 
-# ─────────────────────────────────────────────────────────────
-# 2. Verificar estado actual
-# ─────────────────────────────────────────────────────────────
-cur.execute('SELECT COUNT(*) FROM tasks')
-existing_tasks = cur.fetchone()[0]
-if existing_tasks > 0:
-    print(f'\n[AVISO] Ya existen {existing_tasks} tarea(s) en la BD.')
-    print('  El script AÑADIRÁ las del Excel (no borra las existentes).')
-    resp = input('  ¿Continuar? (s/n): ').strip().lower()
-    if resp != 's':
-        print('Cancelado.')
-        cur.close()
-        conn.close()
-        sys.exit(0)
 
 # ─────────────────────────────────────────────────────────────
-# 3. Helpers
+# 2. Helpers y Mapeos
 # ─────────────────────────────────────────────────────────────
-MONTHS_ES = {
-    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
-    'mayo': 5, 'junio': 6, 'juniio': 6,  # typo en col 145
-    'julio': 7, 'agosto': 8,
-    'septiembre': 9, 'octubre': 10, 'noviembre': 11,
-    'diciembre': 12, 'diciciembre': 12, 'dicicembre': 12,  # typos en col 84
-}
-
-def parse_column_date(header: str, col_idx: int):
-    """
-    Extrae una fecha de cabeceras como:
-      'Daily 5 mayo 2025'          → 2025-05-05
-      'Comite Jurídico 14 abril 2025' → 2025-04-14
-      'Daily 6 de Noviembre'       → 2024-11-06  (sin año, infiere por posición)
-    """
-    if not header:
-        return None
-    text = re.sub(r'\s+', ' ', header.strip().lower())
-
-    # Buscar mes
-    month = None
-    for m_name, m_num in MONTHS_ES.items():
-        if m_name in text:
-            month = m_num
-            break
-    if month is None:
-        return None
-
-    # Extraer números del texto
-    numbers = re.findall(r'\d+', text)
-    year, day = None, None
-    for num_str in numbers:
-        num = int(num_str)
-        if num > 2000:
-            year = num
-        elif num <= 31 and day is None:
-            day = num
-
-    # Inferir año por posición de columna cuando no está explícito
-    if year is None:
-        if col_idx == 13:           # "Daily 6 de Noviembre" → antes de mayo 2025, retroactivo Nov 2024
-            year = 2024
-        elif col_idx <= 86:
-            year = 2025
-        else:
-            year = 2026
-
-    # Cols 87-88 dicen "Enero 2025" pero vienen después de Diciembre 2025
-    if col_idx in (87, 88) and year == 2025 and month == 1:
-        year = 2026
-
-    if day is None:
-        day = 1  # fallback al primer día del mes
-
-    try:
-        return date(year, month, day)
-    except ValueError:
-        return date(year, month, 1)
-
+def clean_text(s):
+    if not s:
+        return ''
+    s = str(s).strip().lower()
+    s = re.sub(r'\s+', ' ', s)
+    s = s.replace('d e ', 'de ')
+    return s
 
 def norm(s: str) -> str:
-    """Normaliza un nombre para comparación: mayúsculas, sin espacios dobles."""
-    return re.sub(r'\s+', ' ', s.strip().upper()) if s else ''
-
+    """Normaliza texto: mayúsculas, sin espacios dobles ni tildes básicas para match flexible."""
+    if not s:
+        return ''
+    s = str(s).strip().upper()
+    s = re.sub(r'\s+', ' ', s)
+    return s
 
 def to_date(val):
-    """Convierte datetime o date a date, devuelve None si es None."""
     if val is None:
         return None
     if isinstance(val, datetime):
         return val.date()
     if isinstance(val, date):
         return val
+    if isinstance(val, str):
+        val = val.strip()
+        # Intentar parsear YYYY-MM-DD o DD/MM/YYYY
+        m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})', val)
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        m = re.match(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})', val)
+        if m:
+            return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
     return None
 
+def parse_header_date(h: str, fallback_year: int = 2025):
+    s = clean_text(h)
+    if not s or s.startswith('columna'):
+        return None, None
+    
+    # 1. DD/MM/YYYY or DD-MM-YYYY
+    m = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return date(y, mo, d), y
+        
+    # 2. DD-MM/YYYY or DD/MM/YY or DD-MM-YY
+    m = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2})$', s)
+    if m:
+        d, mo = int(m.group(1)), int(m.group(2))
+        y = int('20' + m.group(3))
+        return date(y, mo, d), y
+
+    # 3. Texto con nombre de mes
+    for mname, mnum in MONTHS_ES.items():
+        if mname in s:
+            # Patrón: 'mes DD-YY' o 'mes DD/YY' ej. 'julio 27-26'
+            m1 = re.search(rf'{mname}\s*(\d{{1,2}})[-/](\d{{2,4}})', s)
+            if m1:
+                d = int(m1.group(1))
+                y = int(m1.group(2))
+                if y < 100:
+                    y += 2000
+                return date(y, mnum, d), y
+            
+            # Patrón: 'mes DD YYYY' ej. 'enero 14 2026', 'enero 19 de 2026'
+            m2 = re.search(rf'{mname}\s*(\d{{1,2}})(?:\s*(?:de\s*)?(\d{{4}}))?', s)
+            if m2 and m2.group(1):
+                d = int(m2.group(1))
+                y = int(m2.group(2)) if m2.group(2) else fallback_year
+                return date(y, mnum, d), y
+
+            # Patrón: 'DD [de] mes [de] [YYYY]' ej. '14 de abril 2025', '6 de mayo', '28 de enero 2026'
+            m3 = re.search(r'(\d{1,2})\s*(?:de\s*)?' + mname + r'(?:\s*(?:de\s*)?(\d{4}))?', s)
+            if m3:
+                d = int(m3.group(1))
+                y = int(m3.group(2)) if m3.group(2) else fallback_year
+                return date(y, mnum, d), y
+            
+            # Patrón sin día explícito (asume día 1) ej. 'comite juridico-comercial abril 2025'
+            m4 = re.search(r'(?:abril|mayo|junio|julio|agosto|septiembre|octubre|cotubre|noviembre|diciembre|dicicembre|diciciembre|enero|febrero)\s*(\d{4})?', s)
+            if m4:
+                y = int(m4.group(1)) if m4.group(1) else fallback_year
+                return date(y, mnum, 1), y
+
+    return None, None
+
 
 # ─────────────────────────────────────────────────────────────
-# 4. Preparar usuarios
+# 3. Cargar Usuarios y Áreas de BD
 # ─────────────────────────────────────────────────────────────
-print('\n=== PREPARANDO USUARIOS ===')
-
-# Mapeo directo: nombre normalizado del Excel → user_id en BD
-# Cubre variaciones de escritura, apodos, etc.
-STATIC_USER_MAP = {
-    'CARTERA INVERCONSTRUCCION':    7,   # LUZ NELLY MORALES VALENCIA
-    'NELLY MORALES':                7,
-    'EDGAR ANDRES LANCE':           23,
-    'INGRID OSPINO':                2,   # INGRID PAOLA OSPICIO PACHECO (typo en Excel)
-    'INGRID OSPICIO':               2,
-    'LAURA G':                      6,   # LAURA GOMEZ
-    'LAURA GOMEZ':                  6,
-    'LAURA GÓMEZ':                  6,
-    'LAURA GÓMEZ CORREA':           6,
-    'MANUELA MEJIA':                32,  # MANUELA MARIA MEJIA GOMEZ
-    'SANTIAGO SANCHEZ':             9,
-    'SANTIAGO SÁNCHEZ':             9,
-    'SSANCHEZ@CYBPROJECT.COM':      9,   # mismo usuario, email externo
-    'SARA':                         1,   # SARA ELENA MORENO OROZCO
-    'SARA MORENO':                  1,
-    'JULIÁN POSADA':                25,  # JULIAN ANDRÉS POSADA MORALES
-    'JULIAN POSADA':                25,
-    'MARIA CAROLINA HOYOS SEJIN':   31,
-    'MARIA CAROLINA HOYOS SEJÍN':   31,
-}
-
-# Usuarios nuevos a crear: (clave_normalizada, nombre_completo, email)
-# Las claves son todas las variaciones que aparecen en el Excel.
-NEW_USERS_SPEC = [
-    # variaciones de Juliana Arango → un solo usuario
-    ('JULIANA ARANGO MARIN',         'Juliana Arango Marin',                  'juliana.arango@inverconstruccion.com'),
-    ('JULIANA ARANGO',               'Juliana Arango Marin',                  'juliana.arango@inverconstruccion.com'),
-    ('JULIAN ARANGO',                'Juliana Arango Marin',                  'juliana.arango@inverconstruccion.com'),
-    # otros
-    ('LADY GAONA',                   'Lady Gaona',                            'lady.gaona@elite.com'),
-    ('FELIPE ACOSTA',                'Felipe Acosta',                         'felipe.acosta@elite.com'),
-    ('FELIPE ARIAS',                 'Felipe Arias',                          'felipe.arias@elite.com'),
-    ('GERENCIA',                     'Gerencia Elite',                        'gerencia@elite.com'),
-    ('NICOLAS QUICENO',              'Nicolas Quiceno',                       'nicolas.quiceno@elite.com'),
-    ('RRHH',                         'Recursos Humanos',                      'rrhh@elite.com'),
-    ('RECURSOS HUMANOS',             'Recursos Humanos',                      'rrhh@elite.com'),
-    ('SANTIAGO BARON',               'Santiago Baron',                        'santiago.baron@elite.com'),
-    ('SOFIA YEPES',                  'Sofia Yepes',                           'sofia.yepes@elite.com'),
-    ('DIRECCIONCOMERCIAL@INVERCONSTRUCCION.COM', 'Dirección Comercial Inverconstrucción', 'direccioncomercial@inverconstruccion.com'),
-    ('GERENTEDEPROYECTOS@INVERCONSTRUCCION.COM', 'Gerente de Proyectos Inverconstrucción','gerentedeproyectos@inverconstruccion.com'),
-    ('AREA JURIDICA INVERCONSTRUCCIÓN S.A.S.',  'Área Jurídica Inverconstrucción',       'juridica@inverconstruccion.com'),
-    ('AREA JURIDICA INVERCONSTRUCCION S.A.S.',  'Área Jurídica Inverconstrucción',       'juridica@inverconstruccion.com'),
-    ('RESIDENTE ESTRUCTURA',         'Residente Estructura',                  'residente.estructura@elite.com'),
-    ('TRÁMITES CIUDADELA SAN MIGUEL','Trámites Ciudadela San Miguel',         'tramites@inverconstruccion.com'),
-    ('TRAMITES CIUDADELA SAN MIGUEL','Trámites Ciudadela San Miguel',         'tramites@inverconstruccion.com'),
-    ('VALERIA GIRALDO HENAO',        'Valeria Giraldo Henao',                 'valeria.giraldo@elite.com'),
-    ('INVERCONSTRUCCIONSAS@GMAIL.COM','Inverconstrucción SAS',                'inverconstruccionsas@gmail.com'),
-    ('MMEJIA@CYBPROJECT.COM',        'M. Mejia Cybproject',                   'mmejia@cybproject.com'),
-]
-
-# Cache: clave_normalizada → user_id
-user_cache: dict[str, int] = dict(STATIC_USER_MAP)
-
-# Cargar usuarios existentes en cache (por nombre y por email)
+user_cache = {}
 cur.execute('SELECT id, name, email FROM users')
 for uid, uname, uemail in cur.fetchall():
-    if uname:
-        user_cache[norm(uname)] = uid
     if uemail:
         user_cache[norm(uemail)] = uid
+        user_cache[uemail.strip().lower()] = uid
+    if uname:
+        user_cache[norm(uname)] = uid
 
-# Crear los usuarios que falten (idempotente por email)
-email_to_id: dict[str, int] = {}
-for cache_key, full_name, email in NEW_USERS_SPEC:
-    email_key = norm(email)
+# Mapeos estáticos conocidos para coincidencias comunes
+STATIC_USER_ALIASES = {
+    'SARA': 1,
+    'SARA MORENO': 1,
+    'SARA ELENA MORENO OROZCO': 1,
+    'INGRID': 2,
+    'INGRID OSPINO': 2,
+    'INGRID PAOLA OSPICIO PACHECO': 2,
+    'PAOLA ANDREA ARENAS GAVIRIA': 3,
+    'NATALIA ANDREA POSADA RAVE': 4,
+    'SAMUEL PINEDA': 5,
+    'LÍDER TRÁMITES Y ESCRITURACIÓN': 6,
+    'TRÁMITES CIUDADELA SAN MIGUEL': 6,
+    'TRAMITES CIUDADELA SAN MIGUEL': 6,
+    'JUAN CARLOS ESQUIVEL HOYOS': 8,
+    'SANTIAGO PRIETO PINTO': 9,
+    'JORGE ELIAS PEMBERTY ZAPATA': 10,
+    'OBRA SAN MIGUEL': 10,
+    'JULIÁN POSADA': 11,
+    'JULIAN POSADA': 11,
+    'JULIAN ANDRES POSADA MORALES': 11,
+    'SOFIA YEPES PEÑA': 12,
+    'SOFIA YEPES': 12,
+    'ISABEL CRISTINA GARCIA MARIN': 13,
+    'CLAUDIA PATRICIA JIMENEZ CARVAJAL': 14,
+    'SHARON JOLAINE VELANDIA TELLEZ': 15,
+    'VANESSA CALLE VALDERRAMA': 16,
+    'ANALISTACONTABLE@INVERCONSTRUCCION.COM': 16,
+    'GINNA MARCELA QUINTANA LEON': 17,
+    'MARCELA QUINTANA': 17,
+    'MANUELA MARIA MEJIA GOMEZ': 18,
+    'MANUELA MEJIA': 18,
+    'MMEJIA@CYBPROJECT.COM': 18,
+    'SANTIAGO SANCHEZ VILLA': 19,
+    'SANTIAGO SANCHEZ': 19,
+    'SSANCHEZ@CYBPROJECT.COM': 19,
+}
+for k, v in STATIC_USER_ALIASES.items():
+    user_cache[norm(k)] = v
 
-    # ¿Ya está en cache?
-    if cache_key in user_cache:
-        email_to_id[email] = user_cache[cache_key]
-        continue
-
-    # ¿El email ya existe en BD?
-    if email_key in user_cache:
-        user_cache[cache_key] = user_cache[email_key]
-        email_to_id[email] = user_cache[email_key]
-        continue
-
-    # ¿Ya lo creamos en esta ejecución?
-    if email in email_to_id:
-        user_cache[cache_key] = email_to_id[email]
-        continue
-
-    # Insertar
-    cur.execute(
-        'INSERT INTO users (name, email, password, created_at, updated_at) '
-        'VALUES (%s, %s, %s, NOW(), NOW()) ON CONFLICT (email) DO NOTHING RETURNING id',
-        (full_name, email, DEFAULT_PASSWORD_HASH)
-    )
-    row = cur.fetchone()
-    if row:
-        new_id = row[0]
-        print(f'  [NUEVO] {full_name} ({email}) → id={new_id}')
-    else:
-        # ON CONFLICT: recuperar el id existente
-        cur.execute('SELECT id FROM users WHERE email = %s', (email,))
-        new_id = cur.fetchone()[0]
-
-    user_cache[cache_key] = new_id
-    user_cache[email_key] = new_id
-    email_to_id[email] = new_id
-
-
-def resolve_user(raw) -> int | None:
-    """Devuelve user_id a partir de un valor crudo del Excel (nombre o email)."""
+def resolve_user_id(raw) -> int | None:
     if not raw:
         return None
     s = str(raw).strip()
-    key = norm(s)
-    if key in user_cache:
-        return user_cache[key]
-    # Búsqueda parcial (por si hay typos menores)
-    for ck, uid in user_cache.items():
-        if ck and (key in ck or ck in key) and len(ck) > 4:
+    # 1. Direct key
+    if norm(s) in user_cache:
+        return user_cache[norm(s)]
+    if s.lower() in user_cache:
+        return user_cache[s.lower()]
+    # 2. Substring match
+    for k, uid in user_cache.items():
+        if len(k) > 4 and (k in norm(s) or norm(s) in k):
             return uid
-    print(f'  [SIN MAPA] usuario: {repr(s)}')
     return None
 
-
-# ─────────────────────────────────────────────────────────────
-# 5. Preparar áreas
-# ─────────────────────────────────────────────────────────────
-print('\n=== PREPARANDO ÁREAS ===')
-
-STATIC_AREA_MAP = {
-    'CARTERA':         7,   # Trámites y Cartera
-    'COMERCIAL':       1,
-    'JURÍDICA':        8,
-    'JURIDICA':        8,
-    'TÉCNICA':         5,
-    'TECNICA':         5,
-}
-
-NEW_AREAS_SPEC = [
-    ('ESCRITURACIÓN',   'Escrituración'),
-    ('ESCRITURACION',   'Escrituración'),
-    ('GERENCIA',        'Gerencia'),
-    ('GESTIÓN HUMANA',  'Gestión Humana'),
-    ('GESTION HUMANA',  'Gestión Humana'),
-    ('MARKETING',       'Marketing'),
-]
-
-area_cache: dict[str, int] = dict(STATIC_AREA_MAP)
-
-# Cargar áreas existentes
+area_cache = {}
 cur.execute('SELECT id, name FROM areas')
 for aid, aname in cur.fetchall():
-    area_cache[norm(aname)] = aid
+    if aname:
+        area_cache[norm(aname)] = aid
 
-# Crear las que falten
-area_name_to_id: dict[str, int] = {}
-for cache_key, full_name in NEW_AREAS_SPEC:
-    if cache_key in area_cache:
-        area_name_to_id[full_name] = area_cache[cache_key]
-        continue
-    if full_name in area_name_to_id:
-        area_cache[cache_key] = area_name_to_id[full_name]
-        continue
-    cur.execute(
-        'INSERT INTO areas (name, created_at, updated_at) VALUES (%s, NOW(), NOW()) RETURNING id',
-        (full_name,)
-    )
-    new_id = cur.fetchone()[0]
-    area_cache[cache_key] = new_id
-    area_cache[norm(full_name)] = new_id
-    area_name_to_id[full_name] = new_id
-    print(f'  [NUEVA] {full_name} → id={new_id}')
+STATIC_AREA_ALIASES = {
+    'COMERCIAL': 1,
+    'OPERACIONES': 2,
+    'TECNOLOGÍA': 3,
+    'TECNOLOGIA': 3,
+    'ADMINISTRATIVO': 4,
+    'TRÁMITES Y ESCRITURACIÓN': 5,
+    'TRAMITES Y ESCRITURACION': 5,
+    'ESCRITURACIÓN': 5,
+    'ESCRITURACION': 5,
+    'PROCESOS Y GESTIÓN DOCUMENTAL': 6,
+    'TÉCNICA': 7,
+    'TECNICA': 7,
+    'CONTABLE': 16,
+    'CONTABILIDAD': 16,
+    'JURÍDICA': 21,
+    'JURIDICA': 21,
+    'MERCADEO': 22,
+    'MARKETING': 22,
+}
+for k, v in STATIC_AREA_ALIASES.items():
+    area_cache[norm(k)] = v
 
-
-def resolve_area(raw) -> int | None:
+def resolve_or_create_area(raw, dry_run=False) -> int | None:
     if not raw:
         return None
-    key = norm(str(raw).strip())
-    val = area_cache.get(key)
-    if val is None:
-        print(f'  [SIN MAPA] área: {repr(raw)}')
-    return val
+    s = str(raw).strip()
+    k = norm(s)
+    if k in area_cache:
+        return area_cache[k]
+    
+    # Substring match
+    for ak, aid in area_cache.items():
+        if len(ak) > 3 and (ak in k or k in ak):
+            return aid
+
+    if dry_run:
+        return 999  # Fake ID for dry run
+
+    # Crear área si no existe
+    cur.execute('INSERT INTO areas (name, created_at, updated_at) VALUES (%s, NOW(), NOW()) RETURNING id', (s,))
+    new_id = cur.fetchone()[0]
+    area_cache[k] = new_id
+    print(f'  [ÁREA CREADA] "{s}" → ID: {new_id}')
+    return new_id
 
 
 # ─────────────────────────────────────────────────────────────
-# 6. Cargar Excel y parsear fechas de columnas
+# 4. Procesamiento del Excel
 # ─────────────────────────────────────────────────────────────
-print('\n=== CARGANDO EXCEL ===')
-try:
+def run_import(single_row: int | None = None, dry_run: bool = False):
+    print(f'\n=== CARGANDO EXCEL ({EXCEL_PATH}) ===')
     wb = openpyxl.load_workbook(EXCEL_PATH, data_only=True)
-    sheet = wb.active
-    print(f'Hoja: {sheet.title} | Filas: {sheet.max_row} | Columnas: {sheet.max_column}')
-except Exception as e:
-    print(f'Error cargando Excel: {e}')
-    cur.close()
-    conn.close()
-    sys.exit(1)
+    if SHEET_NAME not in wb.sheetnames:
+        print(f'✗ Error: No se encontró la hoja "{SHEET_NAME}". Hojas disponibles: {wb.sheetnames}')
+        sys.exit(1)
+        
+    sheet = wb[SHEET_NAME]
+    print(f'✓ Hoja seleccionada: "{SHEET_NAME}" | Filas: {sheet.max_row} | Columnas: {sheet.max_column}')
 
-# Parsear fecha de cada columna de daily
-column_dates: dict[int, date] = {}
-for col_idx in range(DAILY_COLS_START, sheet.max_column + 1):
-    header = sheet.cell(row=1, column=col_idx).value
-    if header:
-        parsed = parse_column_date(str(header), col_idx)
-        column_dates[col_idx] = parsed
+    # Parsear cabeceras de columnas de observaciones
+    column_dates = {}
+    current_year = 2025
+    for c in range(DAILY_COLS_START, sheet.max_column + 1):
+        header_val = sheet.cell(1, c).value
+        if header_val:
+            parsed_dt, yr = parse_header_date(str(header_val), fallback_year=current_year)
+            if yr:
+                current_year = yr
+            if parsed_dt:
+                column_dates[c] = (str(header_val).strip(), parsed_dt)
 
-# Mostrar las que no se pudieron parsear
-unparsed = [
-    (col_idx, sheet.cell(row=1, column=col_idx).value)
-    for col_idx, d in column_dates.items()
-    if d is None
-]
-if unparsed:
-    print(f'Columnas sin fecha parseada ({len(unparsed)}):')
-    for ci, h in unparsed:
-        print(f'  col {ci}: {repr(h)}')
+    print(f'✓ {len(column_dates)} columnas de Dailys/Comités identificadas con fechas válidas.')
 
-# ─────────────────────────────────────────────────────────────
-# 7. Importar tareas y observaciones
-# ─────────────────────────────────────────────────────────────
-print('\n=== IMPORTANDO ===')
+    # Determinar rango de filas
+    if single_row is not None:
+        row_indices = [single_row]
+        print(f'\n=== MODO FILA ÚNICA: Fila {single_row} ===')
+    else:
+        row_indices = list(range(2, sheet.max_row + 1))
+        print(f'\n=== MODO MASIVO: {len(row_indices)} filas a evaluar ===')
 
-STATUS_VALID = {'Por hacer', 'En espera', 'En progreso', 'Completada'}
-PRIORITY_VALID = {'P0', 'P1', 'P2', 'P3'}
+    if dry_run:
+        print('⚠️  [MODO DRY-RUN ACTIVADO] No se realizarán escrituras permanentes en la base de datos.')
 
-tasks_created = 0
-obs_created = 0
-rows_skipped = 0
+    tasks_imported = 0
+    obs_imported = 0
+    skipped_empty = 0
 
-try:
-    for row_idx in range(2, sheet.max_row + 1):
-        title_raw = sheet.cell(row=row_idx, column=1).value
-        if not title_raw or not str(title_raw).strip():
-            rows_skipped += 1
+    for r in row_indices:
+        title_raw = sheet.cell(r, 1).value
+        if not title_raw or str(title_raw).strip() == '':
+            skipped_empty += 1
             continue
 
-        title = str(title_raw).strip()[:255]  # max 255 chars (VARCHAR limit)
+        title = str(title_raw).strip()
+        priority_raw = str(sheet.cell(r, 2).value or 'P2').strip().upper()
+        priority = priority_raw if priority_raw in PRIORITY_VALID else 'P2'
 
-        priority_raw = sheet.cell(row=row_idx, column=2).value
-        priority = str(priority_raw).strip() if priority_raw else 'P2'
-        if priority not in PRIORITY_VALID:
-            priority = 'P2'
+        directriz = sheet.cell(r, 3).value
+        responsable_raw = sheet.cell(r, 4).value
+        estado_raw = str(sheet.cell(r, 5).value or 'Por hacer').strip().lower()
+        status = STATUS_MAP.get(estado_raw, 'Por hacer')
 
-        status_raw = sheet.cell(row=row_idx, column=6).value
-        status = str(status_raw).strip() if status_raw else 'Por hacer'
-        if status not in STATUS_VALID:
-            status = 'Por hacer'
+        area_raw = sheet.cell(r, 6).value
+        start_date = to_date(sheet.cell(r, 7).value)
+        sched_end_date = to_date(sheet.cell(r, 8).value)
+        actual_end_date = to_date(sheet.cell(r, 9).value)
 
-        requested_by_id = resolve_user(sheet.cell(row=row_idx, column=3).value) or SYSTEM_USER_ID
-        responsible_id  = resolve_user(sheet.cell(row=row_idx, column=4).value)
-        area_id         = resolve_area(sheet.cell(row=row_idx, column=5).value)
+        # Reglas de negocio acordadas:
+        # 1. requested_by_id = default admin (Samuel Pineda)
+        requested_by_id = ADMIN_USER_ID
+        
+        # 2. responsible_id = buscar usuario; si no existe colocar NULL para poder filtrar
+        responsible_id = resolve_user_id(responsable_raw)
 
-        start_date      = to_date(sheet.cell(row=row_idx, column=7).value)
-        scheduled_end   = to_date(sheet.cell(row=row_idx, column=8).value)
-        actual_end      = to_date(sheet.cell(row=row_idx, column=9).value)
+        # 3. area_id
+        area_id = resolve_or_create_area(area_raw, dry_run=dry_run)
 
-        # Si está Completada pero sin fecha real, usamos la programada como mejor aproximación
-        if status == 'Completada' and actual_end is None:
-            actual_end = scheduled_end
+        # 4. Si estado es completada y no hay fecha real, aproximar con fecha estimada
+        if status == 'Completada' and actual_end_date is None:
+            actual_end_date = sched_end_date
 
-        # Insertar tarea
-        cur.execute(
-            '''INSERT INTO tasks
-               (title, priority, status, requested_by_id, responsible_id, area_id,
-                start_date, scheduled_end_date, actual_end_date, created_at, updated_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-               RETURNING id''',
-            (title, priority, status, requested_by_id, responsible_id, area_id,
-             start_date, scheduled_end, actual_end)
-        )
-        task_id = cur.fetchone()[0]
-        tasks_created += 1
+        # Extraer observaciones de esta fila
+        row_observations = []
+        for c in range(DAILY_COLS_START, sheet.max_column + 1):
+            cell_val = sheet.cell(r, c).value
+            if cell_val is not None and str(cell_val).strip() != '':
+                col_info = column_dates.get(c)
+                col_header = col_info[0] if col_info else f'Columna {c}'
+                obs_date = col_info[1] if col_info else date.today()
+                row_observations.append({
+                    'col': c,
+                    'header': col_header,
+                    'date': obs_date,
+                    'text': str(cell_val).strip()
+                })
 
-        # El observador de las notas es el responsable, o el solicitante, o el sistema
-        observer_id = responsible_id or requested_by_id or SYSTEM_USER_ID
+        print(f'\n--- [Fila {r}] ---')
+        print(f'  Título:        "{title}"')
+        print(f'  Prioridad:     {priority}')
+        print(f'  Estado:        {status} (Original: {sheet.cell(r, 5).value})')
+        print(f'  Responsable:   {responsable_raw} → ID: {responsible_id} ({"Sin asignar" if responsible_id is None else "Asignado"})')
+        print(f'  Solicitado por: ID {requested_by_id} (Admin Samuel Pineda)')
+        print(f'  Área:          {area_raw} → ID: {area_id}')
+        print(f'  Fechas:        Inicio={start_date} | Prog={sched_end_date} | Real={actual_end_date}')
+        print(f'  Observaciones: {len(row_observations)} notas históricas encontradas')
 
-        # Insertar observaciones de dailys
-        for col_idx in range(DAILY_COLS_START, sheet.max_column + 1):
-            obs_raw = sheet.cell(row=row_idx, column=col_idx).value
-            if not obs_raw or not str(obs_raw).strip():
-                continue
+        for idx, o in enumerate(row_observations, 1):
+            print(f'    [{idx}] {o["date"]} ({o["header"]}): {o["text"][:60]}...')
 
-            obs_text = str(obs_raw).strip()
-            obs_date = column_dates.get(col_idx)
+        if not dry_run:
+            # Insertar en tabla tasks
+            cur.execute("""
+                INSERT INTO tasks (
+                    title, priority, status, requested_by_id, responsible_id, area_id,
+                    start_date, scheduled_end_date, actual_end_date, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                RETURNING id
+            """, (
+                title, priority, status, requested_by_id, responsible_id, area_id,
+                start_date, sched_end_date, actual_end_date
+            ))
+            task_id = cur.fetchone()[0]
+            tasks_imported += 1
 
-            if obs_date:
-                obs_ts = datetime(obs_date.year, obs_date.month, obs_date.day, 12, 0, 0)
-            else:
-                obs_ts = None
+            # Insertar audit log de creación
+            cur.execute("""
+                INSERT INTO task_audit_logs (task_id, user_id, action, changes, created_at, updated_at)
+                VALUES (%s, %s, 'created', %s, NOW(), NOW())
+            """, (
+                task_id, requested_by_id, psycopg2.extras.Json({
+                    'title': {'new': title},
+                    'priority': {'new': priority},
+                    'status': {'new': status},
+                    'responsible_id': {'new': responsible_id},
+                    'area_id': {'new': area_id}
+                })
+            ))
 
-            cur.execute(
-                '''INSERT INTO task_observations
-                   (task_id, user_id, observation, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s)''',
-                (task_id, observer_id, obs_text,
-                 obs_ts or datetime.now(), obs_ts or datetime.now())
-            )
-            obs_created += 1
+            # Insertar observaciones históricas
+            # El autor de las observaciones es el responsable de la tarea (o fallback a admin si es null)
+            observer_user_id = responsible_id if responsible_id is not None else ADMIN_USER_ID
 
-        if tasks_created % 50 == 0:
-            print(f'  ... {tasks_created} tareas insertadas')
+            for o in row_observations:
+                obs_dt = datetime(o['date'].year, o['date'].month, o['date'].day, 12, 0, 0)
+                cur.execute("""
+                    INSERT INTO task_observations (task_id, user_id, observation, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    task_id, observer_user_id, o['text'], obs_dt, obs_dt
+                ))
+                obs_imported += 1
 
-    conn.commit()
-    print(f'\n{"="*50}')
-    print('IMPORTACIÓN COMPLETADA CON ÉXITO')
-    print(f'  Tareas importadas:       {tasks_created}')
-    print(f'  Observaciones importadas: {obs_created}')
-    print(f'  Filas vacías omitidas:   {rows_skipped}')
-    print(f'{"="*50}')
-    print()
-    print('IMPORTANTE: Los usuarios nuevos tienen contraseña "Elite2025!"')
-    print('  Pídeles que la cambien desde el panel de administración.')
+            print(f'  ✓ Insertada exitosamente en BD con Task ID: {task_id}')
+        else:
+            tasks_imported += 1
+            obs_imported += len(row_observations)
 
-except Exception as e:
-    conn.rollback()
-    print(f'\n[ERROR] Se revirtieron todos los cambios: {e}')
-    import traceback
-    traceback.print_exc()
-finally:
-    cur.close()
-    conn.close()
+    if not dry_run:
+        conn.commit()
+        print(f'\n==================================================')
+        print(f'✓ IMPORTACIÓN EXITOSA Y CONFIRMADA EN BD')
+        print(f'  Tareas creadas:        {tasks_imported}')
+        print(f'  Observaciones creadas: {obs_imported}')
+        print(f'==================================================\n')
+    else:
+        print(f'\n==================================================')
+        print(f'✓ SIMULACIÓN (DRY-RUN) FINALIZADA')
+        print(f'  Tareas a crear:        {tasks_imported}')
+        print(f'  Observaciones a crear: {obs_imported}')
+        print(f'==================================================\n')
+
+# ─────────────────────────────────────────────────────────────
+# 5. Entrada principal
+# ─────────────────────────────────────────────────────────────
+if __name__ == '__main__':
+    try:
+        import psycopg2.extras
+        if '--test' in sys.argv:
+            # Fila 3: 'protocolizacion certificado tecnico de ocupación T1' (En progreso)
+            run_import(single_row=3, dry_run=False)
+        elif '--row' in sys.argv:
+            idx = sys.argv.index('--row')
+            row_num = int(sys.argv[idx + 1])
+            run_import(single_row=row_num, dry_run=False)
+        elif '--dry-run' in sys.argv:
+            run_import(single_row=None, dry_run=True)
+        elif '--all' in sys.argv:
+            run_import(single_row=None, dry_run=False)
+        else:
+            print("Uso:")
+            print("  python3 scripts/import_tasks.py --test      # Importa Fila 3 (Prueba)")
+            print("  python3 scripts/import_tasks.py --row <N>   # Importa una fila específica")
+            print("  python3 scripts/import_tasks.py --dry-run   # Simula todo")
+            print("  python3 scripts/import_tasks.py --all       # Importa todo")
+    except Exception as e:
+        conn.rollback()
+        print(f'\n✗ Error durante la ejecución: {e}')
+        import traceback
+        traceback.print_exc()
+    finally:
+        cur.close()
+        conn.close()

@@ -25,7 +25,7 @@ class StoreTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => 'required|string|max:255', // Descripción explícita de la tarea
+            'title' => 'required|string', // Descripción explícita de la tarea
             
             // Prioridades estrictas según el feedback del desarrollador: P0 a P3
             'priority' => 'required|string|in:P0,P1,P2,P3', 

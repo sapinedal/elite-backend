@@ -31,7 +31,17 @@ class TaskService
         }
 
         if (!empty($filters['search'])) {
-            $query->where('title', 'like', '%' . $filters['search'] . '%');
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'ilike', '%' . $search . '%')
+                  ->orWhereHas('responsible', function ($sub) use ($search) {
+                      $sub->where('name', 'ilike', '%' . $search . '%')
+                          ->orWhere('email', 'ilike', '%' . $search . '%');
+                  })
+                  ->orWhereHas('area', function ($sub) use ($search) {
+                      $sub->where('name', 'ilike', '%' . $search . '%');
+                  });
+            });
         }
 
         // Si se solicita paginación, calculamos estadísticas y devolvemos la respuesta paginada
@@ -130,6 +140,13 @@ class TaskService
                 ]
             ]);
 
+            $task->load([
+                'requestedBy:id,name',
+                'responsible:id,name',
+                'area:id,name'
+            ]);
+            $task->loadCount('observations');
+
             return $task;
         });
     }
@@ -192,6 +209,13 @@ class TaskService
                     'changes' => $changes
                 ]);
             }
+
+            $task->load([
+                'requestedBy:id,name',
+                'responsible:id,name',
+                'area:id,name'
+            ]);
+            $task->loadCount('observations');
 
             return $task;
         });
