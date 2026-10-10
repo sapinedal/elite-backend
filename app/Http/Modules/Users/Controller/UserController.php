@@ -88,11 +88,15 @@ class UserController extends Controller
                     $user->email === 'admin@elite.com' ||
                     str_contains(strtolower($user->name), 'admin');
 
-        $permissions = ['admin', 'evaluar', 'ver-historial', 'bitacora.crear', 'ftra.ver'];
+        $permissions = ['admin', 'evaluar', 'ver-historial', 'bitacora.crear', 'ftra.ver', 'documental.ver'];
         if ($isEditor) {
             $permissions[] = 'bitacora.editar';
             $permissions[] = 'bitacora.eliminar';
             $permissions[] = 'ftra.parametrizar';
+            $permissions[] = 'documental.subir';
+            $permissions[] = 'documental.crear_carpeta';
+            $permissions[] = 'documental.eliminar';
+            $permissions[] = 'documental.admin';
         }
 
         return response()->json([
