@@ -564,4 +564,57 @@ class DocumentalService
 
         return round($bytes / pow(1024, $power), $precision) . ' ' . $units[$power];
     }
+
+    /**
+     * Deduce el tipo MIME según la extensión de forma instantánea sin peticiones de red.
+     */
+    public function guessMimeType(string $extension): string
+    {
+        $map = [
+            // Documentos
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'ppt' => 'application/vnd.ms-powerpoint',
+            'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'txt' => 'text/plain',
+            'csv' => 'text/csv',
+            'rtf' => 'application/rtf',
+            // Imágenes
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            'bmp' => 'image/bmp',
+            'ico' => 'image/x-icon',
+            'tiff' => 'image/tiff',
+            'tif' => 'image/tiff',
+            // Audio y Video
+            'mp4' => 'video/mp4',
+            'mov' => 'video/quicktime',
+            'avi' => 'video/x-msvideo',
+            'mkv' => 'video/x-matroska',
+            'webm' => 'video/webm',
+            'mp3' => 'audio/mpeg',
+            'wav' => 'audio/wav',
+            // Comprimidos
+            'zip' => 'application/zip',
+            'rar' => 'application/vnd.rar',
+            '7z' => 'application/x-7z-compressed',
+            'tar' => 'application/x-tar',
+            'gz' => 'application/gzip',
+            // Planos / CAD y código
+            'dwg' => 'application/acad',
+            'dxf' => 'application/dxf',
+            'json' => 'application/json',
+            'xml' => 'application/xml',
+            'html' => 'text/html',
+        ];
+
+        return $map[strtolower(ltrim($extension, '.'))] ?? 'application/octet-stream';
+    }
 }
