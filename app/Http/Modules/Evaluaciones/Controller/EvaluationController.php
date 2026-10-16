@@ -126,7 +126,7 @@ class EvaluationController extends Controller
 
     public function globalHistory(Request $request)
     {
-        $query = Evaluation::with(['user', 'results']);
+        $query = Evaluation::whereHas('user')->with(['user', 'results']);
 
         if ($request->has('user_id') && $request->user_id) {
             $query->where('user_id', $request->user_id);

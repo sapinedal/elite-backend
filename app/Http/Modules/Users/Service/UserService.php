@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Hash;
 
 class UserService
 {
-    public function getAllUsers(bool $includeInactive = true)
+    public function getAllUsers(bool $includeInactive = false)
     {
         $query = User::with(['area', 'position', 'roles:id,name', 'permissions:id,name']);
         if ($includeInactive) {

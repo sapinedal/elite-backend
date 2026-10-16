@@ -18,7 +18,7 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $includeInactive = $request->boolean('include_inactive', true);
+        $includeInactive = $request->boolean('include_inactive', false);
         return response()->json($this->userService->getAllUsers($includeInactive));
     }
 
