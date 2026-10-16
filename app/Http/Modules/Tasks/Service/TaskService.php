@@ -227,10 +227,19 @@ class TaskService
     public function deleteTask(Task $task, int $userId): void
     {
         DB::transaction(function () use ($task, $userId) {
-            // Registramos un log histórico rápido antes del borrado físico (u opcionalmente lógico)
-            // Nota: Al usar onDelete('cascade'), la base de datos limpia automáticamente observaciones y logs.
-            // Para mantener auditoría persistente tras borrar una tarea, se suele usar SoftDeletes en el modelo.
-            // En este caso, realizamos el delete directo de Eloquent.
+            // Registramos un log histórico antes de aplicar el soft delete
+            TaskAuditLog::create([
+                'task_id' => $task->id,
+                'user_id' => $userId,
+                'action' => 'deleted',
+                'changes' => [
+                    'status' => [
+                        'old' => $task->status,
+                        'new' => 'Eliminada (Soft Delete)'
+                    ]
+                ]
+            ]);
+
             $task->delete();
         });
     }

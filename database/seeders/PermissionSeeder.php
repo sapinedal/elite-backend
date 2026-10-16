@@ -110,7 +110,7 @@ class PermissionSeeder extends Seeder
         // Residente / Supervisor de Obra
         $residenteRole->syncPermissions([
             'obra.ver', 'obra.crear',
-            'bitacora.ver', 'bitacora.crear',
+            'bitacora.ver', 'bitacora.crear', 'bitacora.editar', 'bitacora.eliminar',
             'kpi.ver',
             'ftra.ver', 'ftra.crear', 'ftra.editar', 'ftra.revisar',
             'proyectos.ver',
@@ -121,6 +121,7 @@ class PermissionSeeder extends Seeder
             'bitacora.ver',
             'bitacora.crear',
             'bitacora.editar',
+            'bitacora.eliminar',
             'kpi.ver',
         ]);
 

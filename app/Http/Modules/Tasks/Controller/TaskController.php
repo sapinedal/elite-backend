@@ -81,29 +81,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'Usuario no autenticado'], 401);
         }
 
-        // Verificación de permiso real mediante Spatie
-        $isEditor = $user->can('bitacora.editar');
-
         $validatedData = $request->validated();
-
-        // Si intenta modificar campos estratégicos y no es editor, bloqueamos la acción.
-        // Esto previene que usuarios generales alteren las metas planificadas de la bitácora.
-        $restrictedKeys = ['title', 'responsible_id', 'area_id', 'start_date', 'scheduled_end_date'];
-        $hasRestrictedChanges = false;
-
-        foreach ($restrictedKeys as $key) {
-            if (isset($validatedData[$key]) && $validatedData[$key] != $task->getAttribute($key)) {
-                $hasRestrictedChanges = true;
-                break;
-            }
-        }
-
-        if ($hasRestrictedChanges && !$isEditor) {
-            return response()->json([
-                'message' => 'No tienes permisos para modificar campos estratégicos de planificación en esta tarea. Solo puedes actualizar su estado.'
-            ], 403);
-        }
-
         $updatedTask = $this->taskService->updateTask($task, $validatedData, $user->id);
 
         return response()->json([

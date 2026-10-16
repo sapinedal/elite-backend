@@ -3,11 +3,14 @@
 namespace App\Http\Modules\Tasks\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Http\Modules\Users\Models\User;
 use App\Http\Modules\Configuracion\Models\Area;
 
 class Task extends Model
 {
+    use SoftDeletes;
+
     /**
      * Campos rellenables de forma masiva (Mass Assignment Protection).
      * 
