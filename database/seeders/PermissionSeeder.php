@@ -164,19 +164,21 @@ class PermissionSeeder extends Seeder
         // 4. Asignación de nuevos roles a los usuarios existentes según su área y cargo
         $users = User::with(['position.area'])->get();
         foreach ($users as $user) {
-            $posName = strtolower(optional($user->position)->name ?? '');
-            $areaName = strtolower(optional($user->position?->area)->name ?? '');
-            $email = strtolower($user->email);
-            $userName = strtolower($user->name);
+            $posName = mb_strtolower(optional($user->position)->name ?? '', 'UTF-8');
+            $areaName = mb_strtolower(optional($user->position?->area)->name ?? '', 'UTF-8');
+            $email = mb_strtolower($user->email ?? '', 'UTF-8');
+            $userName = mb_strtolower($user->name ?? '', 'UTF-8');
 
             // Usuarios Administrativos / Tecnología con acceso de superadministrador
             if (
                 $email === 'admin@elite.com' ||
                 $email === 'samuel.pineda@elite.com' ||
                 str_contains($userName, 'samuel pineda') ||
-                str_contains($userName, 'control y gestión') ||
+                str_contains($userName, 'control y gesti') ||
+                str_contains($userName, 'control y gestion') ||
                 str_contains($posName, 'desarrollador') ||
-                str_contains($posName, 'tecnología')
+                str_contains($posName, 'tecnología') ||
+                str_contains($posName, 'tecnologia')
             ) {
                 $user->syncRoles(['admin']);
             } elseif (
