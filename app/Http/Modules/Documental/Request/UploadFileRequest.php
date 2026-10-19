@@ -16,7 +16,8 @@ class UploadFileRequest extends FormRequest
         return [
             'path' => 'nullable|string',
             'files' => 'required|array|min:1',
-            'files.*' => 'required|file|max:102400', // Máx 100MB por archivo
+            // El tamaño máximo y las extensiones se validan en DocumentalSettingsService (configurables desde la app)
+            'files.*' => 'required|file',
         ];
     }
 
@@ -24,7 +25,7 @@ class UploadFileRequest extends FormRequest
     {
         return [
             'files.required' => 'Debes adjuntar al menos un archivo para subir.',
-            'files.*.max' => 'El tamaño máximo por archivo es de 100MB.',
+            'files.*.uploaded' => 'Uno de los archivos supera el límite de subida del servidor.',
         ];
     }
 }

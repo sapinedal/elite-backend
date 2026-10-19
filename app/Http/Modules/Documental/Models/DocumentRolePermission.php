@@ -2,18 +2,15 @@
 
 namespace App\Http\Modules\Documental\Models;
 
-use App\Http\Modules\Configuracion\Models\Area;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Permission\Models\Role;
 
-class DocumentAreaPermission extends Model
+class DocumentRolePermission extends Model
 {
-    use HasFactory;
-
-    protected $table = 'document_area_permissions';
+    protected $table = 'document_role_permissions';
 
     protected $fillable = [
-        'area_id',
+        'role_id',
         'folder_path',
         'can_read',
         'can_upload',
@@ -28,8 +25,8 @@ class DocumentAreaPermission extends Model
         'can_delete' => 'boolean',
     ];
 
-    public function area()
+    public function role()
     {
-        return $this->belongsTo(Area::class);
+        return $this->belongsTo(Role::class);
     }
 }

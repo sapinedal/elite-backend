@@ -51,6 +51,11 @@ class PermissionSeeder extends Seeder
 
             // Gestión Documental (Explorador S3)
             'documental.ver',
+            'documental.subir',
+            'documental.crear_carpeta',
+            'documental.renombrar',
+            'documental.eliminar',
+            'documental.administrar',
 
             // KPIs y Evaluaciones
             'kpi.ver',
@@ -111,6 +116,13 @@ class PermissionSeeder extends Seeder
             'bitacora.eliminar',
         ];
 
+        // Gestión documental básica: consultar, subir y crear carpetas
+        $documentalPermissions = [
+            'documental.ver',
+            'documental.subir',
+            'documental.crear_carpeta',
+        ];
+
         // ADMIN: Acceso total a todo el sistema
         $adminRole->syncPermissions(Permission::all());
 
@@ -131,7 +143,7 @@ class PermissionSeeder extends Seeder
             'ftra.aprobar',
             'ftra.parametrizar',
             'proyectos.ver',
-        ]));
+        ], $documentalPermissions));
 
         // JURÍDICA: Tareas + Módulo Jurídica + Ver Contratos
         $juridicaRole->syncPermissions(array_merge($tareaPermissions, [
@@ -140,24 +152,27 @@ class PermissionSeeder extends Seeder
             'juridica.editar',
             'juridica.eliminar',
             'contratos.ver',
-        ]));
+        ], $documentalPermissions));
 
         // TRANSVERSAL: Tareas + Gestión Documental (Explorador S3)
         $transversalRole->syncPermissions(array_merge($tareaPermissions, [
             'documental.ver',
+            'documental.subir',
+            'documental.crear_carpeta',
+            'documental.renombrar',
         ]));
 
-        // COMERCIAL: Tareas
-        $comercialRole->syncPermissions($tareaPermissions);
+        // COMERCIAL: Tareas + Gestión Documental
+        $comercialRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
-        // MERCADEO: Tareas
-        $mercadeoRole->syncPermissions($tareaPermissions);
+        // MERCADEO: Tareas + Gestión Documental
+        $mercadeoRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
-        // CONTABLE: Tareas
-        $contableRole->syncPermissions($tareaPermissions);
+        // CONTABLE: Tareas + Gestión Documental
+        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
-        // CARTERA Y TRÁMITES: Tareas
-        $carteraTramitesRole->syncPermissions($tareaPermissions);
+        // CARTERA Y TRÁMITES: Tareas + Gestión Documental
+        $carteraTramitesRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
         $this->command->info('Roles sincronizados con sus permisos correspondientes.');
 
@@ -184,6 +199,9 @@ class PermissionSeeder extends Seeder
             } elseif (
                 str_contains($userName, 'laura gomez') ||
                 str_contains($userName, 'santiago barón') ||
+                str_contains($userName, 'santiago baron') ||
+                str_contains($userName, 'nicolas quiceno') ||
+                str_contains($email, 'nicolas.quiceno') ||
                 ($areaName === 'administrativo' && str_contains($posName, 'gerente general'))
             ) {
                 $user->syncRoles(['admin', 'gerencia']);

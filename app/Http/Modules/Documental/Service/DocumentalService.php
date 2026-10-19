@@ -3,22 +3,75 @@
 namespace App\Http\Modules\Documental\Service;
 
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
-use App\Http\Modules\Documental\Models\DocumentAreaPermission;
+use App\Http\Modules\Documental\Models\DocumentRolePermission;
 use App\Http\Modules\Users\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Spatie\Permission\Models\Role;
 
 class DocumentalService
 {
+    /**
+     * Permisos Spatie del módulo: definen QUÉ acciones puede ejecutar cada rol.
+     * Las reglas por carpeta (document_role_permissions) definen DÓNDE, restringiendo carpetas a ciertos roles.
+     */
+    public const PERMISSION_VIEW = 'documental.ver';
+    public const PERMISSION_UPLOAD = 'documental.subir';
+    public const PERMISSION_CREATE_FOLDER = 'documental.crear_carpeta';
+    public const PERMISSION_RENAME = 'documental.renombrar';
+    public const PERMISSION_DELETE = 'documental.eliminar';
+    public const PERMISSION_ADMIN = 'documental.administrar';
+
+    public const PERMISSIONS = [
+        self::PERMISSION_VIEW,
+        self::PERMISSION_UPLOAD,
+        self::PERMISSION_CREATE_FOLDER,
+        self::PERMISSION_RENAME,
+        self::PERMISSION_DELETE,
+        self::PERMISSION_ADMIN,
+    ];
+
     protected string $disk = 's3';
+
+    protected const RULES_CACHE_KEY = 'documental_folder_rules';
+
+    protected const SEARCH_INDEX_CACHE_KEY = 'documental_search_index';
+
+    /**
+     * Reglas por carpeta agrupadas por ruta (arrays planos), cargadas una sola vez por petición.
+     */
+    protected ?Collection $folderRules = null;
+
+    /**
+     * Permisos de rol ya resueltos por usuario, para no repetir las comprobaciones Spatie
+     * por cada carpeta de un listado.
+     */
+    protected array $userContext = [];
+
+    protected ?DocumentalSettingsService $settingsService = null;
 
     /**
      * Obtiene el disco configurado para DigitalOcean Spaces / S3.
      */
-    public function getDisk()
+    public function getDisk(): Filesystem
     {
         return Storage::disk($this->disk);
+    }
+
+    /**
+     * Store de caché del módulo (local por defecto, ver config/documental.php).
+     */
+    protected function cache(): Repository
+    {
+        return Cache::store(config('documental.cache_store'));
     }
 
     /**
@@ -50,182 +103,468 @@ class DocumentalService
     }
 
     /**
-     * Determina los permisos efectivos de un usuario sobre una ruta dada.
+     * Determina los permisos efectivos de un usuario sobre una ruta:
+     * 1. Sin `documental.ver` no hay acceso. Con `documental.administrar` hay acceso total.
+     * 2. Las acciones disponibles salen de los permisos Spatie de sus roles.
+     * 3. Si la ruta (o un ancestro) tiene reglas por carpeta, la carpeta está restringida:
+     *    solo acceden los roles listados y las acciones quedan limitadas por los flags de la regla.
      */
     public function getUserPermissionsForPath(?User $user, string $path): array
     {
-        // Si no hay usuario autenticado, por seguridad denegamos acciones de escritura
+        $path = $this->normalizePath($path);
+
         if (!$user) {
-            return [
-                'can_read' => true,
-                'can_upload' => false,
-                'can_create_folder' => false,
-                'can_delete' => false,
-                'is_admin' => false,
-                'role_type' => 'guest',
-            ];
+            return $this->noAccess();
         }
 
-        // Cargar posición y área si no están cargadas
-        if (!$user->relationLoaded('position') || !$user->relationLoaded('area')) {
-            $user->load(['position', 'area']);
+        $context = $this->userContext($user);
+        if (!$context['view']) {
+            return $this->noAccess();
         }
 
-        $positionName = strtolower(optional($user->position)->name ?? '');
-        $areaName = strtolower(optional($user->area)->name ?? '');
-        $userName = strtolower($user->name ?? '');
+        $rules = $this->findApplicableRules($path);
 
-        // Rol Administrador / Dirección / Gerencia
-        $isAdmin = str_contains($positionName, 'director') ||
-                   str_contains($positionName, 'gerente') ||
-                   str_contains($positionName, 'coordinador') ||
-                   str_contains($userName, 'admin') ||
-                   $user->email === 'admin@elite.com';
-
-        if ($isAdmin) {
+        if ($context['admin']) {
             return [
                 'can_read' => true,
                 'can_upload' => true,
                 'can_create_folder' => true,
+                'can_rename' => true,
                 'can_delete' => true,
                 'is_admin' => true,
-                'role_type' => 'admin',
+                'restricted' => $rules !== null,
             ];
         }
 
-        // Si el usuario pertenece a un área, consultamos reglas específicas en la base de datos
-        if ($user->area_id) {
-            // Buscamos coincidencia exacta o heredada por prefijo de ruta
-            $permissions = DocumentAreaPermission::where('area_id', $user->area_id)->get();
+        $permissions = $context['base'];
 
-            // 1. Coincidencia exacta
-            $exactRule = $permissions->firstWhere('folder_path', $path);
-            if ($exactRule) {
-                return [
-                    'can_read' => (bool)$exactRule->can_read,
-                    'can_upload' => (bool)$exactRule->can_upload,
-                    'can_create_folder' => (bool)$exactRule->can_create_folder,
-                    'can_delete' => (bool)$exactRule->can_delete,
-                    'is_admin' => false,
-                    'role_type' => 'area_rule',
-                ];
-            }
-
-            // 2. Coincidencia por carpetas padre
-            $pathSegments = explode('/', $path);
-            while (count($pathSegments) > 0) {
-                array_pop($pathSegments);
-                $parentPath = implode('/', $pathSegments);
-                $parentRule = $permissions->firstWhere('folder_path', $parentPath);
-                if ($parentRule) {
-                    return [
-                        'can_read' => (bool)$parentRule->can_read,
-                        'can_upload' => (bool)$parentRule->can_upload,
-                        'can_create_folder' => (bool)$parentRule->can_create_folder,
-                        'can_delete' => (bool)$parentRule->can_delete,
-                        'is_admin' => false,
-                        'role_type' => 'inherited_rule',
-                    ];
-                }
-            }
-
-            // 3. Regla comodín de área (*)
-            $wildcardRule = $permissions->firstWhere('folder_path', '*');
-            if ($wildcardRule) {
-                return [
-                    'can_read' => (bool)$wildcardRule->can_read,
-                    'can_upload' => (bool)$wildcardRule->can_upload,
-                    'can_create_folder' => (bool)$wildcardRule->can_create_folder,
-                    'can_delete' => (bool)$wildcardRule->can_delete,
-                    'is_admin' => false,
-                    'role_type' => 'wildcard_rule',
-                ];
-            }
-
-            // 4. Si la ruta contiene el nombre de su área (ej. "Comercial"), le damos permisos de lectura y subida por defecto
-            if ($areaName && str_contains(strtolower($path), $areaName)) {
-                return [
-                    'can_read' => true,
-                    'can_upload' => true,
-                    'can_create_folder' => true,
-                    'can_delete' => false,
-                    'is_admin' => false,
-                    'role_type' => 'area_match',
-                ];
-            }
+        if ($rules === null) {
+            return $permissions;
         }
 
-        // Permisos por defecto para empleados en navegación general
+        $userRules = $rules->whereIn('role_id', $context['role_ids']);
+        $grants = fn (string $flag) => $userRules->contains(fn (array $rule) => (bool) $rule[$flag]);
+
+        if (!$grants('can_read')) {
+            return array_merge($this->noAccess(), ['restricted' => true]);
+        }
+
         return [
             'can_read' => true,
-            'can_upload' => false,
-            'can_create_folder' => false,
-            'can_delete' => false,
+            'can_upload' => $permissions['can_upload'] && $grants('can_upload'),
+            'can_create_folder' => $permissions['can_create_folder'] && $grants('can_create_folder'),
+            // Renombrar modifica el contenido de la carpeta, así que exige permiso de escritura en ella
+            'can_rename' => $permissions['can_rename'] && $grants('can_upload'),
+            'can_delete' => $permissions['can_delete'] && $grants('can_delete'),
             'is_admin' => false,
-            'role_type' => 'standard_employee',
+            'restricted' => true,
         ];
     }
 
+    protected function userContext(User $user): array
+    {
+        return $this->userContext[$user->id] ??= [
+            'view' => $user->can(self::PERMISSION_VIEW),
+            'admin' => $user->can(self::PERMISSION_ADMIN),
+            'role_ids' => $user->roles->pluck('id')->all(),
+            'base' => [
+                'can_read' => true,
+                'can_upload' => $user->can(self::PERMISSION_UPLOAD),
+                'can_create_folder' => $user->can(self::PERMISSION_CREATE_FOLDER),
+                'can_rename' => $user->can(self::PERMISSION_RENAME),
+                'can_delete' => $user->can(self::PERMISSION_DELETE),
+                'is_admin' => false,
+                'restricted' => false,
+            ],
+        ];
+    }
+
+    protected function noAccess(): array
+    {
+        return [
+            'can_read' => false,
+            'can_upload' => false,
+            'can_create_folder' => false,
+            'can_rename' => false,
+            'can_delete' => false,
+            'is_admin' => false,
+            'restricted' => false,
+        ];
+    }
+
+    protected function getFolderRules(): Collection
+    {
+        return $this->folderRules ??= collect($this->cache()->rememberForever(
+            self::RULES_CACHE_KEY,
+            fn () => DocumentRolePermission::all(['role_id', 'folder_path', 'can_read', 'can_upload', 'can_create_folder', 'can_delete'])->toArray()
+        ))->groupBy('folder_path');
+    }
+
+    protected function forgetFolderRules(): void
+    {
+        $this->cache()->forget(self::RULES_CACHE_KEY);
+        $this->folderRules = null;
+    }
+
     /**
-     * Limpia la caché de navegación para una ruta y sus ancestros.
+     * Devuelve las reglas de la carpeta restringida más cercana (la propia ruta o su ancestro más próximo).
+     */
+    protected function findApplicableRules(string $path): ?Collection
+    {
+        $rules = $this->getFolderRules();
+        if ($path === '' || $rules->isEmpty()) {
+            return null;
+        }
+
+        $segments = explode('/', $path);
+        while (count($segments) > 0) {
+            $candidate = implode('/', $segments);
+            if ($rules->has($candidate)) {
+                return $rules->get($candidate);
+            }
+            array_pop($segments);
+        }
+
+        return null;
+    }
+
+    /**
+     * Evita que una operación sobre una carpeta afecte subcarpetas restringidas sobre las que el usuario no tiene el permiso.
+     */
+    protected function assertCanAffectDescendants(User $user, string $path, string $flag, string $action, ?string $ip): void
+    {
+        foreach ($this->getFolderRules()->keys() as $rulePath) {
+            if (str_starts_with($rulePath, $path . '/')) {
+                $this->authorize(
+                    $this->getUserPermissionsForPath($user, $rulePath)[$flag],
+                    'La carpeta contiene subcarpetas restringidas sobre las que no tienes permisos.',
+                    $user, $action, $path, $ip
+                );
+            }
+        }
+    }
+
+    /**
+     * Lanza AuthorizationException si la acción no está permitida, dejando registro del intento en auditoría.
+     */
+    protected function authorize(bool $allowed, string $message, User $user, string $action, string $path, ?string $ip): void
+    {
+        if ($allowed) {
+            return;
+        }
+
+        if (config('documental.log_denied_attempts')) {
+            $this->log($user, 'denied', $path, ['attempted_action' => $action, 'reason' => $message], $ip);
+        }
+
+        throw new AuthorizationException($message);
+    }
+
+    /**
+     * Impide renombrar o eliminar desde la app carpetas con demasiados archivos: la operación se hace archivo por
+     * archivo en S3 y en carpetas grandes superaría el tiempo de la petición, dejándola a medias.
+     */
+    protected function assertFolderWithinOperationLimit(string $path, string $verb): void
+    {
+        $limit = (int) $this->settings()->all()['max_folder_operation_files'];
+        $count = 0;
+
+        foreach ($this->getDisk()->listContents($path, true) as $item) {
+            if ($item->isFile() && ++$count > $limit) {
+                throw new InvalidArgumentException(
+                    "La carpeta tiene más de {$limit} archivos; no se puede {$verb} desde la aplicación porque la operación "
+                    . 'tardaría demasiado y podría quedar incompleta. Hazlo por partes (subcarpetas) o pide a un administrador '
+                    . 'que la ejecute directamente en el almacenamiento.'
+                );
+            }
+        }
+    }
+
+    protected function settings(): DocumentalSettingsService
+    {
+        return $this->settingsService ??= app(DocumentalSettingsService::class);
+    }
+
+    /**
+     * Rechaza un archivo que incumple la configuración (tamaño o extensión) dejando registro del intento.
+     */
+    protected function rejectInvalidFile(string $reason, User $user, string $action, string $path, ?string $ip): never
+    {
+        if (config('documental.log_denied_attempts')) {
+            $this->log($user, 'denied', $path, ['attempted_action' => $action, 'reason' => $reason], $ip);
+        }
+
+        throw new InvalidArgumentException($reason);
+    }
+
+    /**
+     * Limpia la caché de navegación para una ruta y su carpeta padre.
      */
     public function clearPathCache(string $path): void
     {
         $normalized = $this->normalizePath($path);
-        \Illuminate\Support\Facades\Cache::forget('s3_browse_' . md5($normalized . '_'));
-        $parent = dirname($normalized);
-        $parent = $parent === '.' ? '' : $parent;
-        \Illuminate\Support\Facades\Cache::forget('s3_browse_' . md5($parent . '_'));
-        \Illuminate\Support\Facades\Cache::forget('s3_browse_' . md5(''));
+        $this->cache()->forget($this->browseCacheKey($normalized));
+        $this->cache()->forget($this->browseCacheKey($this->parentOf($normalized)));
+    }
+
+    protected function browseCacheKey(string $path): string
+    {
+        return 's3_browse_' . md5($path);
     }
 
     /**
-     * Navega y lista los contenidos (carpetas y archivos) del S3 con alto rendimiento:
-     * 1. Una sola petición HTTP ListObjectsV2 usando listContents().
-     * 2. Tamaño y fecha extraídos directamente de los metadatos en memoria (0 peticiones HEAD).
-     * 3. Detección local de tipo MIME sin llamadas a red.
-     * 4. Caché inteligente por 3 minutos con invalidación automática ante cambios.
+     * Navega y lista los contenidos (carpetas y archivos) del S3.
+     * El listado completo de la carpeta se cachea (compartido entre usuarios); la búsqueda,
+     * los permisos y el filtrado de carpetas restringidas se aplican por usuario sobre la caché.
+     * Con $recursive la búsqueda incluye todas las subcarpetas usando el índice del bucket.
      */
-    public function browse(string $rawPath = '', ?User $user = null, ?string $search = null, bool $forceRefresh = false): array
-    {
+    public function browse(
+        string $rawPath,
+        User $user,
+        ?string $search = null,
+        bool $forceRefresh = false,
+        ?string $ip = null,
+        bool $recursive = false
+    ): array {
         $path = $this->normalizePath($rawPath);
         $permissions = $this->getUserPermissionsForPath($user, $path);
+        $this->authorize($permissions['can_read'], 'No tienes acceso a esta carpeta.', $user, 'browse', $path, $ip);
 
-        if (!$permissions['can_read']) {
-            throw new \Exception('No tienes permisos de lectura para esta carpeta.');
+        $terms = $this->searchTerms($search);
+        if ($terms !== [] && $recursive) {
+            return $this->searchRecursive($path, $terms, $user, $permissions, $forceRefresh);
         }
 
-        $cacheKey = 's3_browse_' . md5($path . '_' . ($search ?? ''));
+        $cacheKey = $this->browseCacheKey($path);
         if ($forceRefresh) {
-            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+            $this->cache()->forget($cacheKey);
         }
 
-        // Consultar caché para respuesta en ~5ms
-        $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
-        if ($cached !== null && is_array($cached)) {
-            $cached['permissions'] = $permissions;
-            return $cached;
+        $result = $this->cache()->get($cacheKey);
+        if (!is_array($result)) {
+            $result = $this->listDirectory($path);
+            $this->cache()->put($cacheKey, $result, config('documental.listing_ttl'));
         }
 
+        if ($terms !== []) {
+            $matches = fn (array $item) => $this->matchesTerms($item['name'], $terms);
+            $result['folders'] = array_filter($result['folders'], $matches);
+            $result['files'] = array_values(array_filter($result['files'], $matches));
+            $result['total_files'] = count($result['files']);
+            $result['total_size'] = array_sum(array_column($result['files'], 'size'));
+            $result['total_size_formatted'] = $this->formatBytes($result['total_size']);
+            $result['search'] = [
+                'query' => trim((string) $search),
+                'recursive' => false,
+                'total_matches' => count($result['folders']) + count($result['files']),
+                'truncated' => false,
+                'index_built_at' => null,
+            ];
+        }
+
+        $rules = $this->getFolderRules();
+        $visibleFolders = [];
+        foreach ($result['folders'] as $folder) {
+            if ($this->getUserPermissionsForPath($user, $folder['path'])['can_read']) {
+                $folder['restricted'] = $rules->has($folder['path']);
+                $visibleFolders[] = $folder;
+            }
+        }
+
+        $result['folders'] = $visibleFolders;
+        $result['total_folders'] = count($visibleFolders);
+        $result['permissions'] = $permissions;
+
+        return $result;
+    }
+
+    /**
+     * Palabras de búsqueda normalizadas (sin tildes, minúsculas). Todas deben aparecer en el nombre.
+     */
+    protected function searchTerms(?string $search): array
+    {
+        return array_values(array_filter(preg_split('/\s+/', $this->normalizeForSearch((string) $search))));
+    }
+
+    protected function normalizeForSearch(string $value): string
+    {
+        return mb_strtolower(Str::ascii($value));
+    }
+
+    protected function matchesTerms(string $name, array $terms): bool
+    {
+        $normalized = $this->normalizeForSearch($name);
+        foreach ($terms as $term) {
+            if (!str_contains($normalized, $term)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Busca por nombre en la carpeta y todas sus subcarpetas, sobre el índice cacheado del bucket.
+     * Solo devuelve elementos que el usuario puede ver y como máximo `search_max_results`.
+     */
+    protected function searchRecursive(string $path, array $terms, User $user, array $permissions, bool $forceRefresh): array
+    {
+        $index = $this->searchIndex($forceRefresh);
+        $prefix = $path === '' ? '' : $path . '/';
+        $limit = (int) config('documental.search_max_results');
+        $disk = $this->getDisk();
+        $rules = $this->getFolderRules();
+
+        $folderPaths = [];
+        $files = [];
+        $totalMatches = 0;
+
+        foreach ($index['files'] as [$filePath, $size, $lastModified]) {
+            if ($prefix !== '' && !str_starts_with($filePath, $prefix)) {
+                continue;
+            }
+
+            // Registrar las carpetas intermedias (dentro del alcance) para poder buscarlas por nombre
+            $dir = $this->parentOf($filePath);
+            while ($dir !== $path && $dir !== '' && !isset($folderPaths[$dir])) {
+                $folderPaths[$dir] = true;
+                $dir = $this->parentOf($dir);
+            }
+
+            $name = basename($filePath);
+            if (str_starts_with($name, '.') || str_contains($filePath, '/.') || !$this->matchesTerms($name, $terms)) {
+                continue;
+            }
+            if (!$this->getUserPermissionsForPath($user, $this->parentOf($filePath))['can_read']) {
+                continue;
+            }
+
+            $totalMatches++;
+            if (count($files) >= $limit) {
+                continue;
+            }
+
+            $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            $previewUrl = null;
+            try {
+                $previewUrl = $disk->temporaryUrl($filePath, now()->addHours(2));
+            } catch (\Throwable $e) {
+            }
+
+            $files[] = [
+                'name' => $name,
+                'path' => $filePath,
+                'type' => 'file',
+                'location' => $this->parentOf($filePath),
+                'size' => $size,
+                'size_formatted' => $this->formatBytes($size),
+                'mime_type' => $this->guessMimeType($extension),
+                'extension' => $extension,
+                'last_modified' => $lastModified ? date('c', $lastModified) : null,
+                'preview_url' => $previewUrl,
+            ];
+        }
+
+        $folders = [];
+        foreach (array_keys($folderPaths) as $folderPath) {
+            $name = basename($folderPath);
+            if (str_contains('/' . $folderPath, '/.') || !$this->matchesTerms($name, $terms)) {
+                continue;
+            }
+            if (!$this->getUserPermissionsForPath($user, $folderPath)['can_read']) {
+                continue;
+            }
+
+            $totalMatches++;
+            if (count($folders) < $limit) {
+                $folders[] = [
+                    'name' => $name,
+                    'path' => $folderPath,
+                    'type' => 'folder',
+                    'location' => $this->parentOf($folderPath),
+                    'restricted' => $rules->has($folderPath),
+                ];
+            }
+        }
+
+        usort($folders, fn ($a, $b) => strcasecmp($a['path'], $b['path']));
+        usort($files, fn ($a, $b) => strcasecmp($a['path'], $b['path']));
+        $totalSize = array_sum(array_column($files, 'size'));
+
+        return [
+            'current_path' => $path,
+            'parent_path' => $path === '' ? null : $this->parentOf($path),
+            'breadcrumbs' => $this->breadcrumbsFor($path),
+            'folders' => $folders,
+            'files' => $files,
+            'total_folders' => count($folders),
+            'total_files' => count($files),
+            'total_size' => $totalSize,
+            'total_size_formatted' => $this->formatBytes($totalSize),
+            'permissions' => $permissions,
+            'search' => [
+                'query' => implode(' ', $terms),
+                'recursive' => true,
+                'total_matches' => $totalMatches,
+                'truncated' => $totalMatches > count($folders) + count($files),
+                'index_built_at' => $index['built_at'],
+            ],
+        ];
+    }
+
+    /**
+     * Aplica un cambio hecho desde la app al índice ya construido, para que la búsqueda lo refleje
+     * sin tener que volver a listar todo el bucket. Si el índice no existe no hace nada.
+     */
+    protected function updateSearchIndex(callable $transform): void
+    {
+        $index = $this->cache()->get(self::SEARCH_INDEX_CACHE_KEY);
+        if (!is_array($index)) {
+            return;
+        }
+
+        $index['files'] = $transform($index['files']);
+        $this->cache()->put(self::SEARCH_INDEX_CACHE_KEY, $index, config('documental.search_index_ttl'));
+    }
+
+    /**
+     * Índice de todos los archivos del bucket ([ruta, tamaño, fecha]) para la búsqueda en subcarpetas.
+     * Se construye con un listado recursivo (unos segundos con ~30.000 objetos) y se cachea `search_index_ttl`.
+     */
+    public function searchIndex(bool $forceRefresh = false): array
+    {
+        if ($forceRefresh) {
+            $this->cache()->forget(self::SEARCH_INDEX_CACHE_KEY);
+        }
+
+        return $this->cache()->remember(self::SEARCH_INDEX_CACHE_KEY, config('documental.search_index_ttl'), function () {
+            $files = [];
+            foreach ($this->getDisk()->listContents('', true) as $item) {
+                if ($item->isFile()) {
+                    $files[] = [$item->path(), $item->fileSize() ?? 0, $item->lastModified()];
+                }
+            }
+
+            return ['built_at' => now()->toIso8601String(), 'files' => $files];
+        });
+    }
+
+    /**
+     * Lista un directorio con una sola petición ListObjectsV2; tamaño, fecha y MIME salen de los metadatos en memoria.
+     */
+    protected function listDirectory(string $path): array
+    {
         $disk = $this->getDisk();
         $folders = [];
         $files = [];
         $totalSize = 0;
 
-        // Ejecuta UNA SOLA consulta a S3 / DigitalOcean Spaces para todo el directorio
-        $contents = $disk->listContents($path, false);
-
-        foreach ($contents as $item) {
+        foreach ($disk->listContents($path, false) as $item) {
             $itemPath = $item->path();
             $itemName = basename($itemPath);
 
-            // Filtrar archivos internos o carpetas de sistema
-            if (str_starts_with($itemName, '.') || str_starts_with($itemName, '._')) {
-                continue;
-            }
-
-            // Filtro por búsqueda si aplica
-            if (!empty($search) && !str_contains(mb_strtolower($itemName), mb_strtolower($search))) {
+            // Filtrar archivos internos (.keep, ._ de macOS, etc.)
+            if (str_starts_with($itemName, '.')) {
                 continue;
             }
 
@@ -235,62 +574,45 @@ class DocumentalService
                     'path' => $itemPath,
                     'type' => 'folder',
                 ];
-            } else {
-                // Atributos ya en memoria retornados por ListObjectsV2
-                $size = $item->fileSize() ?? 0;
-                $totalSize += $size;
-                $lastModified = $item->lastModified();
-                $extension = strtolower(pathinfo($itemName, PATHINFO_EXTENSION));
-                $mimeType = $this->guessMimeType($extension);
-
-                $previewUrl = null;
-                try {
-                    // Firmado HMAC-SHA256 en memoria local, sin llamadas de red a S3
-                    $previewUrl = $disk->temporaryUrl($itemPath, now()->addHours(2));
-                } catch (\Throwable $e) {}
-
-                $files[] = [
-                    'name' => $itemName,
-                    'path' => $itemPath,
-                    'type' => 'file',
-                    'size' => $size,
-                    'size_formatted' => $this->formatBytes($size),
-                    'mime_type' => $mimeType,
-                    'extension' => $extension,
-                    'last_modified' => $lastModified ? date('c', $lastModified) : null,
-                    'preview_url' => $previewUrl,
-                ];
+                continue;
             }
+
+            $size = $item->fileSize() ?? 0;
+            $totalSize += $size;
+            $lastModified = $item->lastModified();
+            $extension = strtolower(pathinfo($itemName, PATHINFO_EXTENSION));
+
+            $previewUrl = null;
+            try {
+                // Firmado HMAC-SHA256 en memoria local, sin llamadas de red a S3
+                $previewUrl = $disk->temporaryUrl($itemPath, now()->addHours(2));
+            } catch (\Throwable $e) {
+            }
+
+            $files[] = [
+                'name' => $itemName,
+                'path' => $itemPath,
+                'type' => 'file',
+                'size' => $size,
+                'size_formatted' => $this->formatBytes($size),
+                'mime_type' => $this->guessMimeType($extension),
+                'extension' => $extension,
+                'last_modified' => $lastModified ? date('c', $lastModified) : null,
+                'preview_url' => $previewUrl,
+            ];
         }
 
-        // Ordenar carpetas y archivos alfabéticamente
-        usort($folders, fn($a, $b) => strcasecmp($a['name'], $b['name']));
-        usort($files, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+        usort($folders, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+        usort($files, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
 
-        // Construir migas de pan (Breadcrumbs)
-        $breadcrumbs = [
-            ['name' => 'Raíz', 'path' => '']
-        ];
+        $breadcrumbs = $this->breadcrumbsFor($path);
 
-        if ($path !== '') {
-            $accum = '';
-            foreach (explode('/', $path) as $seg) {
-                $accum = $accum === '' ? $seg : $accum . '/' . $seg;
-                $breadcrumbs[] = [
-                    'name' => $seg,
-                    'path' => $accum
-                ];
-            }
-        }
-
-        // Calcular ruta padre para botón "Atrás"
         $parentPath = null;
         if ($path !== '') {
-            $lastSlash = strrpos($path, '/');
-            $parentPath = $lastSlash !== false ? substr($path, 0, $lastSlash) : '';
+            $parentPath = $this->parentOf($path);
         }
 
-        $result = [
+        return [
             'current_path' => $path,
             'parent_path' => $parentPath,
             'breadcrumbs' => $breadcrumbs,
@@ -300,13 +622,7 @@ class DocumentalService
             'total_files' => count($files),
             'total_size' => $totalSize,
             'total_size_formatted' => $this->formatBytes($totalSize),
-            'permissions' => $permissions,
         ];
-
-        // Almacenar en caché por 3 minutos
-        \Illuminate\Support\Facades\Cache::put($cacheKey, $result, 180);
-
-        return $result;
     }
 
     /**
@@ -316,38 +632,22 @@ class DocumentalService
     {
         $normalizedParent = $this->normalizePath($parentPath);
         $permissions = $this->getUserPermissionsForPath($user, $normalizedParent);
+        $this->authorize($permissions['can_create_folder'], 'No tienes permisos para crear carpetas en este directorio.', $user, 'create_folder', $normalizedParent, $ip);
 
-        if (!$permissions['can_create_folder']) {
-            throw new \Exception('No tienes permisos para crear carpetas en este directorio.');
-        }
-
-        // Limpiar nombre de carpeta
-        $cleanFolderName = trim($folderName);
-        $cleanFolderName = str_replace(['/', '\\', '..'], '', $cleanFolderName);
-
-        if (empty($cleanFolderName)) {
-            throw new \Exception('El nombre de la carpeta no es válido.');
-        }
-
-        $fullPath = $normalizedParent === '' ? $cleanFolderName : $normalizedParent . '/' . $cleanFolderName;
+        $cleanFolderName = $this->cleanItemName($folderName);
+        $fullPath = $this->joinPath($normalizedParent, $cleanFolderName);
 
         $disk = $this->getDisk();
+        if ($disk->directoryExists($fullPath)) {
+            throw new InvalidArgumentException('Ya existe una carpeta con ese nombre en este directorio.');
+        }
 
-        // En S3 / Spaces colocamos un archivo marcador .keep para asegurar persistencia
-        $disk->makeDirectory($fullPath);
+        // S3 no tiene carpetas reales: el objeto marcador .keep hace visible la carpeta mientras esté vacía
         $disk->put($fullPath . '/.keep', '');
 
-        // Auditoría
-        DocumentActivityLog::create([
-            'user_id' => $user->id,
-            'action' => 'create_folder',
-            'path' => $fullPath,
-            'details' => ['parent' => $normalizedParent, 'folder_name' => $cleanFolderName],
-            'ip_address' => $ip,
-        ]);
-
-        // Invalidar caché del directorio
-        $this->clearPathCache($normalizedParent);
+        $this->log($user, 'create_folder', $fullPath, ['parent' => $normalizedParent, 'folder_name' => $cleanFolderName], $ip);
+        $this->updateSearchIndex(fn (array $files) => [...$files, [$fullPath . '/.keep', 0, time()]]);
+        $this->clearPathCache($fullPath);
 
         return [
             'message' => 'Carpeta creada exitosamente.',
@@ -357,56 +657,55 @@ class DocumentalService
     }
 
     /**
-     * Sube uno o varios archivos a la ruta indicada en S3 / Spaces.
+     * Sube uno o varios archivos a la ruta indicada. Si ya existe un archivo con el mismo nombre
+     * se guarda como "nombre (1).ext" para no sobrescribir documentos existentes.
      */
     public function uploadFiles(string $targetPath, array $files, User $user, ?string $ip = null): array
     {
         $normalizedPath = $this->normalizePath($targetPath);
         $permissions = $this->getUserPermissionsForPath($user, $normalizedPath);
+        $this->authorize($permissions['can_upload'], 'No tienes permisos para subir archivos en este directorio.', $user, 'upload', $normalizedPath, $ip);
 
-        if (!$permissions['can_upload']) {
-            throw new \Exception('No tienes permisos para subir archivos en este directorio.');
+        $files = array_values(array_filter($files, fn ($file) => $file instanceof UploadedFile && $file->isValid()));
+        if (count($files) === 0) {
+            throw new InvalidArgumentException('No se recibió ningún archivo válido.');
+        }
+
+        // Se validan todos antes de subir para no dejar cargas a medias
+        foreach ($files as $file) {
+            $reason = $this->settings()->validateUpload($file->getClientOriginalName(), (int) $file->getSize());
+            if ($reason !== null) {
+                $this->rejectInvalidFile($reason, $user, 'upload', $this->joinPath($normalizedPath, $file->getClientOriginalName()), $ip);
+            }
         }
 
         $disk = $this->getDisk();
         $uploaded = [];
 
         foreach ($files as $file) {
-            if (!($file instanceof UploadedFile)) {
-                continue;
-            }
 
             $originalName = $file->getClientOriginalName();
-            $safeName = $this->sanitizeFilename($originalName);
+            $safeName = $this->uniqueFilename($normalizedPath, $this->sanitizeFilename($originalName));
+            $filePath = $this->joinPath($normalizedPath, $safeName);
 
-            $filePath = $normalizedPath === '' ? $safeName : $normalizedPath . '/' . $safeName;
-
-            // Subir al Space
             $disk->putFileAs($normalizedPath, $file, $safeName);
 
-            // Registrar auditoría
-            DocumentActivityLog::create([
-                'user_id' => $user->id,
-                'action' => 'upload',
-                'path' => $filePath,
-                'details' => [
-                    'original_name' => $originalName,
-                    'size' => $file->getSize(),
-                    'mime_type' => $file->getMimeType(),
-                ],
-                'ip_address' => $ip,
-            ]);
+            $this->updateSearchIndex(fn (array $entries) => [...$entries, [$filePath, (int) $file->getSize(), time()]]);
+
+            $this->log($user, 'upload', $filePath, [
+                'original_name' => $originalName,
+                'size' => $file->getSize(),
+                'mime_type' => $file->getMimeType(),
+            ], $ip);
 
             $uploaded[] = [
                 'name' => $safeName,
                 'path' => $filePath,
                 'size' => $file->getSize(),
                 'size_formatted' => $this->formatBytes($file->getSize()),
-                'preview_url' => $disk->temporaryUrl($filePath, now()->addHours(2)),
             ];
         }
 
-        // Invalidar caché del directorio donde se subieron los archivos
         $this->clearPathCache($normalizedPath);
 
         return [
@@ -416,35 +715,38 @@ class DocumentalService
     }
 
     /**
-     * Elimina un archivo o una carpeta en S3 / Spaces.
+     * Elimina un archivo o una carpeta (con todo su contenido) en S3 / Spaces.
      */
     public function deleteItem(string $itemPath, string $type, User $user, ?string $ip = null): array
     {
         $path = $this->normalizePath($itemPath);
-        $permissions = $this->getUserPermissionsForPath($user, $path);
-
-        if (!$permissions['can_delete']) {
-            throw new \Exception('No tienes permisos para eliminar este elemento.');
+        if ($path === '') {
+            throw new InvalidArgumentException('No se puede eliminar la raíz del repositorio.');
         }
+
+        $permissions = $this->getUserPermissionsForPath($user, $path);
+        $this->authorize($permissions['can_delete'], 'No tienes permisos para eliminar este elemento.', $user, 'delete', $path, $ip);
 
         $disk = $this->getDisk();
 
         if ($type === 'folder') {
+            $this->assertCanAffectDescendants($user, $path, 'can_delete', 'delete', $ip);
+            $this->assertFolderWithinOperationLimit($path, 'eliminar');
             $disk->deleteDirectory($path);
+            $this->folderRulesUnder($path)->delete();
+            $this->forgetFolderRules();
         } else {
+            if (!$disk->exists($path)) {
+                throw new InvalidArgumentException('El archivo especificado no existe.');
+            }
             $disk->delete($path);
         }
 
-        // Auditoría
-        DocumentActivityLog::create([
-            'user_id' => $user->id,
-            'action' => 'delete',
-            'path' => $path,
-            'details' => ['type' => $type],
-            'ip_address' => $ip,
-        ]);
-
-        // Invalidar caché del elemento y su directorio padre
+        $this->log($user, 'delete', $path, ['type' => $type], $ip);
+        $this->updateSearchIndex(fn (array $files) => array_values(array_filter(
+            $files,
+            fn (array $entry) => $entry[0] !== $path && !str_starts_with($entry[0], $path . '/')
+        )));
         $this->clearPathCache($path);
 
         return [
@@ -454,42 +756,68 @@ class DocumentalService
     }
 
     /**
-     * Renombra o mueve un archivo o carpeta.
+     * Renombra un archivo o carpeta. En S3 renombrar una carpeta implica copiar cada objeto
+     * a la nueva ruta y eliminar los originales; las reglas de la carpeta se trasladan con ella.
      */
     public function renameItem(string $oldPath, string $newName, string $type, User $user, ?string $ip = null): array
     {
         $normalizedOld = $this->normalizePath($oldPath);
-        $permissions = $this->getUserPermissionsForPath($user, $normalizedOld);
-
-        if (!$permissions['can_upload'] && !$permissions['can_delete']) {
-            throw new \Exception('No tienes permisos suficientes para renombrar este elemento.');
+        if ($normalizedOld === '') {
+            throw new InvalidArgumentException('No se puede renombrar la raíz del repositorio.');
         }
 
-        $cleanNewName = trim($newName);
-        $cleanNewName = str_replace(['/', '\\'], '', $cleanNewName);
+        $permissions = $this->getUserPermissionsForPath($user, $normalizedOld);
+        $this->authorize($permissions['can_rename'], 'No tienes permisos para renombrar este elemento.', $user, 'rename', $normalizedOld, $ip);
 
-        $parent = dirname($normalizedOld);
-        $parent = $parent === '.' ? '' : $parent;
-        $normalizedNew = $parent === '' ? $cleanNewName : $parent . '/' . $cleanNewName;
+        $cleanNewName = $this->cleanItemName($newName);
+        if ($type === 'file') {
+            $cleanNewName = $this->sanitizeFilename($cleanNewName);
+            $reason = $this->settings()->validateExtension($cleanNewName);
+            if ($reason !== null) {
+                $this->rejectInvalidFile($reason, $user, 'rename', $normalizedOld, $ip);
+            }
+        }
+
+        $normalizedNew = $this->joinPath($this->parentOf($normalizedOld), $cleanNewName);
+        if ($normalizedNew === $normalizedOld) {
+            throw new InvalidArgumentException('El nuevo nombre es igual al actual.');
+        }
 
         $disk = $this->getDisk();
 
-        if ($disk->exists($normalizedNew)) {
-            throw new \Exception('Ya existe un elemento con ese nombre en este directorio.');
+        if ($type === 'folder') {
+            if ($disk->directoryExists($normalizedNew)) {
+                throw new InvalidArgumentException('Ya existe una carpeta con ese nombre en este directorio.');
+            }
+            $this->assertCanAffectDescendants($user, $normalizedOld, 'can_rename', 'rename', $ip);
+            $this->assertFolderWithinOperationLimit($normalizedOld, 'renombrar');
+
+            foreach ($disk->allFiles($normalizedOld) as $file) {
+                $disk->copy($file, $normalizedNew . substr($file, strlen($normalizedOld)));
+            }
+            $disk->deleteDirectory($normalizedOld);
+
+            DB::transaction(function () use ($normalizedOld, $normalizedNew) {
+                foreach ($this->folderRulesUnder($normalizedOld)->get() as $rule) {
+                    $rule->update(['folder_path' => $normalizedNew . substr($rule->folder_path, strlen($normalizedOld))]);
+                }
+            });
+            $this->forgetFolderRules();
+        } else {
+            if ($disk->exists($normalizedNew)) {
+                throw new InvalidArgumentException('Ya existe un archivo con ese nombre en este directorio.');
+            }
+            $disk->move($normalizedOld, $normalizedNew);
         }
 
-        $disk->move($normalizedOld, $normalizedNew);
+        $this->log($user, 'rename', $normalizedNew, ['from' => $normalizedOld, 'to' => $normalizedNew, 'type' => $type], $ip);
+        $this->updateSearchIndex(fn (array $files) => array_map(function (array $entry) use ($normalizedOld, $normalizedNew) {
+            if ($entry[0] === $normalizedOld || str_starts_with($entry[0], $normalizedOld . '/')) {
+                $entry[0] = $normalizedNew . substr($entry[0], strlen($normalizedOld));
+            }
 
-        // Auditoría
-        DocumentActivityLog::create([
-            'user_id' => $user->id,
-            'action' => 'rename',
-            'path' => $normalizedNew,
-            'details' => ['from' => $normalizedOld, 'to' => $normalizedNew, 'type' => $type],
-            'ip_address' => $ip,
-        ]);
-
-        // Invalidar caché de ambas rutas
+            return $entry;
+        }, $files));
         $this->clearPathCache($normalizedOld);
         $this->clearPathCache($normalizedNew);
 
@@ -502,41 +830,179 @@ class DocumentalService
     }
 
     /**
-     * Genera una URL temporal firmada para descarga directa de un archivo.
+     * Genera una URL temporal firmada que fuerza la descarga del archivo.
      */
     public function getDownloadUrl(string $filePath, User $user, ?string $ip = null): array
     {
         $path = $this->normalizePath($filePath);
         $permissions = $this->getUserPermissionsForPath($user, $path);
-
-        if (!$permissions['can_read']) {
-            throw new \Exception('No tienes permisos para descargar este archivo.');
-        }
+        $this->authorize($permissions['can_read'], 'No tienes permisos para descargar este archivo.', $user, 'download', $path, $ip);
 
         $disk = $this->getDisk();
-
         if (!$disk->exists($path)) {
-            throw new \Exception('El archivo especificado no existe.');
+            throw new InvalidArgumentException('El archivo especificado no existe.');
         }
 
-        $url = $disk->temporaryUrl($path, now()->addMinutes(60));
-
-        // Registrar descarga
-        DocumentActivityLog::create([
-            'user_id' => $user->id,
-            'action' => 'download',
-            'path' => $path,
-            'details' => ['filename' => basename($path)],
-            'ip_address' => $ip,
+        $filename = basename($path);
+        $url = $disk->temporaryUrl($path, now()->addMinutes(60), [
+            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($filename),
         ]);
 
+        $this->log($user, 'download', $path, ['filename' => $filename], $ip);
+
         return [
-            'name' => basename($path),
-            'path' => $path,
             'download_url' => $url,
-            'size' => $disk->size($path),
-            'size_formatted' => $this->formatBytes($disk->size($path)),
+            'name' => $filename,
+            'expires_in_minutes' => 60,
         ];
+    }
+
+    /**
+     * Carpetas restringidas con los roles que tienen acceso a cada una.
+     */
+    public function listRestrictedFolders(): array
+    {
+        return DocumentRolePermission::with('role:id,name')
+            ->orderBy('folder_path')
+            ->get()
+            ->groupBy('folder_path')
+            ->map(fn (Collection $rules, string $folderPath) => [
+                'folder_path' => $folderPath,
+                'rules' => $rules->map(fn (DocumentRolePermission $rule) => [
+                    'role_id' => $rule->role_id,
+                    'role_name' => $rule->role?->name,
+                    'can_read' => $rule->can_read,
+                    'can_upload' => $rule->can_upload,
+                    'can_create_folder' => $rule->can_create_folder,
+                    'can_delete' => $rule->can_delete,
+                ])->values()->all(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Reemplaza las reglas de una carpeta. Solo se guardan los roles con acceso de lectura;
+     * una lista vacía elimina la restricción y la carpeta vuelve a regirse por los permisos de cada rol.
+     */
+    public function syncFolderRules(string $folderPath, array $rules, User $user, ?string $ip = null): array
+    {
+        $path = $this->normalizePath($folderPath);
+        if ($path === '') {
+            throw new InvalidArgumentException('Las restricciones se aplican sobre una carpeta específica, no sobre la raíz.');
+        }
+        if (!$this->getDisk()->directoryExists($path)) {
+            throw new InvalidArgumentException('La carpeta indicada no existe en el repositorio.');
+        }
+
+        $rules = collect($rules)
+            ->filter(fn (array $rule) => !empty($rule['can_read']))
+            ->unique('role_id')
+            ->map(fn (array $rule) => [
+                'role_id' => (int) $rule['role_id'],
+                'can_read' => true,
+                'can_upload' => (bool) ($rule['can_upload'] ?? false),
+                'can_create_folder' => (bool) ($rule['can_create_folder'] ?? false),
+                'can_delete' => (bool) ($rule['can_delete'] ?? false),
+            ])
+            ->values();
+
+        DB::transaction(function () use ($path, $rules) {
+            DocumentRolePermission::where('folder_path', $path)->delete();
+            foreach ($rules as $rule) {
+                DocumentRolePermission::create($rule + ['folder_path' => $path]);
+            }
+        });
+        $this->forgetFolderRules();
+
+        $roleNames = Role::whereIn('id', $rules->pluck('role_id'))->pluck('name', 'id');
+        $this->log($user, 'restrictions', $path, [
+            'restricted' => $rules->isNotEmpty(),
+            'rules' => $rules->map(fn (array $rule) => $rule + ['role_name' => $roleNames[$rule['role_id']] ?? null])->all(),
+        ], $ip);
+
+        return [
+            'message' => $rules->isEmpty()
+                ? 'Se quitó la restricción de la carpeta.'
+                : 'Restricción guardada: ' . $rules->count() . ' rol(es) con acceso.',
+            'folder_path' => $path,
+            'restricted' => $rules->isNotEmpty(),
+        ];
+    }
+
+    /**
+     * Consulta de reglas de una carpeta y todas sus subcarpetas.
+     */
+    protected function folderRulesUnder(string $path)
+    {
+        $escaped = addcslashes($path, '%_\\');
+
+        return DocumentRolePermission::where('folder_path', $path)
+            ->orWhere('folder_path', 'like', $escaped . '/%');
+    }
+
+    protected function log(User $user, string $action, string $path, array $details, ?string $ip): void
+    {
+        DocumentActivityLog::create([
+            'user_id' => $user->id,
+            'action' => $action,
+            'path' => $path,
+            'details' => $details,
+            'ip_address' => $ip,
+        ]);
+    }
+
+    protected function cleanItemName(string $name): string
+    {
+        $clean = trim(str_replace(['/', '\\'], '', $name));
+        if ($clean === '' || $clean === '.' || $clean === '..' || str_starts_with($clean, '.')) {
+            throw new InvalidArgumentException('El nombre indicado no es válido.');
+        }
+
+        return $clean;
+    }
+
+    protected function uniqueFilename(string $directory, string $filename): string
+    {
+        $disk = $this->getDisk();
+        $base = pathinfo($filename, PATHINFO_FILENAME);
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $suffix = $extension !== '' ? '.' . $extension : '';
+
+        $candidate = $filename;
+        $counter = 1;
+        while ($disk->exists($this->joinPath($directory, $candidate))) {
+            $candidate = "{$base} ({$counter}){$suffix}";
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    protected function breadcrumbsFor(string $path): array
+    {
+        $breadcrumbs = [['name' => 'Raíz', 'path' => '']];
+        if ($path !== '') {
+            $accum = '';
+            foreach (explode('/', $path) as $segment) {
+                $accum = $this->joinPath($accum, $segment);
+                $breadcrumbs[] = ['name' => $segment, 'path' => $accum];
+            }
+        }
+
+        return $breadcrumbs;
+    }
+
+    protected function joinPath(string $directory, string $name): string
+    {
+        return $directory === '' ? $name : $directory . '/' . $name;
+    }
+
+    protected function parentOf(string $path): string
+    {
+        $parent = dirname($path);
+
+        return $parent === '.' ? '' : $parent;
     }
 
     /**

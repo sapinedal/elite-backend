@@ -15,7 +15,8 @@ class CreateFolderRequest extends FormRequest
     {
         return [
             'parent_path' => 'nullable|string',
-            'folder_name' => 'required|string|max:100|regex:/^[^\\/\\\\:*?"<>|]+$/',
+            // Formato de arreglo: en formato texto el "|" de la expresión se toma como separador de reglas
+            'folder_name' => ['required', 'string', 'max:100', 'regex:/^[^\\/\\\\:*?"<>|]+$/'],
         ];
     }
 

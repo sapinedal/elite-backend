@@ -3,328 +3,232 @@
 namespace App\Http\Modules\Documental\Controller;
 
 use App\Http\Controllers\Controller;
-use App\Http\Modules\Configuracion\Models\Area;
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
-use App\Http\Modules\Documental\Models\DocumentAreaPermission;
 use App\Http\Modules\Documental\Request\CreateFolderRequest;
 use App\Http\Modules\Documental\Request\DeleteItemRequest;
 use App\Http\Modules\Documental\Request\RenameItemRequest;
-use App\Http\Modules\Documental\Request\StoreAreaPermissionRequest;
+use App\Http\Modules\Documental\Request\SyncFolderRulesRequest;
+use App\Http\Modules\Documental\Request\UpdateSettingsRequest;
 use App\Http\Modules\Documental\Request\UploadFileRequest;
 use App\Http\Modules\Documental\Service\DocumentalService;
-use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Documental\Service\DocumentalSettingsService;
+use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use Spatie\Permission\Models\Role;
 
 class DocumentalController extends Controller
 {
-    protected DocumentalService $documentalService;
-
-    public function __construct(DocumentalService $documentalService)
-    {
-        $this->documentalService = $documentalService;
+    public function __construct(
+        protected DocumentalService $documentalService,
+        protected DocumentalSettingsService $settingsService
+    ) {
     }
 
     /**
-     * Obtiene el usuario autenticado (o fallback seguro).
+     * Ejecuta una operación del servicio y traduce sus excepciones a respuestas HTTP:
+     * 403 sin permisos, 422 datos inválidos, 500 errores de S3 / Spaces.
      */
-    protected function getAuthUser(): ?User
-    {
-        return auth()->user() ?: User::first();
-    }
-
-    /**
-     * Navega por los contenidos del bucket S3 / DigitalOcean Spaces.
-     * GET /api/v1/documental?path=...&search=...
-     */
-    public function index(Request $request): JsonResponse
+    protected function respond(callable $operation, int $status = 200): JsonResponse
     {
         try {
-            $user = $this->getAuthUser();
-            $path = $request->query('path', '');
-            $search = $request->query('search');
-            $refresh = $request->boolean('refresh');
-
-            $data = $this->documentalService->browse($path, $user, $search, $refresh);
-
             return response()->json([
                 'success' => true,
-                'data' => $data,
-            ]);
+                'data' => $operation(),
+            ], $status);
+        } catch (AuthorizationException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
+            Log::error('Error en módulo documental', ['exception' => $e]);
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 400);
+                'message' => 'No fue posible completar la operación en el repositorio documental. Intenta nuevamente.',
+            ], 500);
         }
     }
 
     /**
-     * Crea una nueva carpeta en la ruta indicada.
+     * Navega por los contenidos del bucket.
+     * GET /api/v1/documental?path=...&search=...&refresh=1
+     */
+    public function index(Request $request): JsonResponse
+    {
+        return $this->respond(fn () => $this->documentalService->browse(
+            (string) $request->query('path', ''),
+            $request->user(),
+            $request->query('search'),
+            $request->boolean('refresh'),
+            $request->ip(),
+            $request->boolean('recursive')
+        ));
+    }
+
+    /**
      * POST /api/v1/documental/folders
      */
     public function createFolder(CreateFolderRequest $request): JsonResponse
     {
-        try {
-            $user = $this->getAuthUser();
-            if (!$user) {
-                return response()->json(['message' => 'Usuario no autenticado'], 401);
-            }
-
-            $parentPath = $request->input('parent_path', '');
-            $folderName = $request->input('folder_name');
-
-            $result = $this->documentalService->createFolder($parentPath, $folderName, $user, $request->ip());
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-            ], 201);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 403);
-        }
+        return $this->respond(fn () => $this->documentalService->createFolder(
+            (string) $request->input('parent_path', ''),
+            $request->input('folder_name'),
+            $request->user(),
+            $request->ip()
+        ), 201);
     }
 
     /**
-     * Sube uno o más archivos a la ruta indicada en el bucket.
      * POST /api/v1/documental/upload
      */
     public function upload(UploadFileRequest $request): JsonResponse
     {
-        try {
-            $user = $this->getAuthUser();
-            if (!$user) {
-                return response()->json(['message' => 'Usuario no autenticado'], 401);
-            }
-
-            $targetPath = $request->input('path', '');
-            $files = $request->file('files');
-            if (!is_array($files)) {
-                $files = [$files];
-            }
-
-            $result = $this->documentalService->uploadFiles($targetPath, $files, $user, $request->ip());
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-            ], 201);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 403);
-        }
+        return $this->respond(fn () => $this->documentalService->uploadFiles(
+            (string) $request->input('path', ''),
+            $request->file('files', []),
+            $request->user(),
+            $request->ip()
+        ), 201);
     }
 
     /**
-     * Elimina un archivo o carpeta en S3.
      * DELETE /api/v1/documental/item
      */
     public function deleteItem(DeleteItemRequest $request): JsonResponse
     {
-        try {
-            $user = $this->getAuthUser();
-            if (!$user) {
-                return response()->json(['message' => 'Usuario no autenticado'], 401);
-            }
-
-            $path = $request->input('path');
-            $type = $request->input('type');
-
-            $result = $this->documentalService->deleteItem($path, $type, $user, $request->ip());
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 403);
-        }
+        return $this->respond(fn () => $this->documentalService->deleteItem(
+            $request->input('path'),
+            $request->input('type'),
+            $request->user(),
+            $request->ip()
+        ));
     }
 
     /**
-     * Renombra o mueve un elemento en S3.
      * POST /api/v1/documental/rename
      */
     public function renameItem(RenameItemRequest $request): JsonResponse
     {
-        try {
-            $user = $this->getAuthUser();
-            if (!$user) {
-                return response()->json(['message' => 'Usuario no autenticado'], 401);
-            }
-
-            $oldPath = $request->input('old_path');
-            $newName = $request->input('new_name');
-            $type = $request->input('type');
-
-            $result = $this->documentalService->renameItem($oldPath, $newName, $type, $user, $request->ip());
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 400);
-        }
+        return $this->respond(fn () => $this->documentalService->renameItem(
+            $request->input('old_path'),
+            $request->input('new_name'),
+            $request->input('type'),
+            $request->user(),
+            $request->ip()
+        ));
     }
 
     /**
-     * Genera una URL firmada de descarga para un archivo específico.
      * GET /api/v1/documental/download?path=...
      */
     public function download(Request $request): JsonResponse
     {
-        try {
-            $user = $this->getAuthUser();
-            if (!$user) {
-                return response()->json(['message' => 'Usuario no autenticado'], 401);
-            }
+        $request->validate(['path' => 'required|string']);
 
-            $filePath = $request->query('path');
-            if (empty($filePath)) {
-                return response()->json(['message' => 'Ruta de archivo requerida'], 422);
-            }
-
-            $result = $this->documentalService->getDownloadUrl($filePath, $user, $request->ip());
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 404);
-        }
+        return $this->respond(fn () => $this->documentalService->getDownloadUrl(
+            $request->query('path'),
+            $request->user(),
+            $request->ip()
+        ));
     }
 
     /**
-     * Devuelve los permisos del usuario para la ruta actual y, si es admin, el listado de reglas por área.
+     * Permisos efectivos del usuario en la ruta y, si administra el módulo, las carpetas restringidas y los roles.
      * GET /api/v1/documental/permissions?path=...
      */
     public function permissions(Request $request): JsonResponse
     {
-        $user = $this->getAuthUser();
-        $path = $request->query('path', '');
+        $user = $request->user();
+        $effective = $this->documentalService->getUserPermissionsForPath($user, (string) $request->query('path', ''));
 
-        $effective = $this->documentalService->getUserPermissionsForPath($user, $path);
-
-        $rules = [];
-        $areas = [];
-
-        // Si es administrador o tiene rol de gestión, entregamos las reglas de permisos por área
+        $restrictedFolders = [];
+        $roles = [];
         if ($effective['is_admin']) {
-            $rules = DocumentAreaPermission::with('area:id,name')->orderBy('area_id')->get();
-            $areas = Area::select('id', 'name')->orderBy('name')->get();
+            $restrictedFolders = $this->documentalService->listRestrictedFolders();
+            $roles = Role::select('id', 'name')->orderBy('name')->get();
         }
 
         return response()->json([
             'success' => true,
             'effective_permissions' => $effective,
             'user' => [
-                'id' => optional($user)->id,
-                'name' => optional($user)->name,
-                'area' => optional(optional($user)->area)->name,
-                'position' => optional(optional($user)->position)->name,
+                'id' => $user->id,
+                'name' => $user->name,
+                'roles' => $user->getRoleNames(),
             ],
-            'rules' => $rules,
-            'areas' => $areas,
+            'restricted_folders' => $restrictedFolders,
+            'roles' => $roles,
         ]);
     }
 
     /**
-     * Crea o actualiza una regla de permisos para un área específica.
-     * POST /api/v1/documental/permissions
+     * Reemplaza los roles con acceso a una carpeta (lista vacía = quitar restricción).
+     * PUT /api/v1/documental/permissions/folder
      */
-    public function storePermission(StoreAreaPermissionRequest $request): JsonResponse
+    public function syncFolderRules(SyncFolderRulesRequest $request): JsonResponse
     {
-        $user = $this->getAuthUser();
-        $effective = $this->documentalService->getUserPermissionsForPath($user, '');
-
-        if (!$effective['is_admin']) {
-            return response()->json(['message' => 'Solo los administradores pueden configurar permisos por área.'], 403);
-        }
-
-        $validated = $request->validated();
-        $folderPath = $this->documentalService->normalizePath($validated['folder_path'] ?? '*');
-        if (empty($folderPath)) {
-            $folderPath = '*';
-        }
-
-        $permission = DocumentAreaPermission::updateOrCreate(
-            [
-                'area_id' => $validated['area_id'],
-                'folder_path' => $folderPath,
-            ],
-            [
-                'can_read' => $validated['can_read'] ?? true,
-                'can_upload' => $validated['can_upload'] ?? false,
-                'can_create_folder' => $validated['can_create_folder'] ?? false,
-                'can_delete' => $validated['can_delete'] ?? false,
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Permiso de área actualizado exitosamente.',
-            'permission' => $permission->load('area:id,name'),
-        ]);
+        return $this->respond(fn () => $this->documentalService->syncFolderRules(
+            $request->input('folder_path'),
+            $request->input('rules', []),
+            $request->user(),
+            $request->ip()
+        ));
     }
 
     /**
-     * Elimina una regla de permisos por área.
-     * DELETE /api/v1/documental/permissions/{id}
-     */
-    public function destroyPermission(int $id): JsonResponse
-    {
-        $user = $this->getAuthUser();
-        $effective = $this->documentalService->getUserPermissionsForPath($user, '');
-
-        if (!$effective['is_admin']) {
-            return response()->json(['message' => 'Solo los administradores pueden eliminar permisos.'], 403);
-        }
-
-        $rule = DocumentAreaPermission::findOrFail($id);
-        $rule->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Regla de permisos eliminada.',
-        ]);
-    }
-
-    /**
-     * Lista el historial de actividad y auditoría sobre el repositorio documental.
-     * GET /api/v1/documental/logs
+     * Historial de actividad del repositorio documental, con filtros.
+     * GET /api/v1/documental/logs?action=&user=&path=&date_from=&date_to=&page=&per_page=
      */
     public function logs(Request $request): JsonResponse
     {
-        $user = $this->getAuthUser();
-        $effective = $this->documentalService->getUserPermissionsForPath($user, '');
-
-        if (!$effective['is_admin']) {
-            return response()->json(['message' => 'No autorizado para ver auditoría.'], 403);
-        }
+        $request->validate([
+            'action' => 'nullable|string|max:50',
+            'user' => 'nullable|string|max:100',
+            'path' => 'nullable|string|max:255',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
 
         $logs = DocumentActivityLog::with('user:id,name,email')
+            ->when($request->query('action'), fn ($q, $action) => $q->where('action', $action))
+            ->when($request->query('user'), fn ($q, $term) => $q->whereHas(
+                'user',
+                fn ($u) => $u->where('name', 'ilike', "%{$term}%")->orWhere('email', 'ilike', "%{$term}%")
+            ))
+            ->when($request->query('path'), fn ($q, $term) => $q->where('path', 'ilike', "%{$term}%"))
+            ->when($request->query('date_from'), fn ($q, $from) => $q->where('created_at', '>=', Carbon::parse($from)->startOfDay()))
+            ->when($request->query('date_to'), fn ($q, $to) => $q->where('created_at', '<=', Carbon::parse($to)->endOfDay()))
             ->orderBy('id', 'desc')
-            ->paginate($request->query('per_page', 25));
+            ->paginate((int) $request->query('per_page', 25));
 
         return response()->json([
             'success' => true,
             'logs' => $logs,
+            'denied_last_7_days' => DocumentActivityLog::where('action', 'denied')
+                ->where('created_at', '>=', now()->subDays(7))
+                ->count(),
         ]);
+    }
+
+    /**
+     * Configuración vigente del módulo (tamaño máximo, extensiones) y límites del servidor.
+     * GET /api/v1/documental/settings
+     */
+    public function settings(): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $this->settingsService->payload()]);
+    }
+
+    /**
+     * PUT /api/v1/documental/settings
+     */
+    public function updateSettings(UpdateSettingsRequest $request): JsonResponse
+    {
+        return $this->respond(fn () => $this->settingsService->update($request->validated(), $request->user(), $request->ip()));
     }
 }
