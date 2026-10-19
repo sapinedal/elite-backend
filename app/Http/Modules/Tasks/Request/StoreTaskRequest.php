@@ -3,9 +3,12 @@
 namespace App\Http\Modules\Tasks\Request;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreTaskRequest extends FormRequest
 {
+    use ValidatesResponsibleArea;
+
     /**
      * Determina si el usuario está autorizado a realizar esta petición.
      * 
@@ -40,6 +43,16 @@ class StoreTaskRequest extends FormRequest
             // Fechas
             'start_date' => 'nullable|date',
             'scheduled_end_date' => 'nullable|date|after_or_equal:start_date', // Garantiza orden cronológico coherente
+        ];
+    }
+
+    /**
+     * El responsable debe estar activo y pertenecer al área de la tarea.
+     */
+    public function after(): array
+    {
+        return [
+            fn (Validator $validator) => $this->validateResponsibleArea($validator, null),
         ];
     }
 }
