@@ -109,27 +109,12 @@ class UserController extends Controller
             ? $user->getRoleNames()->values()->toArray() 
             : [];
 
-        // Permisos para el módulo de Gestión Documental y Bitácora
-        $isEditor = str_contains(strtolower(optional($user->position)->name), 'director') || 
-                    str_contains(strtolower(optional($user->position)->name), 'gerente') ||
-                    str_contains(strtolower(optional($user->position)->name), 'coordinador') ||
-                    $user->email === 'admin@elite.com' ||
-                    str_contains(strtolower($user->name), 'admin');
-
-        $basePermissions = ['documental.ver', 'documental.leer', 'bitacora.crear'];
-        if ($isEditor) {
-            $basePermissions = array_merge($basePermissions, [
-                'bitacora.editar',
-                'bitacora.eliminar',
-                'ftra.parametrizar',
-                'documental.subir',
-                'documental.crear_carpeta',
-                'documental.eliminar',
-                'documental.admin'
-            ]);
+        // Si el usuario tiene rol admin o gerencia, tiene acceso a todos los permisos del sistema
+        if (in_array('admin', $roles) || in_array('gerencia', $roles)) {
+            $allPermissions = \Spatie\Permission\Models\Permission::pluck('name')->values()->toArray();
+        } else {
+            $allPermissions = $permissions;
         }
-
-        $allPermissions = array_values(array_unique(array_merge($permissions, $basePermissions)));
 
         return response()->json([
             'id' => $user->id,

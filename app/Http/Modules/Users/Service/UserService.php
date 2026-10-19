@@ -36,7 +36,7 @@ class UserService
         if (!empty($roles)) {
             $user->syncRoles($roles);
         } else {
-            $user->syncRoles(['empleado']);
+            $user->syncRoles(['transversal']);
         }
 
         if (!empty($permissions)) {

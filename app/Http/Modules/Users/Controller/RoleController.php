@@ -136,6 +136,11 @@ class RoleController extends Controller
                 'description' => 'Contratos legales, minutas, pólizas de seguros y carpetas Drive',
                 'permissions' => []
             ],
+            'documental' => [
+                'title' => 'Gestión Documental',
+                'description' => 'Explorador y repositorio de archivos S3 / Spaces',
+                'permissions' => []
+            ],
             'usuarios' => [
                 'title' => 'Gestión de Usuarios',
                 'description' => 'Creación de colaboradores, asignación de cargos y credenciales',
