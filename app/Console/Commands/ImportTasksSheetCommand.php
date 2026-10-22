@@ -9,6 +9,7 @@ use App\Http\Modules\Tasks\Models\TaskObservation;
 use App\Http\Modules\Tasks\Models\TaskAuditLog;
 use App\Http\Modules\Users\Models\User;
 use App\Http\Modules\Configuracion\Models\Area;
+use App\Http\Modules\Configuracion\Models\Project;
 use Carbon\Carbon;
 
 class ImportTasksSheetCommand extends Command
@@ -21,7 +22,8 @@ class ImportTasksSheetCommand extends Command
     protected $signature = 'tasks:import-sheet 
                             {--test : Importa únicamente la tarea de prueba (Fila 3)} 
                             {--row= : Importa una fila específica del Excel} 
-                            {--dry-run : Simula la importación sin guardar en la BD}';
+                            {--dry-run : Simula la importación sin guardar en la BD}
+                            {--project=vis : Código del proyecto al que se asignan las tareas}';
 
     /**
      * The console command description.
@@ -104,6 +106,14 @@ class ImportTasksSheetCommand extends Command
             return 1;
         }
         $this->info("✓ Usuario administrador por defecto: {$adminUser->name} (ID: {$adminUser->id})");
+
+        // Proyecto al que se asignan las tareas importadas
+        $project = Project::where('code', $this->option('project'))->first();
+        if (!$project) {
+            $this->error("No existe un proyecto con code '{$this->option('project')}'.");
+            return 1;
+        }
+        $this->info("✓ Proyecto destino: {$project->name} (ID: {$project->id})");
 
         // 2. Cargar caché de usuarios
         $users = User::all();
@@ -234,6 +244,7 @@ class ImportTasksSheetCommand extends Command
 
                 if (!$isDryRun) {
                     $task = Task::create([
+                        'project_id' => $project->id,
                         'title' => $title,
                         'priority' => $priority,
                         'status' => $status,

@@ -12,6 +12,13 @@ Route::prefix('configuracion')->middleware('auth:sanctum')->group(function () {
     Route::put('projects/{project}', [ProjectController::class, 'update'])->middleware('permission:proyectos.editar|configuracion.editar');
     Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->middleware('permission:proyectos.eliminar|configuracion.editar');
 
+    // Proyectos visibles para el usuario autenticado (selector de proyecto activo)
+    Route::get('my-projects', [ProjectController::class, 'myProjects']);
+
+    // Usuarios asignados a cada proyecto
+    Route::get('projects/{project}/users', [ProjectController::class, 'users'])->middleware('permission:proyectos.ver|configuracion.ver');
+    Route::put('projects/{project}/users', [ProjectController::class, 'syncUsers'])->middleware('permission:proyectos.editar|configuracion.editar');
+
     Route::get('projects/{project}/towers', [TowerController::class, 'index'])->middleware('permission:proyectos.ver|configuracion.ver');
     Route::post('projects/{project}/towers', [TowerController::class, 'store'])->middleware('permission:proyectos.crear|configuracion.editar');
     Route::delete('towers/{tower}', [TowerController::class, 'destroy'])->middleware('permission:proyectos.eliminar|configuracion.editar');

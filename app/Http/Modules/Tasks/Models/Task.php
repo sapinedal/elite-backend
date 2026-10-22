@@ -2,10 +2,12 @@
 
 namespace App\Http\Modules\Tasks\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Http\Modules\Users\Models\User;
 use App\Http\Modules\Configuracion\Models\Area;
+use App\Http\Modules\Configuracion\Models\Project;
 
 class Task extends Model
 {
@@ -18,6 +20,7 @@ class Task extends Model
      * en peticiones HTTP masivas, forzando la declaración explícita de lo que es editable.
      */
     protected $fillable = [
+        'project_id',
         'title',
         'priority',
         'status',
@@ -40,6 +43,24 @@ class Task extends Model
         'scheduled_end_date' => 'date',
         'actual_end_date' => 'date',
     ];
+
+    /**
+     * Relación: Proyecto al que pertenece la tarea.
+     */
+    public function project()
+    {
+        return $this->belongsTo(Project::class, 'project_id');
+    }
+
+    /**
+     * Limita la consulta a las tareas de los proyectos que el usuario puede ver.
+     */
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        $projectIds = $user->accessibleProjectIds();
+
+        return $projectIds === null ? $query : $query->whereIn('project_id', $projectIds);
+    }
 
     /**
      * Relación: La tarea fue creada/solicitada por un usuario.

@@ -5,6 +5,7 @@ namespace App\Http\Modules\Tasks\Service;
 use App\Http\Modules\Tasks\Models\Task;
 use App\Http\Modules\Tasks\Models\TaskObservation;
 use App\Http\Modules\Tasks\Models\TaskAuditLog;
+use App\Http\Modules\Users\Models\User;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -17,9 +18,14 @@ class TaskService
      * Al traer de un solo golpe las relaciones 'requestedBy', 'responsible' y 'area',
      * la aplicación es extremadamente veloz y escala de forma eficiente.
      */
-    public function listTasks(array $filters = [])
+    public function listTasks(User $user, ?int $projectId = null, array $filters = [])
     {
-        $query = Task::query();
+        // Solo tareas de los proyectos del usuario; si hay proyecto activo, únicamente ese
+        $query = Task::query()->accessibleBy($user);
+
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
 
         // Aplicamos los filtros generales (Área, Responsable y Búsqueda por Texto)
         if (!empty($filters['area_id'])) {
@@ -70,6 +76,7 @@ class TaskService
 
             $perPage = intval($filters['per_page'] ?? 15);
             $paginated = $query->with([
+                                   'project:id,code,name',
                                    'requestedBy:id,name',
                                    'responsible:id,name',
                                    'area:id,name'
@@ -101,6 +108,7 @@ class TaskService
         }
 
         return $query->with([
+                         'project:id,code,name',
                          'requestedBy:id,name',
                          'responsible:id,name',
                          'area:id,name'
@@ -134,6 +142,7 @@ class TaskService
                 'user_id' => $userId,
                 'action' => 'created',
                 'changes' => [
+                    'project_id' => ['new' => $task->project_id],
                     'title' => ['new' => $task->title],
                     'status' => ['new' => $task->status],
                     'priority' => ['new' => $task->priority]
@@ -141,6 +150,7 @@ class TaskService
             ]);
 
             $task->load([
+                'project:id,code,name',
                 'requestedBy:id,name',
                 'responsible:id,name',
                 'area:id,name'
@@ -159,7 +169,7 @@ class TaskService
         return DB::transaction(function () use ($task, $data, $userId) {
             // Guardamos el estado original relevante
             $original = $task->only([
-                'title', 'priority', 'status', 'responsible_id', 'area_id', 'start_date', 'scheduled_end_date', 'actual_end_date'
+                'project_id', 'title', 'priority', 'status', 'responsible_id', 'area_id', 'start_date', 'scheduled_end_date', 'actual_end_date'
             ]);
 
             // Mapeo automático de fecha de finalización real
@@ -211,6 +221,7 @@ class TaskService
             }
 
             $task->load([
+                'project:id,code,name',
                 'requestedBy:id,name',
                 'responsible:id,name',
                 'area:id,name'

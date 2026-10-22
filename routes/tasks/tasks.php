@@ -3,10 +3,12 @@
 use App\Http\Modules\Tasks\Controller\TaskController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('tasks')->middleware('auth:sanctum')->group(function () {
-    // Bitácora abierta para todo el personal autenticado
+Route::prefix('tasks')->middleware(['auth:sanctum', 'project'])->group(function () {
+    // Bitácora abierta para todo el personal autenticado, limitada a sus proyectos (TaskPolicy)
     Route::get('/', [TaskController::class, 'index']);
     Route::post('/', [TaskController::class, 'store']);
+    // Debe ir antes de /{task} para que no se interprete como un ID
+    Route::get('/assignable-users', [TaskController::class, 'assignableUsers']);
     Route::get('/{task}', [TaskController::class, 'show']);
     Route::put('/{task}', [TaskController::class, 'update']);
     Route::delete('/{task}', [TaskController::class, 'destroy']);

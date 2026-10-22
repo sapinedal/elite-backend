@@ -124,6 +124,69 @@ class ProjectController extends Controller
     }
 
     /**
+     * Projects available to the authenticated user (project selector)
+     */
+    public function myProjects(Request $request): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->projectService->getAccessibleProjects($request->user()),
+                'can_see_all' => $request->user()->canSeeAllProjects(),
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener proyectos: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * List users assigned to the project
+     */
+    public function users(int $id): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->projectService->getProjectUsers($id),
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener usuarios del proyecto: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Replace the users assigned to the project
+     */
+    public function syncUsers(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_ids' => 'present|array',
+            'user_ids.*' => 'integer|distinct|exists:users,id',
+        ]);
+
+        try {
+            $users = $this->projectService->syncProjectUsers($id, $validated['user_ids']);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Usuarios del proyecto actualizados exitosamente',
+                'data' => $users,
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al actualizar usuarios del proyecto: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Remove the specified project
      */
     public function destroy(int $id): JsonResponse

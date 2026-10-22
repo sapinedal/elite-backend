@@ -7,7 +7,7 @@ use Illuminate\Validation\Validator;
 
 class UpdateTaskRequest extends FormRequest
 {
-    use ValidatesResponsibleArea;
+    use ValidatesResponsibleArea, ValidatesTaskProject;
 
     /**
      * Determina si el usuario está autorizado a realizar esta petición.
@@ -29,6 +29,7 @@ class UpdateTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'project_id' => 'sometimes|required|integer|exists:projects,id', // Mover la tarea a otro proyecto
             'title' => 'sometimes|required|string',
             'priority' => 'sometimes|required|string|in:P0,P1,P2,P3',
             'status' => 'sometimes|required|string|in:Por hacer,En espera,En progreso,Completada',
@@ -49,6 +50,7 @@ class UpdateTaskRequest extends FormRequest
     {
         return [
             fn (Validator $validator) => $this->validateResponsibleArea($validator, $this->route('task')),
+            fn (Validator $validator) => $this->validateTaskProject($validator, $this->route('task')),
         ];
     }
 }

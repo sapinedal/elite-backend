@@ -2,6 +2,8 @@
 
 namespace App\Http\Modules\Configuracion\Models;
 
+use App\Http\Modules\Tasks\Models\Task;
+use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 class Project extends Model
@@ -25,5 +27,15 @@ class Project extends Model
     public function towers()
     {
         return $this->hasMany(Tower::class, 'project_id');
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'project_user')->withTimestamps();
+    }
+
+    public function tasks()
+    {
+        return $this->hasMany(Task::class, 'project_id');
     }
 }

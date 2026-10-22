@@ -73,6 +73,7 @@ class PermissionSeeder extends Seeder
             'proyectos.crear',
             'proyectos.editar',
             'proyectos.eliminar',
+            'proyectos.ver_todos', // Ve la información de todos los proyectos sin estar asignado
 
             'contratos.ver',
             'contratos.crear',

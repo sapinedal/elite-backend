@@ -7,7 +7,12 @@ use Illuminate\Validation\Validator;
 
 class StoreTaskRequest extends FormRequest
 {
-    use ValidatesResponsibleArea;
+    use ValidatesResponsibleArea, ValidatesTaskProject;
+
+    protected function prepareForValidation(): void
+    {
+        $this->mergeActiveProject();
+    }
 
     /**
      * Determina si el usuario está autorizado a realizar esta petición.
@@ -28,6 +33,9 @@ class StoreTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Proyecto de la tarea (si no viene en el body se usa el proyecto activo)
+            'project_id' => 'required|integer|exists:projects,id',
+
             'title' => 'required|string', // Descripción explícita de la tarea
             
             // Prioridades estrictas según el feedback del desarrollador: P0 a P3
@@ -53,6 +61,7 @@ class StoreTaskRequest extends FormRequest
     {
         return [
             fn (Validator $validator) => $this->validateResponsibleArea($validator, null),
+            fn (Validator $validator) => $this->validateTaskProject($validator, null),
         ];
     }
 }

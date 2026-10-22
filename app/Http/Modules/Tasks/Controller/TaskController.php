@@ -7,7 +7,11 @@ use App\Http\Modules\Tasks\Models\Task;
 use App\Http\Modules\Tasks\Service\TaskService;
 use App\Http\Modules\Tasks\Request\StoreTaskRequest;
 use App\Http\Modules\Tasks\Request\UpdateTaskRequest;
+use App\Http\Middleware\ResolveActiveProject;
+use App\Http\Modules\Configuracion\Models\Project;
+use App\Http\Modules\Users\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class TaskController extends Controller
 {
@@ -24,9 +28,29 @@ class TaskController extends Controller
     public function index(Request $request)
     {
         $filters = $request->only(['status', 'priority', 'area_id', 'responsible_id', 'search', 'page', 'per_page', 'paginate']);
-        $tasks = $this->taskService->listTasks($filters);
+        $projectId = $request->attributes->get(ResolveActiveProject::ATTRIBUTE);
+        $tasks = $this->taskService->listTasks($request->user(), $projectId, $filters);
         
         return response()->json($tasks);
+    }
+
+    /**
+     * IDs de los usuarios que pueden ser responsables de tareas en el proyecto activo:
+     * los asignados al proyecto y quienes ven todos los proyectos.
+     */
+    public function assignableUsers(Request $request)
+    {
+        $projectId = $request->attributes->get(ResolveActiveProject::ATTRIBUTE);
+        if (!$projectId) {
+            return response()->json(['message' => 'Selecciona un proyecto.'], 422);
+        }
+
+        $memberIds = Project::findOrFail($projectId)->users()->pluck('users.id');
+        $globalIds = User::permission('proyectos.ver_todos')->pluck('id');
+
+        return response()->json([
+            'user_ids' => $memberIds->merge($globalIds)->unique()->values(),
+        ]);
     }
 
     /**
@@ -53,7 +77,10 @@ class TaskController extends Controller
      */
     public function show(Task $task)
     {
+        Gate::authorize('view', $task);
+
         $task->load([
+            'project:id,code,name',
             'requestedBy:id,name',
             'responsible:id,name',
             'area:id,name',
@@ -81,6 +108,8 @@ class TaskController extends Controller
             return response()->json(['message' => 'Usuario no autenticado'], 401);
         }
 
+        Gate::authorize('update', $task);
+
         $validatedData = $request->validated();
         $updatedTask = $this->taskService->updateTask($task, $validatedData, $user->id);
 
@@ -101,11 +130,8 @@ class TaskController extends Controller
             return response()->json(['message' => 'Usuario no autenticado'], 401);
         }
 
-        if (!$user->can('bitacora.eliminar')) {
-            return response()->json([
-                'message' => 'No tienes permisos para eliminar tareas de la bitácora.'
-            ], 403);
-        }
+        // Requiere bitacora.eliminar y acceso al proyecto de la tarea
+        Gate::authorize('delete', $task);
 
         $this->taskService->deleteTask($task, $user->id);
 
@@ -119,6 +145,8 @@ class TaskController extends Controller
      */
     public function storeObservation(Request $request, Task $task)
     {
+        Gate::authorize('addObservation', $task);
+
         $request->validate([
             'observation' => 'required|string|max:1000'
         ]);

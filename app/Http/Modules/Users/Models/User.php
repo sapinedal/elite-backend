@@ -11,6 +11,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use App\Http\Modules\Plantillas\Models\KPI;
+use App\Http\Modules\Configuracion\Models\Project;
 
 class User extends Authenticatable
 {
@@ -89,5 +90,41 @@ class User extends Authenticatable
     public function kpis()
     {
         return $this->hasMany(KPI::class)->orderBy('stage', 'asc');
+    }
+
+    /**
+     * Proyectos a los que el usuario está asignado.
+     */
+    public function projects()
+    {
+        return $this->belongsToMany(Project::class, 'project_user')->withTimestamps();
+    }
+
+    /**
+     * Gerencia y administración ven todos los proyectos sin necesidad de estar asignados.
+     */
+    public function canSeeAllProjects(): bool
+    {
+        return $this->can('proyectos.ver_todos');
+    }
+
+    /**
+     * IDs de los proyectos que el usuario puede consultar.
+     * Devuelve null cuando no hay restricción (puede ver todos).
+     *
+     * @return list<int>|null
+     */
+    public function accessibleProjectIds(): ?array
+    {
+        if ($this->canSeeAllProjects()) {
+            return null;
+        }
+
+        return $this->projects()->pluck('projects.id')->all();
+    }
+
+    public function canAccessProject(int $projectId): bool
+    {
+        return $this->canSeeAllProjects() || $this->projects()->whereKey($projectId)->exists();
     }
 }
