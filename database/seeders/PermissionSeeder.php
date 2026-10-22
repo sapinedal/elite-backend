@@ -80,6 +80,12 @@ class PermissionSeeder extends Seeder
             'contratos.editar',
             'contratos.eliminar',
 
+            // Módulo Contratación (contratos de obra, adjuntos S3 y pólizas)
+            'contratacion.ver',
+            'contratacion.crear',
+            'contratacion.editar',
+            'contratacion.eliminar',
+
             'configuracion.ver',
             'configuracion.editar',
 
@@ -144,6 +150,10 @@ class PermissionSeeder extends Seeder
             'ftra.aprobar',
             'ftra.parametrizar',
             'proyectos.ver',
+            'contratacion.ver',
+            'contratacion.crear',
+            'contratacion.editar',
+            'contratacion.eliminar',
         ], $documentalPermissions));
 
         // JURÍDICA: Tareas + Módulo Jurídica + Ver Contratos
@@ -153,6 +163,7 @@ class PermissionSeeder extends Seeder
             'juridica.editar',
             'juridica.eliminar',
             'contratos.ver',
+            'contratacion.ver',
         ], $documentalPermissions));
 
         // TRANSVERSAL: Tareas + Gestión Documental (Explorador S3)

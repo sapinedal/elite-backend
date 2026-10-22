@@ -1,0 +1,140 @@
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Mensajes de validación en español
+|--------------------------------------------------------------------------
+| Las reglas que no estén aquí usan el mensaje en inglés (fallback_locale).
+| Los nombres de los campos se traducen en cada FormRequest con attributes().
+*/
+
+return [
+
+    'accepted' => 'Debes aceptar :attribute.',
+    'after' => ':Attribute debe ser una fecha posterior a :date.',
+    'after_or_equal' => ':Attribute debe ser una fecha igual o posterior a :date.',
+    'alpha' => ':Attribute solo puede contener letras.',
+    'alpha_dash' => ':Attribute solo puede contener letras, números, guiones y guiones bajos.',
+    'alpha_num' => ':Attribute solo puede contener letras y números.',
+    'array' => ':Attribute debe ser una lista.',
+    'before' => ':Attribute debe ser una fecha anterior a :date.',
+    'before_or_equal' => ':Attribute debe ser una fecha igual o anterior a :date.',
+    'between' => [
+        'array' => ':Attribute debe tener entre :min y :max elementos.',
+        'file' => ':Attribute debe pesar entre :min y :max kilobytes.',
+        'numeric' => ':Attribute debe estar entre :min y :max.',
+        'string' => ':Attribute debe tener entre :min y :max caracteres.',
+    ],
+    'boolean' => ':Attribute debe ser verdadero o falso.',
+    'confirmed' => 'La confirmación de :attribute no coincide.',
+    'current_password' => 'La contraseña es incorrecta.',
+    'date' => ':Attribute no es una fecha válida.',
+    'date_equals' => ':Attribute debe ser una fecha igual a :date.',
+    'date_format' => ':Attribute no tiene el formato :format.',
+    'different' => ':Attribute y :other deben ser diferentes.',
+    'digits' => ':Attribute debe tener :digits dígitos.',
+    'digits_between' => ':Attribute debe tener entre :min y :max dígitos.',
+    'distinct' => ':Attribute tiene un valor duplicado.',
+    'email' => ':Attribute debe ser un correo electrónico válido.',
+    'ends_with' => ':Attribute debe terminar con uno de los siguientes valores: :values.',
+    'exists' => ':Attribute seleccionado no es válido.',
+    'extensions' => ':Attribute debe tener una de las siguientes extensiones: :values.',
+    'file' => ':Attribute debe ser un archivo.',
+    'filled' => ':Attribute es obligatorio.',
+    'gt' => [
+        'array' => ':Attribute debe tener más de :value elementos.',
+        'file' => ':Attribute debe pesar más de :value kilobytes.',
+        'numeric' => ':Attribute debe ser mayor que :value.',
+        'string' => ':Attribute debe tener más de :value caracteres.',
+    ],
+    'gte' => [
+        'array' => ':Attribute debe tener :value elementos o más.',
+        'file' => ':Attribute debe pesar :value kilobytes o más.',
+        'numeric' => ':Attribute debe ser mayor o igual que :value.',
+        'string' => ':Attribute debe tener :value caracteres o más.',
+    ],
+    'image' => ':Attribute debe ser una imagen.',
+    'in' => ':Attribute seleccionado no es válido.',
+    'in_array' => ':Attribute no existe en :other.',
+    'integer' => ':Attribute debe ser un número entero.',
+    'ip' => ':Attribute debe ser una dirección IP válida.',
+    'json' => ':Attribute debe ser un texto JSON válido.',
+    'lt' => [
+        'array' => ':Attribute debe tener menos de :value elementos.',
+        'file' => ':Attribute debe pesar menos de :value kilobytes.',
+        'numeric' => ':Attribute debe ser menor que :value.',
+        'string' => ':Attribute debe tener menos de :value caracteres.',
+    ],
+    'lte' => [
+        'array' => ':Attribute no debe tener más de :value elementos.',
+        'file' => ':Attribute debe pesar :value kilobytes o menos.',
+        'numeric' => ':Attribute debe ser menor o igual que :value.',
+        'string' => ':Attribute debe tener :value caracteres o menos.',
+    ],
+    'max' => [
+        'array' => ':Attribute no debe tener más de :max elementos.',
+        'file' => ':Attribute no debe pesar más de :max kilobytes.',
+        'numeric' => ':Attribute no debe ser mayor que :max.',
+        'string' => ':Attribute no debe tener más de :max caracteres.',
+    ],
+    'mimes' => ':Attribute debe ser un archivo de tipo: :values.',
+    'mimetypes' => ':Attribute debe ser un archivo de tipo: :values.',
+    'min' => [
+        'array' => ':Attribute debe tener al menos :min elementos.',
+        'file' => ':Attribute debe pesar al menos :min kilobytes.',
+        'numeric' => ':Attribute debe ser al menos :min.',
+        'string' => ':Attribute debe tener al menos :min caracteres.',
+    ],
+    'not_in' => ':Attribute seleccionado no es válido.',
+    'not_regex' => 'El formato de :attribute no es válido.',
+    'numeric' => ':Attribute debe ser un número.',
+    'password' => [
+        'letters' => ':Attribute debe contener al menos una letra.',
+        'mixed' => ':Attribute debe contener al menos una mayúscula y una minúscula.',
+        'numbers' => ':Attribute debe contener al menos un número.',
+        'symbols' => ':Attribute debe contener al menos un símbolo.',
+        'uncompromised' => ':Attribute aparece en una filtración de datos. Elige otra.',
+    ],
+    'present' => ':Attribute debe estar presente.',
+    'regex' => 'El formato de :attribute no es válido.',
+    'required' => ':Attribute es obligatorio.',
+    'required_if' => ':Attribute es obligatorio cuando :other es :value.',
+    'required_unless' => ':Attribute es obligatorio a menos que :other esté en :values.',
+    'required_with' => ':Attribute es obligatorio cuando :values está presente.',
+    'required_with_all' => ':Attribute es obligatorio cuando :values están presentes.',
+    'required_without' => ':Attribute es obligatorio cuando :values no está presente.',
+    'required_without_all' => ':Attribute es obligatorio cuando ninguno de :values está presente.',
+    'same' => ':Attribute y :other deben coincidir.',
+    'size' => [
+        'array' => ':Attribute debe tener :size elementos.',
+        'file' => ':Attribute debe pesar :size kilobytes.',
+        'numeric' => ':Attribute debe ser :size.',
+        'string' => ':Attribute debe tener :size caracteres.',
+    ],
+    'starts_with' => ':Attribute debe comenzar con uno de los siguientes valores: :values.',
+    'string' => ':Attribute debe ser un texto.',
+    'timezone' => ':Attribute debe ser una zona horaria válida.',
+    'unique' => 'Ya existe un registro con ese valor de :attribute.',
+    'uploaded' => 'No se pudo subir :attribute. Es posible que supere el tamaño máximo permitido.',
+    'url' => ':Attribute debe ser una URL válida.',
+    'uuid' => ':Attribute debe ser un UUID válido.',
+
+    'custom' => [],
+
+    // Nombres legibles para campos comunes cuando el FormRequest no define attributes()
+    'attributes' => [
+        'name' => 'nombre',
+        'email' => 'correo electrónico',
+        'password' => 'contraseña',
+        'description' => 'descripción',
+        'code' => 'código',
+        'phone' => 'teléfono',
+        'status' => 'estado',
+        'title' => 'título',
+        'file' => 'archivo',
+        'files' => 'archivos',
+        'start_date' => 'fecha de inicio',
+        'end_date' => 'fecha de finalización',
+    ],
+
+];

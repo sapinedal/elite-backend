@@ -15,6 +15,7 @@ class Project extends Model
         'name',
         'subtitle',
         'description',
+        'contracts_folder',
         'total_budget',
         'is_active',
     ];

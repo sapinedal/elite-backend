@@ -13,5 +13,6 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/ftra/ftra.php';
     require __DIR__ . '/documental/documental.php';
     require __DIR__ . '/juridica/juridica.php';
+    require __DIR__ . '/contratacion/contratacion.php';
     
 });
