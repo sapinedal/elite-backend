@@ -6,6 +6,7 @@ use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Contratacion\Models\ContratacionPolicy;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class ContractService
@@ -38,7 +39,11 @@ class ContractService
         return $query;
     }
 
-    public function listContracts(User $user, ?int $projectId, array $filters = []): array
+    /**
+     * Listado paginado. Las alertas (adjuntos faltantes / pólizas por vencer) se calculan en PHP, por eso
+     * el filtro de alertas y la paginación se aplican sobre la colección ya presentada.
+     */
+    public function listContracts(User $user, ?int $projectId, array $filters = []): LengthAwarePaginator
     {
         $query = $this->baseQuery($user, $projectId)->with($this->listRelations());
 
@@ -64,11 +69,23 @@ class ContractService
         $contracts = $query->orderBy('tower_id')->orderBy('consecutive')->get()
             ->map(fn (ContratacionContract $contract) => $this->present($contract));
 
-        if (!empty($filters['alerts_only']) && filter_var($filters['alerts_only'], FILTER_VALIDATE_BOOLEAN)) {
-            $contracts = $contracts->filter(fn (array $c) => $c['missing_documents'] || $c['expiring_policies'])->values();
-        }
+        $contracts = match ($filters['alert'] ?? null) {
+            'missing' => $contracts->filter(fn (array $c) => $c['missing_documents']),
+            'policies' => $contracts->filter(fn (array $c) => $c['expiring_policies']),
+            default => !empty($filters['alerts_only']) && filter_var($filters['alerts_only'], FILTER_VALIDATE_BOOLEAN)
+                ? $contracts->filter(fn (array $c) => $c['missing_documents'] || $c['expiring_policies'])
+                : $contracts,
+        };
 
-        return $contracts->all();
+        $perPage = min(max((int) ($filters['per_page'] ?? 15), 1), 100);
+        $page = max((int) ($filters['page'] ?? 1), 1);
+
+        return new LengthAwarePaginator(
+            $contracts->forPage($page, $perPage)->values(),
+            $contracts->count(),
+            $perPage,
+            $page
+        );
     }
 
     public function getContract(ContratacionContract $contract): array

@@ -86,6 +86,14 @@ class PermissionSeeder extends Seeder
             'contratacion.editar',
             'contratacion.eliminar',
 
+            // Registro de Corte (radicación y flujo Interventor -> Director de Obra -> Gerencia)
+            'cortes.ver',
+            'cortes.crear',
+            'cortes.ver_todos',
+            'cortes.aprobar_interventor',
+            'cortes.aprobar_director',
+            'cortes.aprobar_gerencia',
+
             'configuracion.ver',
             'configuracion.editar',
 
@@ -154,6 +162,8 @@ class PermissionSeeder extends Seeder
             'contratacion.crear',
             'contratacion.editar',
             'contratacion.eliminar',
+            'cortes.ver',
+            'cortes.crear',
         ], $documentalPermissions));
 
         // JURÍDICA: Tareas + Módulo Jurídica + Ver Contratos

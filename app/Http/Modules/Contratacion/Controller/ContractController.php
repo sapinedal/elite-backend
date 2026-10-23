@@ -94,7 +94,7 @@ class ContractController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['search', 'tower_id', 'contract_type_id', 'status', 'alerts_only']);
+        $filters = $request->only(['search', 'tower_id', 'contract_type_id', 'status', 'alerts_only', 'alert', 'page', 'per_page']);
 
         return response()->json([
             'status' => 'success',

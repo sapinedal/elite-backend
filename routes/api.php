@@ -14,5 +14,6 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/documental/documental.php';
     require __DIR__ . '/juridica/juridica.php';
     require __DIR__ . '/contratacion/contratacion.php';
+    require __DIR__ . '/cortes/cortes.php';
     
 });

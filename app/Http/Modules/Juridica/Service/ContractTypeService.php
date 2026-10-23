@@ -4,6 +4,8 @@ namespace App\Http\Modules\Juridica\Service;
 
 use App\Http\Modules\Juridica\Models\ContractType;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ContractTypeService
 {
@@ -53,9 +55,22 @@ class ContractTypeService
         return $type->fresh();
     }
 
+    /**
+     * Elimina el tipo si nadie lo usa. Si tiene contratos (Jurídica o Contratación) solo se desactiva:
+     * borrarlo los dejaría sin tipo (la llave foránea es nullOnDelete). Devuelve true si se eliminó.
+     */
     public function deleteContractType(int $id): bool
     {
         $type = ContractType::findOrFail($id);
-        return $type->delete();
+
+        $inUse = DB::table('contratacion_contracts')->where('contract_type_id', $id)->exists()
+            || (Schema::hasColumn('contracts', 'contract_type_id') && DB::table('contracts')->where('contract_type_id', $id)->exists());
+
+        if ($inUse) {
+            $type->update(['is_active' => false]);
+            return false;
+        }
+
+        return (bool) $type->delete();
     }
 }

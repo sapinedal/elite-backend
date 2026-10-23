@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             ContractorSeeder::class,
             ResidenteSeeder::class,
             ContractSeeder::class,
+            ContratacionSanMiguelSeeder::class,
             UserSeeder::class,
         ]);
     }

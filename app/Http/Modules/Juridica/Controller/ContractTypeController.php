@@ -3,11 +3,16 @@
 namespace App\Http\Modules\Juridica\Controller;
 
 use App\Http\Controllers\Controller;
+use App\Http\Modules\Juridica\Models\ContractType;
 use App\Http\Modules\Juridica\Service\ContractTypeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
+/**
+ * Catálogo de tipos de contrato. Lo usan Jurídica y Contratación (rutas en ambos módulos).
+ */
 class ContractTypeController extends Controller
 {
     protected ContractTypeService $contractTypeService;
@@ -35,14 +40,16 @@ class ContractTypeController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        try {
-            $validated = $request->validate([
-                'name' => 'required|string|max:255',
-                'code' => 'nullable|string|max:50',
-                'description' => 'nullable|string',
-                'is_active' => 'nullable|boolean',
-            ]);
+        // La validación va fuera del try: así los errores llegan como 422 y no como 500
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'nullable|string|max:50',
+            'description' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
+        ]);
+        $this->ensureUniqueName($validated['name']);
 
+        try {
             $type = $this->contractTypeService->createContractType($validated);
 
             return response()->json([
@@ -60,14 +67,17 @@ class ContractTypeController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        try {
-            $validated = $request->validate([
-                'name' => 'nullable|string|max:255',
-                'code' => 'nullable|string|max:50',
-                'description' => 'nullable|string',
-                'is_active' => 'nullable|boolean',
-            ]);
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'code' => 'nullable|string|max:50',
+            'description' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
+        ]);
+        if (!empty($validated['name'])) {
+            $this->ensureUniqueName($validated['name'], $id);
+        }
 
+        try {
             $type = $this->contractTypeService->updateContractType($id, $validated);
 
             return response()->json([
@@ -86,16 +96,33 @@ class ContractTypeController extends Controller
     public function destroy(int $id): JsonResponse
     {
         try {
-            $this->contractTypeService->deleteContractType($id);
+            $deleted = $this->contractTypeService->deleteContractType($id);
             return response()->json([
                 'status' => 'success',
-                'message' => 'Tipo de contrato eliminado exitosamente',
+                'message' => $deleted
+                    ? 'Tipo de contrato eliminado exitosamente'
+                    : 'El tipo tiene contratos asociados: se desactivó para no dejarlos sin tipo.',
             ], 200);
         } catch (Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error al eliminar tipo de contrato: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Evita tipos repetidos entre los activos (sin distinguir mayúsculas).
+     */
+    protected function ensureUniqueName(string $name, ?int $ignoreId = null): void
+    {
+        $exists = ContractType::where('is_active', true)
+            ->whereRaw('lower(name) = ?', [mb_strtolower(trim($name))])
+            ->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages(['name' => 'Ya existe un tipo de contrato con ese nombre.']);
         }
     }
 }
