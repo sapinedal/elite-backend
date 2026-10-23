@@ -192,7 +192,7 @@ class CorteService
         });
 
         // Los correos se envían después del commit para no avisar de un corte que no quedó guardado
-        $this->notifications->submitted($corte, false);
+        $this->notifications->submitted($corte, false, $data['comment'] ?? null);
 
         return $corte;
     }
@@ -269,7 +269,7 @@ class CorteService
             return $corte;
         });
 
-        $this->notifications->submitted($corte, true);
+        $this->notifications->submitted($corte, true, $data['comment'] ?? null);
 
         return $corte;
     }
@@ -294,7 +294,7 @@ class CorteService
     /**
      * Estado de cada etapa en el ciclo actual (desde la última radicación o reenvío), para la línea de tiempo.
      */
-    protected function progress(Corte $corte): array
+    public function progress(Corte $corte): array
     {
         $cycleStartId = $corte->history
             ->whereIn('action', [CorteHistory::ACTION_RADICADO, CorteHistory::ACTION_REENVIADO])

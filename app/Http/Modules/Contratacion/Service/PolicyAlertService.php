@@ -63,17 +63,22 @@ class PolicyAlertService
     }
 
     /**
-     * Usuarios con permiso contratacion.editar que tienen acceso al proyecto, más los correos de configuración.
+     * Destinatarios configurados en contratacion.alert_emails; si no hay, los usuarios con permiso
+     * contratacion.editar que tienen acceso al proyecto.
      */
     protected function recipientsFor(Project $project): Collection
     {
-        $users = User::permission('contratacion.editar')
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($project->id))
-            ->pluck('email');
+        $configured = collect(config('contratacion.alert_emails'));
 
-        return $users->merge(config('contratacion.alert_emails'))
+        $emails = $configured->isNotEmpty()
+            ? $configured
+            : User::permission('contratacion.editar')
+                ->whereNotNull('email')
+                ->get()
+                ->filter(fn (User $user) => $user->canAccessProject($project->id))
+                ->pluck('email');
+
+        return $emails
             ->map(fn ($email) => mb_strtolower(trim($email)))
             ->filter()
             ->unique()

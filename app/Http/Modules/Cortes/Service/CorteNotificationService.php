@@ -12,24 +12,30 @@ use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Correos del flujo de cortes. Quién recibe cada aviso:
+ * Correos del flujo de cortes. Quién recibe cada aviso (destinatarios en config/cortes.php):
  *
- * - Radicado / reenviado: el residente (confirmación) y los revisores de Interventor (deben revisar).
- * - Aprobado en una etapa intermedia: los revisores de la siguiente etapa, con copia informativa al residente.
- * - Aprobado en Gerencia: el residente y quienes aprobaron las etapas anteriores.
- * - Devuelto: el residente y quienes ya lo habían aprobado en el ciclo actual
- *   (Interventor -> solo residente; Director -> residente + interventor; Gerencia -> residente + interventor + director).
+ * | Evento                       | Para                                                         |
+ * |------------------------------|--------------------------------------------------------------|
+ * | Radicado / reenviado         | Interventor (debe revisar) · Residentes (confirmación)       |
+ * | Aprobado por Interventor     | Director de Obra (debe revisar) · Residentes (avance)        |
+ * | Aprobado por Director        | Gerencia (debe revisar) · Residentes (avance)                |
+ * | Aprobado por Gerencia        | Residentes + Interventor + Director · Facturación (aparte)   |
+ * | Devuelto por Interventor     | Residentes                                                   |
+ * | Devuelto por Director        | Residentes + Interventor                                     |
+ * | Devuelto por Gerencia        | Residentes + Interventor + Director                          |
  *
+ * "Residentes" = quien radicó el corte + cortes.residentes. En TODOS los correos va en copia cortes.monitor.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
  */
 class CorteNotificationService
 {
-    public function submitted(Corte $corte, bool $isResubmission): void
+    public function submitted(Corte $corte, bool $isResubmission, ?string $comment = null): void
     {
+        $firstStage = CorteWorkflow::firstStage();
         $event = $isResubmission ? CorteNotificationMail::EVENT_RESUBMITTED : CorteNotificationMail::EVENT_SUBMITTED;
 
-        $this->send($corte, $event, $this->stageReviewers($corte, CorteWorkflow::firstStage()), CorteWorkflow::firstStage());
-        $this->send($corte, CorteNotificationMail::EVENT_CONFIRMATION, $this->creatorEmail($corte));
+        $this->send($corte, $event, $this->stageRecipients($corte, $firstStage), $firstStage, $comment);
+        $this->send($corte, CorteNotificationMail::EVENT_CONFIRMATION, $this->residentes($corte), null, $comment);
     }
 
     public function approved(Corte $corte, string $stage, ?string $comment): void
@@ -37,82 +43,110 @@ class CorteNotificationService
         $nextStage = CorteWorkflow::nextStage($stage);
 
         if ($nextStage) {
-            $this->send($corte, CorteNotificationMail::EVENT_PENDING_REVIEW, $this->stageReviewers($corte, $nextStage), $nextStage, $comment);
-            $this->send($corte, CorteNotificationMail::EVENT_ADVANCED, $this->creatorEmail($corte), $stage, $comment);
+            $this->send($corte, CorteNotificationMail::EVENT_PENDING_REVIEW, $this->stageRecipients($corte, $nextStage), $nextStage, $comment);
+            $this->send($corte, CorteNotificationMail::EVENT_ADVANCED, $this->residentes($corte), $stage, $comment);
 
             return;
         }
 
-        $recipients = $this->creatorEmail($corte)->merge($this->previousApprovers($corte, $stage));
-        $this->send($corte, CorteNotificationMail::EVENT_APPROVED, $recipients, $stage, $comment);
+        // Última etapa: aviso de aprobación a todos los que participaron y correo aparte a Facturación
+        $participants = $this->residentes($corte)->merge($this->previousReviewers($corte, $stage));
+        $this->send($corte, CorteNotificationMail::EVENT_APPROVED, $participants, $stage, $comment);
+        $this->send($corte, CorteNotificationMail::EVENT_BILLING, collect(config('cortes.facturacion', [])), $stage, $comment);
     }
 
     public function returned(Corte $corte, string $stage, string $comment): void
     {
-        $recipients = $this->creatorEmail($corte)->merge($this->previousApprovers($corte, $stage));
+        $recipients = $this->residentes($corte)->merge($this->previousReviewers($corte, $stage));
         $this->send($corte, CorteNotificationMail::EVENT_RETURNED, $recipients, $stage, $comment);
     }
 
-    protected function send(Corte $corte, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
+    /**
+     * Envía un correo con copia al monitor. Si no hay destinatarios igual se envía al monitor,
+     * para que quede constancia de que el evento ocurrió.
+     */
+    public function send(Corte $corte, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
     {
-        $recipients = $recipients
-            ->map(fn ($email) => mb_strtolower(trim((string) $email)))
-            ->filter()
-            ->unique()
-            ->values();
+        $to = $this->normalize($recipients);
+        $cc = $this->normalize(collect(config('cortes.monitor', [])))->diff($to)->values();
 
-        if ($recipients->isEmpty()) {
+        if ($to->isEmpty()) {
             Log::warning("Cortes: no hay destinatarios para el aviso '{$event}' del corte {$corte->code} (etapa: " . ($stage ?? '-') . ').');
-            return;
+            if ($cc->isEmpty()) {
+                return;
+            }
+            [$to, $cc] = [$cc, collect()];
         }
 
         try {
-            Mail::to($recipients->all())->send(new CorteNotificationMail($corte, $event, $stage, $comment));
+            Mail::to($to->all())
+                ->cc($cc->all())
+                ->send(new CorteNotificationMail($corte, $event, $stage, $comment));
         } catch (Throwable $e) {
             report($e);
         }
     }
 
-    protected function creatorEmail(Corte $corte): Collection
+    protected function normalize(Collection $emails): Collection
     {
-        return collect([$corte->creator?->email]);
+        return $emails
+            ->map(fn ($email) => mb_strtolower(trim((string) $email)))
+            ->filter(fn (string $email) => filter_var($email, FILTER_VALIDATE_EMAIL))
+            ->unique()
+            ->values();
     }
 
     /**
-     * Usuarios con el permiso de la etapa y acceso al proyecto, más los correos de config/cortes.php.
+     * Quien radicó el corte más los residentes de obra configurados.
      */
-    protected function stageReviewers(Corte $corte, string $stage): Collection
+    protected function residentes(Corte $corte): Collection
     {
-        $users = User::permission(CorteWorkflow::STAGES[$stage]['permission'])
+        return collect([$corte->creator?->email])->merge(config('cortes.residentes', []));
+    }
+
+    /**
+     * Revisores de una etapa: los correos configurados en cortes.stage_emails; si no hay, los usuarios con
+     * el permiso de la etapa que tienen acceso al proyecto.
+     */
+    protected function stageRecipients(Corte $corte, string $stage): Collection
+    {
+        $configured = config("cortes.stage_emails.{$stage}", []);
+        if ($configured) {
+            return collect($configured);
+        }
+
+        return User::permission(CorteWorkflow::STAGES[$stage]['permission'])
             ->whereNotNull('email')
             ->get()
             ->filter(fn (User $user) => $user->canAccessProject($corte->project_id))
             ->pluck('email');
-
-        return $users->merge(config("cortes.stage_emails.{$stage}", []));
     }
 
     /**
-     * Correos de quienes aprobaron las etapas anteriores a $stage en el ciclo actual
-     * (desde la última radicación o reenvío).
+     * Revisores de las etapas anteriores a $stage: los configurados y quienes realmente lo aprobaron
+     * en el ciclo actual (desde la última radicación o reenvío).
      */
-    protected function previousApprovers(Corte $corte, string $stage): Collection
+    protected function previousReviewers(Corte $corte, string $stage): Collection
     {
         $previous = CorteWorkflow::previousStages($stage);
         if (!$previous) {
             return collect();
         }
 
+        $configured = collect($previous)->flatMap(fn (string $s) => $this->stageRecipients($corte, $s));
+
         $cycleStartId = $corte->history()
             ->whereIn('action', [CorteHistory::ACTION_RADICADO, CorteHistory::ACTION_REENVIADO])
             ->max('id');
 
-        return $corte->history()
+        $approvers = $corte->history()
             ->where('id', '>', $cycleStartId ?? 0)
             ->where('action', CorteHistory::ACTION_APROBADO)
             ->whereIn('stage', $previous)
             ->with('user:id,email')
             ->get()
             ->pluck('user.email');
+
+        return $configured->merge($approvers);
     }
 }
