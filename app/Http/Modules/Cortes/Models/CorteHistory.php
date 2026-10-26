@@ -19,6 +19,7 @@ class CorteHistory extends Model
     public const ACTION_APROBADO = 'aprobado';
     public const ACTION_DEVUELTO = 'devuelto';
     public const ACTION_REENVIADO = 'reenviado';
+    public const ACTION_FACTURA = 'factura';
 
     protected $fillable = [
         'corte_id',

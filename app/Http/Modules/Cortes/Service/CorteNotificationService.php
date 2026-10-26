@@ -2,13 +2,16 @@
 
 namespace App\Http\Modules\Cortes\Service;
 
+use App\Http\Modules\Cortes\Mail\CorteInvoiceMail;
 use App\Http\Modules\Cortes\Mail\CorteNotificationMail;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteHistory;
+use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -23,6 +26,7 @@ use Throwable;
  * | Devuelto por Interventor     | Residentes                                                   |
  * | Devuelto por Director        | Residentes + Interventor                                     |
  * | Devuelto por Gerencia        | Residentes + Interventor + Director                          |
+ * | Factura cargada              | Cargo(s) de cortes.multifox_positions (registro en Multifox)  |
  *
  * "Residentes" = quien radicó el corte + cortes.residentes. En TODOS los correos va en copia cortes.monitor.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
@@ -59,6 +63,61 @@ class CorteNotificationService
     {
         $recipients = $this->residentes($corte)->merge($this->previousReviewers($corte, $stage));
         $this->send($corte, CorteNotificationMail::EVENT_RETURNED, $recipients, $stage, $comment);
+    }
+
+    /**
+     * Factura cargada a un corte aprobado: aviso para registrarla en Multifox, con copia al monitor.
+     */
+    public function invoiceUploaded(CorteInvoice $invoice): void
+    {
+        $to = $this->normalize($this->multifoxRecipients());
+        $cc = $this->normalize(collect(config('cortes.monitor', [])))->diff($to)->values();
+
+        if ($to->isEmpty()) {
+            Log::warning("Cortes: nadie tiene el cargo de Multifox configurado para la factura {$invoice->invoice_number} (corte {$invoice->corte->code}).");
+            if ($cc->isEmpty()) {
+                return;
+            }
+            [$to, $cc] = [$cc, collect()];
+        }
+
+        try {
+            Mail::to($to->all())->cc($cc->all())->send(new CorteInvoiceMail($invoice));
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Usuarios activos cuyo cargo está en cortes.multifox_positions (sin distinguir mayúsculas ni tildes).
+     * Si nadie tiene el cargo, los correos de respaldo de cortes.multifox_emails.
+     * En ambos casos solo se conservan los correos de los dominios permitidos.
+     */
+    public function multifoxRecipients(): Collection
+    {
+        $positions = collect(config('cortes.multifox_positions', []))->map(fn ($name) => $this->comparable($name));
+
+        $emails = User::query()
+            ->whereNotNull('email')
+            ->whereHas('position')
+            ->with('position:id,name')
+            ->get(['id', 'email', 'position_id'])
+            ->filter(fn (User $user) => $positions->contains($this->comparable($user->position->name)))
+            ->pluck('email');
+
+        $emails = $emails->isNotEmpty() ? $emails : collect(config('cortes.multifox_emails', []));
+
+        // El aviso lleva la factura adjunta: solo a correos de la empresa (cortes.multifox_allowed_domains)
+        $domains = collect(config('cortes.multifox_allowed_domains', []))->map(fn ($d) => mb_strtolower(ltrim(trim($d), '@')));
+
+        return $domains->isEmpty()
+            ? $emails
+            : $emails->filter(fn ($email) => $domains->contains(mb_strtolower(Str::after((string) $email, '@'))))->values();
+    }
+
+    protected function comparable(string $value): string
+    {
+        return trim(Str::lower(Str::ascii($value)));
     }
 
     /**

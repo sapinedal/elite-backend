@@ -167,11 +167,11 @@ class CorteNotificationMail extends Mailable
             self::EVENT_BILLING => [
                 'subject' => "Corte aprobado para facturación: {$code}",
                 'headline' => 'Corte listo para facturación',
-                'badge' => 'Listo para facturar',
+                'badge' => 'Pendiente cargar factura',
                 'tone' => 'success',
-                'intro' => "El corte {$code} del proveedor " . ($c->contractor?->name ?? '—') . " completó todas las aprobaciones y está listo para gestionar su facturación.",
+                'intro' => "El corte {$code} del proveedor " . ($c->contractor?->name ?? '—') . " completó las tres aprobaciones. Carga la factura desde Elite indicando número y tipo de documento; al hacerlo se notificará para su registro en Multifox.",
                 'commentLabel' => 'Comentario de Gerencia',
-                'cta' => 'Ver corte y descargar archivo',
+                'cta' => 'Cargar factura',
             ],
         };
     }

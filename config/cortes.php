@@ -1,9 +1,9 @@
 <?php
 
-// Lista de correos desde el .env (separados por coma). Si la variable no existe o está vacía se usa $default.
-$emails = fn (string $key, string $default = '') => array_values(array_filter(array_map(
+// Lista desde el .env (separada por $separator). Si la variable no existe o está vacía se usa $default.
+$emails = fn (string $key, string $default = '', string $separator = ',') => array_values(array_filter(array_map(
     'trim',
-    explode(',', (string) (env($key) ?: $default))
+    explode($separator, (string) (env($key) ?: $default))
 )));
 
 return [
@@ -38,6 +38,19 @@ return [
 
     // Facturación: recibe el corte cuando completa las tres aprobaciones
     'facturacion' => $emails('CORTES_FACTURACION_EMAILS', 'facturacion@inverconstruccion.com'),
+
+    // Carga a Multifox (ERP externo): al cargar una factura se notifica a los usuarios con estos CARGOS
+    // (nombre exacto del cargo en Configuración → Áreas y Cargos), para no amarrar el aviso a una persona.
+    // Los cargos se separan con | porque sus nombres pueden tener comas. Si nadie tiene el cargo se usan
+    // los correos de respaldo de CORTES_MULTIFOX_EMAILS.
+    'multifox_positions' => $emails('CORTES_MULTIFOX_CARGOS', 'Profesional de Planeación, Control y Contratos', '|'),
+    'multifox_emails' => $emails('CORTES_MULTIFOX_EMAILS'),
+
+    // Solo se envía el aviso de Multifox a correos de estos dominios (lleva la factura adjunta)
+    'multifox_allowed_domains' => $emails('CORTES_MULTIFOX_DOMINIOS', 'inverconstruccion.com'),
+
+    // Facturas que pesen hasta este tamaño (MB) se adjuntan al correo de Multifox
+    'invoice_attach_max_mb' => (int) env('CORTES_INVOICE_ATTACH_MAX_MB', 10),
 
     // Copia (CC) de TODOS los correos del flujo, para verificar que las notificaciones están llegando
     'monitor' => $emails('CORTES_MONITOR_EMAILS', 'residentedeobra@inverconstruccion.com'),

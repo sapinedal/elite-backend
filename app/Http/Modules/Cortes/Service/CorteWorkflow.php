@@ -7,7 +7,7 @@ use App\Http\Modules\Users\Models\User;
 /**
  * Definición del flujo de aprobación de cortes, en un solo lugar.
  *
- *   Radicado -> Interventor -> Director de Obra -> Gerencia -> Aprobado
+ *   Radicado -> Interventor -> Director de Obra -> Gerencia -> Aprobado -> Facturado
  *                    \______________\_________________\___ Devuelto (al residente)
  *
  * Cada etapa se habilita con un permiso Spatie, así los revisores se configuran desde Roles
@@ -24,8 +24,13 @@ class CorteWorkflow
     public const STATUS_PENDIENTE_GERENCIA = 'pendiente_gerencia';
     public const STATUS_DEVUELTO = 'devuelto';
     public const STATUS_APROBADO = 'aprobado';
+    public const STATUS_FACTURADO = 'facturado'; // Aprobado y con al menos una factura cargada
 
     public const PERMISSION_VIEW_ALL = 'cortes.ver_todos';
+    public const PERMISSION_INVOICE = 'cortes.facturar';
+
+    // Estados en los que el corte ya completó las aprobaciones y admite facturas
+    public const INVOICEABLE_STATUSES = [self::STATUS_APROBADO, self::STATUS_FACTURADO];
 
     /**
      * Etapas en orden de revisión.
@@ -54,6 +59,7 @@ class CorteWorkflow
         self::STATUS_PENDIENTE_GERENCIA => 'Pendiente Gerencia',
         self::STATUS_DEVUELTO => 'Devuelto',
         self::STATUS_APROBADO => 'Aprobado',
+        self::STATUS_FACTURADO => 'Facturado',
     ];
 
     public static function firstStage(): string

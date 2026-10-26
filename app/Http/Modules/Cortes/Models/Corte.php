@@ -69,6 +69,11 @@ class Corte extends Model
         return $this->hasMany(CorteHistory::class, 'corte_id')->orderBy('id');
     }
 
+    public function invoices()
+    {
+        return $this->hasMany(CorteInvoice::class, 'corte_id')->orderByDesc('id');
+    }
+
     /**
      * Limita a los proyectos a los que el usuario tiene acceso (todos si tiene proyectos.ver_todos).
      */

@@ -6,6 +6,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteHistory;
+use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +18,7 @@ class CorteService
     public const SCOPE_MINE = 'mine';
     public const SCOPE_PENDING = 'pending';
     public const SCOPE_ALL = 'all';
+    public const SCOPE_BILLING = 'billing'; // Cortes aprobados para cargar facturas (cortes.facturar)
 
     public function __construct(
         protected CorteStorageService $storage,
@@ -65,6 +67,10 @@ class CorteService
             'max_upload_mb' => config('cortes.max_upload_mb'),
             'review_stages' => CorteWorkflow::stagesFor($user),
             'can_view_all' => $user->can(CorteWorkflow::PERMISSION_VIEW_ALL),
+            'can_invoice' => $user->can(CorteWorkflow::PERMISSION_INVOICE),
+            'invoice_document_types' => collect(CorteInvoice::DOCUMENT_TYPES)
+                ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])
+                ->values(),
             ...CorteWorkflow::toArray(),
         ];
     }
@@ -74,10 +80,11 @@ class CorteService
      * - mine: cortes que radicó el usuario (su histórico).
      * - pending: cortes que esperan una etapa que el usuario puede revisar.
      * - all: todos los cortes de sus proyectos (requiere cortes.ver_todos).
+     * - billing: cortes aprobados o facturados, para cargar facturas (requiere cortes.facturar).
      */
     public function listCortes(User $user, string $scope, array $filters = [])
     {
-        $query = $this->scopedQuery($user, $scope)->with($this->listRelations());
+        $query = $this->scopedQuery($user, $scope)->with($this->listRelations())->withCount('invoices');
 
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -110,6 +117,10 @@ class CorteService
         return [
             self::SCOPE_MINE => $this->scopedQuery($user, self::SCOPE_MINE)->count(),
             self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
+            // En facturación se cuentan los que aún no tienen factura
+            self::SCOPE_BILLING => $user->can(CorteWorkflow::PERMISSION_INVOICE)
+                ? $this->scopedQuery($user, self::SCOPE_BILLING)->where('status', CorteWorkflow::STATUS_APROBADO)->count()
+                : 0,
         ];
     }
 
@@ -127,19 +138,23 @@ class CorteService
             return $query->accessibleBy($user);
         }
 
+        if ($scope === self::SCOPE_BILLING && $user->can(CorteWorkflow::PERMISSION_INVOICE)) {
+            return $query->accessibleBy($user)->whereIn('status', CorteWorkflow::INVOICEABLE_STATUSES);
+        }
+
         return $query->where('created_by', $user->id);
     }
 
     public function getCorte(Corte $corte, User $user): array
     {
-        $corte->load([...$this->listRelations(), 'history.user:id,name']);
+        $corte->load([...$this->listRelations(), 'history.user:id,name', 'invoices.uploader:id,name']);
 
         return $this->present($corte, $user, true);
     }
 
     /**
-     * El residente que lo radicó, los revisores de cualquier etapa con acceso al proyecto
-     * y quienes tienen cortes.ver_todos pueden consultar el corte.
+     * El residente que lo radicó, los revisores de cualquier etapa con acceso al proyecto, quienes tienen
+     * cortes.ver_todos y, una vez aprobado, quienes cargan facturas pueden consultar el corte.
      */
     public function canView(Corte $corte, User $user): bool
     {
@@ -150,7 +165,19 @@ class CorteService
             return false;
         }
 
-        return $user->can(CorteWorkflow::PERMISSION_VIEW_ALL) || CorteWorkflow::stagesFor($user) !== [];
+        return $user->can(CorteWorkflow::PERMISSION_VIEW_ALL)
+            || CorteWorkflow::stagesFor($user) !== []
+            || $this->canInvoice($corte, $user);
+    }
+
+    /**
+     * Facturas: solo con las tres aprobaciones y para quien tiene cortes.facturar en el proyecto.
+     */
+    public function canInvoice(Corte $corte, User $user): bool
+    {
+        return in_array($corte->status, CorteWorkflow::INVOICEABLE_STATUSES, true)
+            && $user->can(CorteWorkflow::PERMISSION_INVOICE)
+            && $user->canAccessProject($corte->project_id);
     }
 
     public function canReview(Corte $corte, User $user): bool
@@ -347,6 +374,8 @@ class CorteService
             'approved_at' => $corte->approved_at?->toIso8601String(),
             'can_review' => $this->canReview($corte, $user),
             'can_resubmit' => $this->canResubmit($corte, $user),
+            'can_invoice' => $this->canInvoice($corte, $user),
+            'invoices_count' => $corte->invoices_count ?? ($corte->relationLoaded('invoices') ? $corte->invoices->count() : 0),
         ];
 
         if ($withHistory) {
@@ -360,6 +389,18 @@ class CorteService
                 'file_name' => $h->file_name,
                 'user' => $h->user?->name,
                 'created_at' => $h->created_at?->toIso8601String(),
+            ])->values();
+            $data['invoices'] = $corte->invoices->map(fn (CorteInvoice $invoice) => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'document_type' => $invoice->document_type,
+                'document_type_label' => $invoice->documentTypeLabel(),
+                'related_document' => $invoice->related_document,
+                'observation' => $invoice->observation,
+                'file_name' => $invoice->file_name,
+                'file_size' => $invoice->file_size,
+                'uploaded_by' => $invoice->uploader?->name,
+                'created_at' => $invoice->created_at?->toIso8601String(),
             ])->values();
         }
 

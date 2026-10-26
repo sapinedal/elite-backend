@@ -7,9 +7,11 @@ use App\Http\Modules\Configuracion\Models\Tower;
 use App\Http\Modules\Contratacion\Mail\PolicyExpiringMail;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Contratacion\Models\ContratacionPolicy;
+use App\Http\Modules\Cortes\Mail\CorteInvoiceMail;
 use App\Http\Modules\Cortes\Mail\CorteNotificationMail as M;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteHistory;
+use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteWorkflow as W;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Users\Models\User;
@@ -17,16 +19,18 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Envía un ejemplo de cada correo de notificación (flujo de cortes y alerta de pólizas) a una sola dirección,
+ * Envía un ejemplo de cada correo de notificación (flujo de cortes, facturas para Multifox y alerta de pólizas) a una sola dirección,
  * con datos ficticios en memoria: no lee ni escribe en la base de datos y no notifica a nadie más.
  *
  * Uso: php artisan notificaciones:ejemplos samuel.pineda@sumimedical.com
  */
 class PreviewNotificationEmails extends Command
 {
-    protected $signature = 'notificaciones:ejemplos {email : Dirección que recibirá todos los ejemplos}';
+    protected $signature = 'notificaciones:ejemplos
+        {email : Dirección que recibirá los ejemplos}
+        {--solo= : Enviar solo uno: el número del ejemplo (1-10)}';
 
-    protected $description = 'Envía un ejemplo de cada plantilla de correo (cortes y pólizas) a una dirección';
+    protected $description = 'Envía un ejemplo de cada plantilla de correo (cortes, facturas y pólizas) a una dirección';
 
     public function handle(): int
     {
@@ -55,19 +59,35 @@ class PreviewNotificationEmails extends Command
             [M::EVENT_BILLING, W::STAGE_GERENCIA, [['radicado', null], ['aprobado', W::STAGE_INTERVENTOR], ['aprobado', W::STAGE_DIRECTOR], ['aprobado', W::STAGE_GERENCIA]], 'Aprobado para pago.', 'Facturación'],
         ];
 
+        $total = count($scenarios) + 2;
+        $only = $this->option('solo') ? (int) $this->option('solo') : null;
+        $prefix = fn (int $n) => "[EJEMPLO {$n}/{$total}]";
         $rows = [];
+
         foreach ($scenarios as $i => [$event, $stage, $history, $text, $audience]) {
-            $corte = $this->fakeCorte($history);
-            $mail = new M($corte, $event, $stage, $text, '[EJEMPLO ' . ($i + 1) . '/9]');
+            if ($only && $only !== $i + 1) {
+                continue;
+            }
+            $mail = new M($this->fakeCorte($history), $event, $stage, $text, $prefix($i + 1));
             Mail::to($email)->send($mail);
             $rows[] = [$i + 1, $mail->envelope()->subject, $audience];
         }
 
-        Mail::to($email)->send(new PolicyExpiringMail($this->fakeProject(), $this->fakePolicies(), '[EJEMPLO 9/9]'));
-        $rows[] = [9, 'Pólizas próximas a vencer', 'Destinatarios de pólizas (contratacion.alert_emails)'];
+        $n = count($scenarios) + 1;
+        if (!$only || $only === $n) {
+            Mail::to($email)->send(new PolicyExpiringMail($this->fakeProject(), $this->fakePolicies(), $prefix($n)));
+            $rows[] = [$n, 'Pólizas próximas a vencer', 'Destinatarios de pólizas (contratacion.alert_emails)'];
+        }
+
+        $n++;
+        if (!$only || $only === $n) {
+            $mail = new CorteInvoiceMail($this->fakeInvoice(), $prefix($n), attachFile: false);
+            Mail::to($email)->send($mail);
+            $rows[] = [$n, $mail->envelope()->subject, 'Cargo(s) de Multifox (cortes.multifox_positions)'];
+        }
 
         $this->table(['#', 'Asunto', 'En la realidad se envía a'], $rows);
-        $this->info("Se enviaron 9 correos de ejemplo a {$email}.");
+        $this->info('Se enviaron ' . count($rows) . " correo(s) de ejemplo a {$email}.");
 
         return self::SUCCESS;
     }
@@ -127,6 +147,26 @@ class PreviewNotificationEmails extends Command
             ->setRelation('contract', new ContratacionContract(['contract_code' => 'T2-MO-03-EMELECT']))
             ->setRelation('creator', new User(['name' => 'Julián Posada']))
             ->setRelation('history', $entries);
+    }
+
+    /**
+     * Nota crédito ficticia sobre un corte facturado (el archivo no se adjunta en el ejemplo).
+     */
+    public function fakeInvoice(): CorteInvoice
+    {
+        $approved = [['radicado', null], ['aprobado', W::STAGE_INTERVENTOR], ['aprobado', W::STAGE_DIRECTOR], ['aprobado', W::STAGE_GERENCIA]];
+        $corte = $this->fakeCorte($approved)->forceFill(['status' => W::STATUS_FACTURADO]);
+
+        return (new CorteInvoice())->forceFill([
+            'id' => 0,
+            'invoice_number' => 'NC-0077',
+            'document_type' => CorteInvoice::TYPE_NOTA_CREDITO,
+            'related_document' => 'FE-9001',
+            'observation' => 'Se descuentan 12 m³ de concreto del ítem 3.2 que no se ejecutaron en el periodo.',
+            'file_name' => 'NC-0077 Emelect Group.pdf',
+            'file_size' => 184_320,
+            'created_at' => now(),
+        ])->setRelation('corte', $corte)->setRelation('uploader', new User(['name' => 'Analista de Facturación']));
     }
 
     protected function fakePolicies()

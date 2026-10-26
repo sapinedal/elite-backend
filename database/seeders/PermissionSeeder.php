@@ -93,6 +93,7 @@ class PermissionSeeder extends Seeder
             'cortes.aprobar_interventor',
             'cortes.aprobar_director',
             'cortes.aprobar_gerencia',
+            'cortes.facturar', // Cargar facturas a cortes aprobados (aviso a Multifox)
 
             'configuracion.ver',
             'configuracion.editar',
@@ -190,8 +191,8 @@ class PermissionSeeder extends Seeder
         // MERCADEO: Tareas + Gestión Documental
         $mercadeoRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
-        // CONTABLE: Tareas + Gestión Documental
-        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
+        // CONTABLE: Tareas + Gestión Documental + Facturación de cortes
+        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar']));
 
         // CARTERA Y TRÁMITES: Tareas + Gestión Documental
         $carteraTramitesRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));

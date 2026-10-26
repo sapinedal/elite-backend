@@ -121,13 +121,21 @@ class CorteStorageService
 
     public function downloadUrl(Corte $corte): string
     {
+        return $this->fileDownloadUrl($corte->file_path, $corte->file_name);
+    }
+
+    /**
+     * URL temporal (60 min) para descargar un archivo de cortes o facturas con su nombre original.
+     */
+    public function fileDownloadUrl(string $path, string $name): string
+    {
         $disk = $this->disk();
-        if (!$disk->exists($corte->file_path)) {
-            throw new InvalidArgumentException('El archivo del corte ya no existe en el repositorio.');
+        if (!$disk->exists($path)) {
+            throw new InvalidArgumentException('El archivo ya no existe en el repositorio.');
         }
 
-        return $disk->temporaryUrl($corte->file_path, now()->addMinutes(60), [
-            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($corte->file_name),
+        return $disk->temporaryUrl($path, now()->addMinutes(60), [
+            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($name),
         ]);
     }
 
