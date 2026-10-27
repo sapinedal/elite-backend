@@ -30,6 +30,8 @@ class StoreCorteInvoiceRequest extends FormRequest
                 Rule::unique('cortes_invoices', 'invoice_number')->where('document_type', $type),
             ],
             'related_document' => [$affectsAnother ? 'required' : 'nullable', 'string', 'max:100', 'different:invoice_number'],
+            // Valor del documento (en la nota crédito, el valor que descuenta)
+            'amount' => ['required', 'numeric', 'min:1', 'max:9999999999999'],
             'observation' => [$affectsAnother ? 'required' : 'nullable', 'string', 'max:2000'],
             'upload_token' => ['required', 'uuid'],
         ];
@@ -42,6 +44,7 @@ class StoreCorteInvoiceRequest extends FormRequest
             'invoice_number' => 'número de factura',
             'related_document' => 'documento que reemplaza o afecta',
             'observation' => 'motivo / observación del cambio',
+            'amount' => 'valor',
             'upload_token' => 'archivo de la factura',
         ];
     }

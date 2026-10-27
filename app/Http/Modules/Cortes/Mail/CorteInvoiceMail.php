@@ -52,6 +52,7 @@ class CorteInvoiceMail extends Mailable
             'Tipo de documento' => $invoice->documentTypeLabel(),
             'Número' => $invoice->invoice_number,
             'Documento que afecta' => $invoice->related_document,
+            'Valor' => $invoice->amount !== null ? '$' . number_format((float) $invoice->amount, 0, ',', '.') : null,
             'Archivo' => $invoice->file_name,
             'Cargado por' => $invoice->uploader?->name,
             'Fecha de cargue' => $invoice->created_at?->timezone(config('app.timezone'))->format('d/m/Y h:i a'),
@@ -65,7 +66,7 @@ class CorteInvoiceMail extends Mailable
                 'badge' => 'Pendiente de cargue en Multifox',
                 'tone' => '#004C6C',
                 'toneSoft' => '#e6f0f5',
-                'intro' => 'Se cargó una ' . mb_strtolower($invoice->documentTypeLabel()) . " al corte {$corte->code}, que ya cuenta con las tres aprobaciones. Regístrala en Multifox con los datos a continuación.",
+                'intro' => 'Se cargó una ' . mb_strtolower($invoice->documentTypeLabel()) . " al corte {$corte->code}, que ya cuenta con las tres aprobaciones. Regístrala en Multifox con los datos a continuación y luego confirma en Elite que quedó cargada: así pasa a cuentas por pagar.",
                 'observation' => $invoice->observation,
                 'isAdjustment' => $invoice->related_document !== null,
                 'invoiceDetails' => $invoiceDetails,
@@ -77,7 +78,7 @@ class CorteInvoiceMail extends Mailable
                 ],
                 'attached' => $this->shouldAttach(),
                 'ctaUrl' => config('cortes.frontend_url') . '/app/contratacion/cortes?corte=' . $corte->id,
-                'ctaLabel' => 'Ver corte y descargar factura',
+                'ctaLabel' => 'Ver corte y confirmar carga',
             ],
         );
     }

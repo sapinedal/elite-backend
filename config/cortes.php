@@ -8,8 +8,9 @@ $emails = fn (string $key, string $default = '', string $separator = ',') => arr
 
 return [
 
-    // Carpeta del bucket donde se guardan los archivos de los cortes
-    's3_root' => env('CORTES_S3_ROOT', 'tecnica/cortes'),
+    // Los cortes se guardan en la carpeta de su contrato (<contrato>/Cortes/<código>). Esta carpeta solo se usa
+    // para cortes sin contrato: <s3_root>/<proyecto>/<torre>/Cortes/<código>
+    's3_root' => env('CORTES_S3_ROOT', 'tecnica/Cortes'),
 
     // Tamaño máximo del archivo del corte (MB). Se sube directo a S3 con URL firmada,
     // por eso no depende de upload_max_filesize de PHP

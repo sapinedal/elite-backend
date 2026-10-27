@@ -27,6 +27,9 @@ class CorteInvoice extends Model
         'invoice_number',
         'document_type',
         'related_document',
+        'amount',
+        'multifox_confirmed_at',
+        'multifox_confirmed_by',
         'observation',
         'file_name',
         'file_path',
@@ -37,11 +40,18 @@ class CorteInvoice extends Model
 
     protected $casts = [
         'file_size' => 'integer',
+        'amount' => 'decimal:2',
+        'multifox_confirmed_at' => 'datetime',
     ];
 
     public function corte()
     {
         return $this->belongsTo(Corte::class, 'corte_id');
+    }
+
+    public function multifoxConfirmer()
+    {
+        return $this->belongsTo(User::class, 'multifox_confirmed_by');
     }
 
     public function uploader()

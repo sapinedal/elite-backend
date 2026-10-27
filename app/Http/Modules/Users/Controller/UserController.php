@@ -116,6 +116,20 @@ class UserController extends Controller
             $allPermissions = $permissions;
         }
 
+        // Permisos que se habilitan por cargo (sin amarrarlos a una persona): Multifox, priorizar pagos y Almacén
+        $byPosition = [
+            'cortes.multifox' => config('cortes.multifox_positions', []),
+            'pagos.ver' => config('pagos.priorizar_positions', []),
+            'pagos.priorizar' => config('pagos.priorizar_positions', []),
+            'ordenes.gestionar_almacen' => config('ordenes.almacen_positions', []),
+        ];
+        foreach ($byPosition as $permission => $positions) {
+            if (\App\Services\PositionMatcher::matches($user, $positions)) {
+                $allPermissions[] = $permission;
+            }
+        }
+        $allPermissions = array_values(array_unique($allPermissions));
+
         return response()->json([
             'id' => $user->id,
             'nombre' => $user->name,

@@ -146,6 +146,16 @@ class RoleController extends Controller
                 'description' => 'Radicación de cortes y aprobación Interventor, Director de Obra y Gerencia',
                 'permissions' => []
             ],
+            'ordenes' => [
+                'title' => 'Registro de Orden',
+                'description' => 'Órdenes con aprobación Director de Obra y Gerencia, orden de compra ERP, factura y entrada',
+                'permissions' => []
+            ],
+            'pagos' => [
+                'title' => 'Cuentas por Pagar',
+                'description' => 'Cuadro de pagos: priorización, registro de pagos y abonos con trazabilidad',
+                'permissions' => []
+            ],
             'documental' => [
                 'title' => 'Gestión Documental',
                 'description' => 'Explorador y repositorio de archivos S3 / Spaces',

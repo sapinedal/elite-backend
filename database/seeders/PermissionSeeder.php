@@ -94,6 +94,22 @@ class PermissionSeeder extends Seeder
             'cortes.aprobar_director',
             'cortes.aprobar_gerencia',
             'cortes.facturar', // Cargar facturas a cortes aprobados (aviso a Multifox)
+            'cortes.multifox', // Confirmar la carga en Multifox (también por cargo, ver config/cortes.php)
+
+            // Registro de Orden (aprobación Director de Obra -> Gerencia y documentos ERP / factura / entrada)
+            'ordenes.ver',
+            'ordenes.crear',
+            'ordenes.ver_todos',
+            'ordenes.aprobar_director',
+            'ordenes.aprobar_gerencia',
+            'ordenes.gestionar_almacen', // Orden de compra ERP y entrada (también por cargo, ver config/ordenes.php)
+            'ordenes.facturar',          // Factura del proveedor
+
+            // Cuentas por pagar (cuadro de pagos)
+            'pagos.ver',
+            'pagos.priorizar', // También por cargo, ver config/pagos.php
+            'pagos.pagar',
+            'pagos.registrar', // Cargue manual de cuentas
 
             'configuracion.ver',
             'configuracion.editar',
@@ -165,6 +181,8 @@ class PermissionSeeder extends Seeder
             'contratacion.eliminar',
             'cortes.ver',
             'cortes.crear',
+            'ordenes.ver',
+            'ordenes.crear',
         ], $documentalPermissions));
 
         // JURÍDICA: Tareas + Módulo Jurídica + Ver Contratos
@@ -191,8 +209,8 @@ class PermissionSeeder extends Seeder
         // MERCADEO: Tareas + Gestión Documental
         $mercadeoRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
-        // CONTABLE: Tareas + Gestión Documental + Facturación de cortes
-        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar']));
+        // CONTABLE: Tareas + Gestión Documental + Facturación de cortes y órdenes
+        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar', 'ordenes.ver', 'ordenes.facturar', 'pagos.ver', 'pagos.pagar', 'pagos.registrar']));
 
         // CARTERA Y TRÁMITES: Tareas + Gestión Documental
         $carteraTramitesRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));

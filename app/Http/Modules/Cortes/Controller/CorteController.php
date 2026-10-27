@@ -185,6 +185,26 @@ class CorteController extends Controller
         }
     }
 
+    /**
+     * Confirmación de que la factura quedó cargada en Multifox: pasa a cuentas por pagar.
+     */
+    public function confirmMultifox(Request $request, CorteInvoice $invoice): JsonResponse
+    {
+        try {
+            $invoice = $this->invoiceService->confirmMultifox($invoice, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Carga en Multifox confirmada. La factura pasó a cuentas por pagar.',
+                'data' => $this->corteService->getCorte($invoice->corte, $request->user()),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('confirmar la carga en Multifox', $e);
+        }
+    }
+
     public function downloadInvoice(Request $request, CorteInvoice $invoice): JsonResponse
     {
         if (!$this->corteService->canView($invoice->corte, $request->user())) {

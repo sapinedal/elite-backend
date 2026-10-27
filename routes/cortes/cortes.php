@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('cortes')->middleware('auth:sanctum')->group(function () {
     Route::get('/catalogs', [CorteController::class, 'catalogs'])->middleware('permission:cortes.ver');
     Route::post('/upload-url', [CorteController::class, 'uploadUrl'])->middleware('permission:cortes.crear|cortes.facturar');
+    // Confirmación de carga en Multifox: por cargo (Paula) o permiso cortes.multifox, lo valida CorteInvoiceService
+    Route::post('/invoices/{invoice}/multifox', [CorteController::class, 'confirmMultifox'])->middleware('permission:cortes.ver');
     Route::get('/invoices/{invoice}/download', [CorteController::class, 'downloadInvoice'])->middleware('permission:cortes.ver|cortes.facturar');
 
     Route::get('/', [CorteController::class, 'index'])->middleware('permission:cortes.ver');

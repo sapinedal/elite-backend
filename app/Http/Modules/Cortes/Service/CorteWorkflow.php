@@ -3,6 +3,7 @@
 namespace App\Http\Modules\Cortes\Service;
 
 use App\Http\Modules\Users\Models\User;
+use App\Services\PositionMatcher;
 
 /**
  * Definición del flujo de aprobación de cortes, en un solo lugar.
@@ -116,6 +117,15 @@ class CorteWorkflow
             array_keys(self::STAGES),
             fn (string $stage) => $user->can(self::STAGES[$stage]['permission'])
         ));
+    }
+
+    /**
+     * Quien registra las facturas en Multifox (y confirma que quedaron cargadas): el cargo de
+     * cortes.multifox_positions o el permiso cortes.multifox.
+     */
+    public static function canConfirmMultifox(User $user): bool
+    {
+        return $user->can('cortes.multifox') || PositionMatcher::matches($user, config('cortes.multifox_positions', []));
     }
 
     /**

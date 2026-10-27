@@ -26,6 +26,7 @@ class Corte extends Model
         'status',
         'current_stage',
         'returned_stage',
+        'storage_path',
         'file_name',
         'file_path',
         'file_size',

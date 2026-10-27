@@ -19,6 +19,7 @@ class CorteService
     public const SCOPE_PENDING = 'pending';
     public const SCOPE_ALL = 'all';
     public const SCOPE_BILLING = 'billing'; // Cortes aprobados para cargar facturas (cortes.facturar)
+    public const SCOPE_MULTIFOX = 'multifox'; // Cortes con facturas por confirmar en Multifox (Paula)
 
     public function __construct(
         protected CorteStorageService $storage,
@@ -68,6 +69,7 @@ class CorteService
             'review_stages' => CorteWorkflow::stagesFor($user),
             'can_view_all' => $user->can(CorteWorkflow::PERMISSION_VIEW_ALL),
             'can_invoice' => $user->can(CorteWorkflow::PERMISSION_INVOICE),
+            'can_confirm_multifox' => CorteWorkflow::canConfirmMultifox($user),
             'invoice_document_types' => collect(CorteInvoice::DOCUMENT_TYPES)
                 ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])
                 ->values(),
@@ -121,6 +123,9 @@ class CorteService
             self::SCOPE_BILLING => $user->can(CorteWorkflow::PERMISSION_INVOICE)
                 ? $this->scopedQuery($user, self::SCOPE_BILLING)->where('status', CorteWorkflow::STATUS_APROBADO)->count()
                 : 0,
+            self::SCOPE_MULTIFOX => CorteWorkflow::canConfirmMultifox($user)
+                ? $this->scopedQuery($user, self::SCOPE_MULTIFOX)->count()
+                : 0,
         ];
     }
 
@@ -142,12 +147,16 @@ class CorteService
             return $query->accessibleBy($user)->whereIn('status', CorteWorkflow::INVOICEABLE_STATUSES);
         }
 
+        if ($scope === self::SCOPE_MULTIFOX && CorteWorkflow::canConfirmMultifox($user)) {
+            return $query->accessibleBy($user)->whereHas('invoices', fn ($q) => $q->whereNull('multifox_confirmed_at'));
+        }
+
         return $query->where('created_by', $user->id);
     }
 
     public function getCorte(Corte $corte, User $user): array
     {
-        $corte->load([...$this->listRelations(), 'history.user:id,name', 'invoices.uploader:id,name']);
+        $corte->load([...$this->listRelations(), 'history.user:id,name', 'invoices.uploader:id,name', 'invoices.multifoxConfirmer:id,name']);
 
         return $this->present($corte, $user, true);
     }
@@ -167,7 +176,8 @@ class CorteService
 
         return $user->can(CorteWorkflow::PERMISSION_VIEW_ALL)
             || CorteWorkflow::stagesFor($user) !== []
-            || $this->canInvoice($corte, $user);
+            || $this->canInvoice($corte, $user)
+            || ($corte->invoices()->exists() && CorteWorkflow::canConfirmMultifox($user));
     }
 
     /**
@@ -197,12 +207,14 @@ class CorteService
      */
     public function createCorte(array $data, User $user): Corte
     {
-        $file = $this->storage->claimUpload($data['upload_token'], $user);
+        $folder = $this->storage->folderFor($data['project_id'], $data['tower_id'] ?? null, $data['contract_id'], $data['code']);
+        $file = $this->storage->claimCorteFile($data['upload_token'], $user, $folder);
         $firstStage = CorteWorkflow::firstStage();
 
-        $corte = DB::transaction(function () use ($data, $file, $user, $firstStage) {
+        $corte = DB::transaction(function () use ($data, $file, $user, $firstStage, $folder) {
             $corte = Corte::create([
                 'code' => $data['code'],
+                'storage_path' => $folder,
                 'project_id' => $data['project_id'],
                 'tower_id' => $data['tower_id'] ?? null,
                 'contractor_id' => $data['contractor_id'],
@@ -276,7 +288,10 @@ class CorteService
             throw new InvalidArgumentException('Solo el residente que radicó el corte puede reenviarlo cuando está devuelto.');
         }
 
-        $file = !empty($data['upload_token']) ? $this->storage->claimUpload($data['upload_token'], $user) : [];
+        // El archivo corregido queda en la misma carpeta del corte, junto al anterior
+        $file = !empty($data['upload_token'])
+            ? $this->storage->claimCorteFile($data['upload_token'], $user, $this->storage->folderOf($corte))
+            : [];
         $firstStage = CorteWorkflow::firstStage();
 
         $corte = DB::transaction(function () use ($corte, $data, $file, $user, $firstStage) {
@@ -397,6 +412,10 @@ class CorteService
                 'document_type_label' => $invoice->documentTypeLabel(),
                 'related_document' => $invoice->related_document,
                 'observation' => $invoice->observation,
+                'amount' => $invoice->amount !== null ? (float) $invoice->amount : null,
+                'multifox_confirmed_at' => $invoice->multifox_confirmed_at?->toIso8601String(),
+                'multifox_confirmed_by' => $invoice->multifoxConfirmer?->name,
+                'can_confirm_multifox' => !$invoice->multifox_confirmed_at && $invoice->amount !== null && CorteWorkflow::canConfirmMultifox($user),
                 'file_name' => $invoice->file_name,
                 'file_size' => $invoice->file_size,
                 'uploaded_by' => $invoice->uploader?->name,
