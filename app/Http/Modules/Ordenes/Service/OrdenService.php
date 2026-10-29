@@ -278,55 +278,72 @@ class OrdenService
         }
 
         $step = $orden->current_step;
-        $isInvoice = $step === OrdenWorkflow::STEP_FACTURA;
-        if ($isInvoice && (empty($data['amount']) || empty($data['contractor_id']))) {
+        if ($step === OrdenWorkflow::STEP_FACTURA && (empty($data['amount']) || empty($data['contractor_id']))) {
             throw new InvalidArgumentException('Indica el proveedor y el valor de la factura: con ellos pasa a cuentas por pagar.');
         }
 
         $file = $this->storage->claimStepFile($data['upload_token'], $user, $orden, $step);
-        $observation = isset($data['observation']) ? trim($data['observation']) : null;
-
-        [$orden, $document] = DB::transaction(function () use ($orden, $data, $user, $step, $file, $observation, $isInvoice) {
-            $orden = Orden::whereKey($orden->id)->lockForUpdate()->firstOrFail();
-            if ($orden->current_step !== $step) {
-                throw new InvalidArgumentException('Otro usuario ya cargó este documento.');
-            }
-
-            $document = $orden->documents()->create([
-                'step' => $step,
-                'number' => trim($data['number']),
-                'amount' => $isInvoice ? $data['amount'] : null,
-                'contractor_id' => $isInvoice ? $data['contractor_id'] : null,
-                'observation' => $observation ?: null,
-                'uploaded_by' => $user->id,
-                ...$file,
-            ]);
-
-            $nextStep = OrdenWorkflow::nextStep($step);
-            $orden->update($nextStep
-                ? ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
-                : ['status' => OrdenWorkflow::STATUS_COMPLETADA, 'current_step' => null, 'completed_at' => now()]);
-
-            $summary = OrdenWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : '');
-            $orden->history()->create([
-                'stage' => $step,
-                'action' => OrdenHistory::ACTION_DOCUMENTO,
-                'comment' => $summary,
-                'file_name' => $document->file_name,
-                'user_id' => $user->id,
-            ]);
-
-            // Orden completada: la factura del proveedor pasa a cuentas por pagar
-            if ($orden->status === OrdenWorkflow::STATUS_COMPLETADA) {
-                $this->pagos->registerFromOrden($orden, $user);
-            }
-
-            return [$orden, $document];
-        });
-
-        $this->notifications->documentUploaded($orden, $step, $observation);
+        $document = DB::transaction(fn () => $this->recordStepDocument($orden, $step, $data, $file, $user));
+        $this->notifyStepDocument($document);
 
         return $document;
+    }
+
+    /**
+     * Registra el documento de $step con un archivo ya guardado ($file) y avanza la orden. Debe llamarse dentro
+     * de una transacción; el aviso lo envía notifyStepDocument() después del commit. Lo usan el cargue normal
+     * y las facturas del mes (el residente asocia a su orden la factura que cargó Contabilidad).
+     *
+     * @param array{file_name: string, file_path: string, file_size: int, file_mime: ?string} $file
+     */
+    public function recordStepDocument(Orden $orden, string $step, array $data, array $file, User $user): OrdenDocument
+    {
+        $isInvoice = $step === OrdenWorkflow::STEP_FACTURA;
+        $observation = isset($data['observation']) ? trim($data['observation']) : null;
+
+        $orden = Orden::whereKey($orden->id)->lockForUpdate()->firstOrFail();
+        if ($orden->current_step !== $step) {
+            throw new InvalidArgumentException('Otro usuario ya cargó este documento.');
+        }
+
+        $document = $orden->documents()->create([
+            'step' => $step,
+            'number' => trim($data['number']),
+            'amount' => $isInvoice ? $data['amount'] : null,
+            'contractor_id' => $isInvoice ? $data['contractor_id'] : null,
+            'observation' => $observation ?: null,
+            'uploaded_by' => $user->id,
+            ...$file,
+        ]);
+
+        $nextStep = OrdenWorkflow::nextStep($step);
+        $orden->update($nextStep
+            ? ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
+            : ['status' => OrdenWorkflow::STATUS_COMPLETADA, 'current_step' => null, 'completed_at' => now()]);
+
+        $summary = OrdenWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : '');
+        $orden->history()->create([
+            'stage' => $step,
+            'action' => OrdenHistory::ACTION_DOCUMENTO,
+            'comment' => $summary,
+            'file_name' => $document->file_name,
+            'user_id' => $user->id,
+        ]);
+
+        // Orden completada: la factura del proveedor pasa a cuentas por pagar
+        if ($orden->status === OrdenWorkflow::STATUS_COMPLETADA) {
+            $this->pagos->registerFromOrden($orden, $user);
+        }
+
+        return $document;
+    }
+
+    /**
+     * Aviso a quien carga el siguiente documento (o al residente si la orden quedó completada).
+     */
+    public function notifyStepDocument(OrdenDocument $document): void
+    {
+        $this->notifications->documentUploaded($document->orden()->firstOrFail(), $document->step, $document->observation);
     }
 
     public function documentDownloadUrl(OrdenDocument $document): string

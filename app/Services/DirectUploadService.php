@@ -139,6 +139,15 @@ class DirectUploadService
     }
 
     /**
+     * Elimina un archivo ya guardado (ej. una factura cargada por error).
+     */
+    public function delete(string $path): void
+    {
+        $this->disk()->delete($path);
+        $this->documental->clearPathCache(dirname($path));
+    }
+
+    /**
      * URL temporal (60 min) para descargar un archivo con su nombre original.
      */
     public function downloadUrl(string $path, string $name): string

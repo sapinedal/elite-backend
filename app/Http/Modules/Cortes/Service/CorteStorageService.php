@@ -17,7 +17,7 @@ use App\Services\DirectUploadService;
  * Cada corte vive dentro de la carpeta de su contrato, junto al resto de documentos del contrato:
  *
  *   <carpeta del contrato>/Cortes/<código del corte>/01 Corte/<archivo del corte>
- *                                                   /02 Facturas/<facturas y notas crédito>
+ *                                                   /02 Facturas/<facturas anteriores a las facturas del mes>
  *
  * Si el contrato aún no tiene carpeta se crea con la misma lógica de Contratación. Sin contrato (no debería
  * pasar: es obligatorio) se usa config('cortes.s3_root')/<proyecto>/<torre>/<código>.
@@ -25,7 +25,7 @@ use App\Services\DirectUploadService;
 class CorteStorageService
 {
     public const FOLDER_CORTE = '01 Corte';
-    public const FOLDER_INVOICES = '02 Facturas';
+    public const FOLDER_INVOICES = '02 Facturas'; // Facturas cargadas antes de las facturas del mes
 
     public function __construct(
         protected DirectUploadService $uploads,
@@ -90,14 +90,6 @@ class CorteStorageService
     public function claimCorteFile(string $token, User $user, string $folder): array
     {
         return $this->uploads->claimUpload($token, $user, $folder . '/' . self::FOLDER_CORTE);
-    }
-
-    /**
-     * Valida el archivo de una factura ya subido y lo deja en <carpeta del corte>/02 Facturas.
-     */
-    public function claimInvoiceFile(string $token, User $user, Corte $corte): array
-    {
-        return $this->uploads->claimUpload($token, $user, $this->folderOf($corte) . '/' . self::FOLDER_INVOICES);
     }
 
     public function downloadUrl(Corte $corte): string

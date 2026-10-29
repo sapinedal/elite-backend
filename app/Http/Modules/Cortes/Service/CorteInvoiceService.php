@@ -11,65 +11,76 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
- * Facturas de los cortes aprobados: cargue (archivo directo a S3), cambio de estado a Facturado,
+ * Facturas de los cortes aprobados: registro en el corte, cambio de estado a Facturado,
  * historial y aviso al cargo que la registra en Multifox.
+ *
+ * Las facturas llegan desde las facturas del mes (módulo Facturación): Contabilidad las carga en la
+ * carpeta del mes y el residente las asocia a su corte, así que el archivo ya está en S3.
  */
 class CorteInvoiceService
 {
     public function __construct(
-        protected CorteService $cortes,
-        protected CorteStorageService $storage,
         protected CorteNotificationService $notifications,
         protected PagoService $pagos,
     ) {
     }
 
-    public function create(Corte $corte, array $data, User $user): CorteInvoice
+    /**
+     * Registra en el corte una factura cuyo archivo ya está guardado ($file). Debe llamarse dentro de una
+     * transacción; el aviso de Multifox lo envía notifyUploaded() después del commit.
+     *
+     * @param array{file_name: string, file_path: string, file_size: int, file_mime: ?string} $file
+     */
+    public function register(Corte $corte, array $data, array $file, User $user): CorteInvoice
     {
-        if (!$this->cortes->canInvoice($corte, $user)) {
-            throw new InvalidArgumentException('Solo se pueden cargar facturas a cortes con las tres aprobaciones.');
+        $affectsAnother = CorteInvoice::requiresRelatedDocument($data['document_type']);
+        $number = trim($data['invoice_number']);
+
+        $corte = Corte::whereKey($corte->id)->lockForUpdate()->firstOrFail();
+        if (!in_array($corte->status, CorteWorkflow::INVOICEABLE_STATUSES, true)) {
+            throw new InvalidArgumentException('Solo se pueden asociar facturas a cortes con las tres aprobaciones.');
+        }
+        // El mismo número no se repite dentro del mismo tipo de documento
+        if (CorteInvoice::where('document_type', $data['document_type'])->where('invoice_number', $number)->exists()) {
+            throw new InvalidArgumentException("Ya existe un documento {$number} registrado en otro corte.");
         }
 
-        $file = $this->storage->claimInvoiceFile($data['upload_token'], $user, $corte);
-        $affectsAnother = CorteInvoice::requiresRelatedDocument($data['document_type']);
+        $invoice = $corte->invoices()->create([
+            'invoice_number' => $number,
+            'document_type' => $data['document_type'],
+            // En la factura inicial no aplica documento relacionado aunque llegue
+            'related_document' => $affectsAnother ? trim($data['related_document']) : null,
+            'amount' => $data['amount'],
+            'observation' => isset($data['observation']) ? trim($data['observation']) : null,
+            'uploaded_by' => $user->id,
+            ...$file,
+        ]);
 
-        $invoice = DB::transaction(function () use ($corte, $data, $file, $user, $affectsAnother) {
-            $corte = Corte::whereKey($corte->id)->lockForUpdate()->firstOrFail();
+        if ($corte->status === CorteWorkflow::STATUS_APROBADO) {
+            $corte->update(['status' => CorteWorkflow::STATUS_FACTURADO]);
+        }
 
-            $invoice = $corte->invoices()->create([
-                'invoice_number' => trim($data['invoice_number']),
-                'document_type' => $data['document_type'],
-                // En la factura inicial no aplica documento relacionado aunque llegue
-                'related_document' => $affectsAnother ? trim($data['related_document']) : null,
-                'amount' => $data['amount'],
-                'observation' => isset($data['observation']) ? trim($data['observation']) : null,
-                'uploaded_by' => $user->id,
-                ...$file,
-            ]);
+        $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number} por $" . number_format((float) $invoice->amount, 0, ',', '.')
+            . ($invoice->related_document ? " (afecta a {$invoice->related_document})" : '')
+            . ($invoice->observation ? ". {$invoice->observation}" : '');
 
-            if ($corte->status === CorteWorkflow::STATUS_APROBADO) {
-                $corte->update(['status' => CorteWorkflow::STATUS_FACTURADO]);
-            }
-
-            $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number} por $" . number_format((float) $invoice->amount, 0, ',', '.')
-                . ($invoice->related_document ? " (afecta a {$invoice->related_document})" : '')
-                . ($invoice->observation ? ". {$invoice->observation}" : '');
-
-            $corte->history()->create([
-                'action' => CorteHistory::ACTION_FACTURA,
-                'comment' => $summary,
-                'file_name' => $invoice->file_name,
-                'file_path' => $invoice->file_path,
-                'user_id' => $user->id,
-            ]);
-
-            return $invoice;
-        });
-
-        // Después del commit: no avisar de una factura que no quedó guardada
-        $this->notifications->invoiceUploaded($invoice->fresh(['corte', 'uploader']));
+        $corte->history()->create([
+            'action' => CorteHistory::ACTION_FACTURA,
+            'comment' => $summary,
+            'file_name' => $invoice->file_name,
+            'file_path' => $invoice->file_path,
+            'user_id' => $user->id,
+        ]);
 
         return $invoice;
+    }
+
+    /**
+     * Aviso al cargo que registra la factura en Multifox. Después del commit: no avisar de una factura que no quedó guardada.
+     */
+    public function notifyUploaded(CorteInvoice $invoice): void
+    {
+        $this->notifications->invoiceUploaded($invoice->fresh(['corte', 'uploader']));
     }
 
     /**

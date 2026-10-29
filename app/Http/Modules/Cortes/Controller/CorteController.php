@@ -8,7 +8,6 @@ use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Request\RequestUploadUrlRequest;
 use App\Http\Modules\Cortes\Request\ResubmitCorteRequest;
 use App\Http\Modules\Cortes\Request\ReviewCorteRequest;
-use App\Http\Modules\Cortes\Request\StoreCorteInvoiceRequest;
 use App\Http\Modules\Cortes\Request\StoreCorteRequest;
 use App\Http\Modules\Cortes\Service\CorteInvoiceService;
 use App\Http\Modules\Cortes\Service\CorteService;
@@ -162,26 +161,6 @@ class CorteController extends Controller
             ]);
         } catch (InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 404);
-        }
-    }
-
-    /**
-     * Cargue de factura (o nota crédito / factura de reemplazo) a un corte con las tres aprobaciones.
-     */
-    public function storeInvoice(StoreCorteInvoiceRequest $request, Corte $corte): JsonResponse
-    {
-        try {
-            $invoice = $this->invoiceService->create($corte, $request->validated(), $request->user());
-
-            return response()->json([
-                'status' => 'success',
-                'message' => $invoice->documentTypeLabel() . ' cargada. Se notificó para su registro en Multifox.',
-                'data' => $this->corteService->getCorte($corte->fresh(), $request->user()),
-            ], 201);
-        } catch (InvalidArgumentException $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
-        } catch (Throwable $e) {
-            return $this->serverError('cargar la factura', $e);
         }
     }
 

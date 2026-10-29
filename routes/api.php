@@ -16,6 +16,7 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/contratacion/contratacion.php';
     require __DIR__ . '/cortes/cortes.php';
     require __DIR__ . '/ordenes/ordenes.php';
+    require __DIR__ . '/facturacion/facturacion.php';
     require __DIR__ . '/pagos/pagos.php';
     
 });
