@@ -57,6 +57,13 @@ class CorteService
             ->orderBy('contract_code')
             ->get(['id', 'project_id', 'tower_id', 'contract_code', 'contractor_name']);
 
+        // Números de corte ya usados en cada contrato, para la lista CORTE 1, CORTE 2...
+        $usedNumbers = Corte::query()
+            ->whereIn('contract_id', $contracts->pluck('id'))
+            ->get(['id', 'contract_id', 'code'])
+            ->groupBy('contract_id')
+            ->map(fn ($cortes) => $cortes->map(fn (Corte $c) => Corte::numberOf($c->code))->filter()->unique()->sort()->values());
+
         return [
             'projects' => $projects->map(fn (Project $project) => [
                 'id' => $project->id,
@@ -64,7 +71,10 @@ class CorteService
                 'towers' => $project->towers->map(fn ($tower) => ['id' => $tower->id, 'name' => $tower->name])->values(),
             ])->values(),
             'contractors' => FtraContractor::where('is_active', true)->orderBy('name')->get(['id', 'name', 'nit']),
-            'contracts' => $contracts,
+            'contracts' => $contracts->map(fn (ContratacionContract $contract) => [
+                ...$contract->only(['id', 'project_id', 'tower_id', 'contract_code', 'contractor_name']),
+                'corte_numbers' => $usedNumbers->get($contract->id, collect())->all(),
+            ])->values(),
             'max_upload_mb' => config('cortes.max_upload_mb'),
             'review_stages' => CorteWorkflow::stagesFor($user),
             'can_view_all' => $user->can(CorteWorkflow::PERMISSION_VIEW_ALL),
@@ -207,6 +217,7 @@ class CorteService
      */
     public function createCorte(array $data, User $user): Corte
     {
+        $data['code'] = $this->normalizeCode($data['code']);
         $folder = $this->storage->folderFor($data['project_id'], $data['tower_id'] ?? null, $data['contract_id'], $data['code']);
         $file = $this->storage->claimCorteFile($data['upload_token'], $user, $folder);
         $firstStage = CorteWorkflow::firstStage();
@@ -288,15 +299,25 @@ class CorteService
             throw new InvalidArgumentException('Solo el residente que radicó el corte puede reenviarlo cuando está devuelto.');
         }
 
-        // El archivo corregido queda en la misma carpeta del corte, junto al anterior
+        // Los cortes anteriores a la numeración pueden conservar su código libre
+        $data['code'] = $data['code'] === $corte->code ? $corte->code : $this->normalizeCode($data['code']);
+
+        // El archivo corregido queda en la carpeta del corte, junto al anterior. Si cambia el contrato o el número,
+        // la carpeta pasa a ser la del nuevo contrato y el archivo vigente se lleva allá
+        $folder = $this->storage->folderOf($corte);
+        if ((int) $data['contract_id'] !== $corte->contract_id || $data['code'] !== $corte->code) {
+            $folder = $this->storage->folderFor($data['project_id'], $data['tower_id'] ?? null, $data['contract_id'], $data['code']);
+        }
+
         $file = !empty($data['upload_token'])
-            ? $this->storage->claimCorteFile($data['upload_token'], $user, $this->storage->folderOf($corte))
-            : [];
+            ? $this->storage->claimCorteFile($data['upload_token'], $user, $folder)
+            : ($folder !== $corte->storage_path ? $this->movedFile($corte, $folder) : []);
         $firstStage = CorteWorkflow::firstStage();
 
-        $corte = DB::transaction(function () use ($corte, $data, $file, $user, $firstStage) {
+        $corte = DB::transaction(function () use ($corte, $data, $file, $user, $firstStage, $folder) {
             $corte->update([
                 'code' => $data['code'],
+                'storage_path' => $folder,
                 'project_id' => $data['project_id'],
                 'tower_id' => $data['tower_id'] ?? null,
                 'contractor_id' => $data['contractor_id'],
@@ -314,6 +335,29 @@ class CorteService
         $this->notifications->submitted($corte, true, $data['comment'] ?? null);
 
         return $corte;
+    }
+
+    /**
+     * @return array{file_path: string, file_name: string}
+     */
+    protected function movedFile(Corte $corte, string $folder): array
+    {
+        $path = $this->storage->moveCorteFile($corte, $folder);
+
+        return ['file_path' => $path, 'file_name' => basename($path)];
+    }
+
+    /**
+     * "3", "corte 3" o "CORTE 3" -> "CORTE 3".
+     */
+    protected function normalizeCode(string $code): string
+    {
+        $number = Corte::numberOf($code);
+        if ($number === null) {
+            throw new InvalidArgumentException('Elige el número del corte (CORTE 1, CORTE 2...).');
+        }
+
+        return Corte::codeFor($number);
     }
 
     public function downloadUrl(Corte $corte): string
@@ -368,6 +412,7 @@ class CorteService
         $data = [
             'id' => $corte->id,
             'code' => $corte->code,
+            'label' => $corte->label(),
             'project_id' => $corte->project_id,
             'project' => $corte->project,
             'tower_id' => $corte->tower_id,

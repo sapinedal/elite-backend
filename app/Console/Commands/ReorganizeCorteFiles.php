@@ -12,7 +12,8 @@ use Throwable;
 
 /**
  * Mueve los archivos de los cortes creados antes de la estructura por contrato
- * (tecnica/cortes/<año>/<mes>/<uuid>/...) a <carpeta del contrato>/Cortes/<código>/{01 Corte, 02 Facturas}.
+ * (tecnica/cortes/<año>/<mes>/<uuid>/...) a la carpeta del corte (<carpeta del contrato>/05 CORTES/<código>; las
+ * facturas en su subcarpeta 02 Facturas).
  * Actualiza las rutas del corte, su historial y sus facturas. Se puede ejecutar varias veces.
  *
  * Uso: php artisan cortes:reorganizar-archivos --dry-run   (solo muestra qué movería)
@@ -34,7 +35,7 @@ class ReorganizeCorteFiles extends Command
                 $folder = $corte->storage_path
                     ?: $storage->folderFor($corte->project_id, $corte->tower_id, $corte->contract_id, $corte->code);
 
-                $files = [[$corte, $folder . '/' . CorteStorageService::FOLDER_CORTE, 'Corte']];
+                $files = [[$corte, $folder, 'Corte']];
                 foreach ($corte->invoices as $invoice) {
                     $files[] = [$invoice, $folder . '/' . CorteStorageService::FOLDER_INVOICES, "Factura {$invoice->invoice_number}"];
                 }

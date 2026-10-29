@@ -34,7 +34,7 @@ class CorteInvoiceMail extends Mailable
 
         return new Envelope(
             from: new Address(config('mail.from.address'), config('mail.from.name')),
-            subject: trim(($this->subjectPrefix ?? '') . " Cargar a Multifox: {$this->invoice->documentTypeLabel()} N.º {$this->invoice->invoice_number} · Corte {$corte->code}"),
+            subject: trim(($this->subjectPrefix ?? '') . " Cargar a Multifox: {$this->invoice->documentTypeLabel()} N.º {$this->invoice->invoice_number} · {$corte->reference()}"),
         );
     }
 
@@ -62,11 +62,11 @@ class CorteInvoiceMail extends Mailable
             view: 'emails.cortes.invoice',
             with: [
                 'headline' => 'Nueva factura para cargar en Multifox',
-                'preheader' => "{$invoice->documentTypeLabel()} N.º {$invoice->invoice_number} del corte {$corte->code} ({$contractor}).",
+                'preheader' => "{$invoice->documentTypeLabel()} N.º {$invoice->invoice_number} del {$corte->reference()} ({$contractor}).",
                 'badge' => 'Pendiente de cargue en Multifox',
                 'tone' => '#004C6C',
                 'toneSoft' => '#e6f0f5',
-                'intro' => 'Se cargó una ' . mb_strtolower($invoice->documentTypeLabel()) . " al corte {$corte->code}, que ya cuenta con las tres aprobaciones. Regístrala en Multifox con los datos a continuación y luego confirma en Elite que quedó cargada: así pasa a cuentas por pagar.",
+                'intro' => 'Se cargó una ' . mb_strtolower($invoice->documentTypeLabel()) . " al {$corte->reference()}, que ya cuenta con las tres aprobaciones. Regístrala en Multifox con los datos a continuación y luego confirma en Elite que quedó cargada: así pasa a cuentas por pagar.",
                 'observation' => $invoice->observation,
                 'isAdjustment' => $invoice->related_document !== null,
                 'invoiceDetails' => $invoiceDetails,

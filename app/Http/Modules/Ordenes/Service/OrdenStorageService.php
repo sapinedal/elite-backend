@@ -54,6 +54,15 @@ class OrdenStorageService
         return $this->uploads->claimUpload($token, $user, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
     }
 
+    /**
+     * Copia a la subcarpeta del paso un archivo que ya está en S3 (la factura de la carpeta del mes de
+     * Contabilidad que el residente asocia a la orden). Devuelve la ruta de la copia.
+     */
+    public function copyStepFile(Orden $orden, string $step, string $path): string
+    {
+        return $this->uploads->copyTo($path, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
+    }
+
     public function downloadUrl(string $path, string $name): string
     {
         return $this->uploads->downloadUrl($path, $name);

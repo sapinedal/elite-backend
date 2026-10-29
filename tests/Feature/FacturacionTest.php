@@ -10,6 +10,7 @@ use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
 use App\Http\Modules\Users\Models\User;
+use App\Services\DirectUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 
@@ -19,7 +20,8 @@ beforeEach(function () {
     Mail::fake();
     $this->travelTo(now()->setDate(2026, 10, 29)->setTime(9, 0));
 
-    // S3 simulado: cada token "sube" un archivo a la carpeta que le corresponde
+    // S3 simulado: cada token "sube" un archivo a la carpeta que le corresponde; se registran los archivos eliminados
+    $this->deleted = [];
     $this->mock(FacturacionStorageService::class, function ($mock) {
         $mock->shouldReceive('claimInvoiceFile')->andReturnUsing(fn ($token, $user, $period) => [
             'file_name' => "{$token}.pdf",
@@ -33,8 +35,16 @@ beforeEach(function () {
             'file_size' => 500,
             'file_mime' => 'image/png',
         ]);
-        $mock->shouldReceive('delete');
+        $mock->shouldReceive('delete')->andReturnUsing(function ($path) {
+            $this->deleted[] = $path;
+        });
         $mock->shouldReceive('monthFolder')->andReturn('contabilidad/OCTUBRE 2026');
+    });
+
+    // Copia de la factura a la carpeta del corte / orden al asociarla
+    $this->mock(DirectUploadService::class, function ($mock) {
+        $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
+        $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
     });
 
     $this->project = Project::create(['code' => 'vis', 'name' => 'San Miguel', 'is_active' => true]);
@@ -130,8 +140,9 @@ test('el residente asocia la factura a su corte aprobado con soportes', function
         ->and($corteInvoice->invoice_number)->toBe('FE 335')
         ->and($corteInvoice->document_type)->toBe(CorteInvoice::TYPE_FACTURA_INICIAL)
         ->and((float) $corteInvoice->amount)->toBe(1500000.0)
-        // El archivo es el mismo de la carpeta del mes, no se duplica
-        ->and($corteInvoice->file_path)->toBe($invoice->file_path)
+        // La factura sigue en la carpeta del mes y queda copiada dentro de la carpeta del corte
+        ->and($invoice->file_path)->toStartWith('contabilidad/OCTUBRE 2026/')
+        ->and($corteInvoice->file_path)->toBe($corte->fresh()->storage_path . '/' . basename($invoice->file_path))
         ->and($invoice->corte_invoice_id)->toBe($corteInvoice->id)
         ->and($invoice->processed_by)->toBe($this->residente->id)
         ->and($invoice->supports()->count())->toBe(2)
@@ -205,6 +216,7 @@ test('el residente asocia la factura a su orden pendiente de factura y la orden 
     expect($orden->status)->toBe(OrdenWorkflow::STATUS_PENDIENTE_ENTRADA)
         ->and($document->number)->toBe('FE 485126')
         ->and($document->contractor_id)->toBe($this->contractor->id)
+        ->and($document->file_path)->toStartWith('tecnica/Ordenes/ORD-0001/02 Factura proveedor/')
         ->and($invoice->fresh()->orden_document_id)->toBe($document->id);
 });
 
@@ -245,4 +257,22 @@ test('contabilidad corrige o elimina una factura pendiente', function () {
     $this->actingAs($this->contabilidad)->deleteJson("/api/v1/facturacion/{$invoice->id}")->assertOk();
 
     expect(FacturacionInvoice::count())->toBe(0);
+});
+
+test('si la asociación falla, la copia en la carpeta del corte se elimina', function () {
+    $first = makeCorte($this->residente);
+    $second = makeCorte($this->residente);
+    $original = uploadInvoice();
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$original->id}/associate", ['target_type' => 'corte', 'target_id' => $first->id, ...supports()])
+        ->assertOk();
+
+    // Mismo número "FE 335" de otro proveedor: el corte lo rechaza después de copiar el archivo
+    $duplicated = uploadInvoice(['contractor_id' => null, 'supplier_name' => 'OTRO SAS']);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$duplicated->id}/associate", ['target_type' => 'corte', 'target_id' => $second->id, ...supports()])
+        ->assertStatus(422);
+
+    expect($duplicated->fresh()->status)->toBe(FacturacionInvoice::STATUS_PENDIENTE)
+        ->and($this->deleted)->toBe([$second->fresh()->storage_path . '/' . basename($duplicated->file_path)]);
 });

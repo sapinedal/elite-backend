@@ -139,6 +139,20 @@ class DirectUploadService
     }
 
     /**
+     * Copia un archivo ya guardado a otra carpeta, sin pisar archivos existentes, y devuelve la nueva ruta.
+     * La copia ocurre dentro del bucket: no pasa por el servidor.
+     */
+    public function copyTo(string $path, string $directory): string
+    {
+        $directory = trim($directory, '/');
+        $finalPath = $directory . '/' . $this->uniqueFilename($directory, basename($path));
+        $this->disk()->copy($path, $finalPath);
+        $this->documental->clearPathCache($directory);
+
+        return $finalPath;
+    }
+
+    /**
      * Elimina un archivo ya guardado (ej. una factura cargada por error).
      */
     public function delete(string $path): void

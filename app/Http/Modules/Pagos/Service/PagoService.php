@@ -2,9 +2,11 @@
 
 namespace App\Http\Modules\Pagos\Service;
 
+use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteStorageService;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Service\OrdenStorageService;
@@ -59,6 +61,8 @@ class PagoService
     public const SOURCE_LABELS = [
         PagoCuenta::SOURCE_CORTE => 'Corte',
         PagoCuenta::SOURCE_ORDEN => 'Orden',
+        PagoCuenta::SOURCE_ANTICIPO => 'Anticipo',
+        PagoCuenta::SOURCE_CUENTA_COBRO => 'Cuenta de cobro',
         PagoCuenta::SOURCE_MANUAL => 'Manual',
     ];
 
@@ -159,7 +163,7 @@ class PagoService
         $query = $this->filteredQuery($user, $scope, $filters);
         $total = (float) (clone $query)->sum(DB::raw('amount - adjustments - paid_amount'));
 
-        $query->with(['project:id,name', 'corte:id,code', 'orden:id,code', 'prioritizer:id,name']);
+        $query->with(['project:id,name', 'corte:id,code', 'orden:id,code', 'anticipo:id,code', 'cuentaCobro:id,code', 'prioritizer:id,name']);
         $query = match ($scope) {
             // Programadas: primero la fecha de pago y la prioridad
             self::SCOPE_SCHEDULED => $query->orderBy('scheduled_for')
@@ -190,7 +194,7 @@ class PagoService
         $order = collect($this->catalogs($user)['frentes'])->flip();
 
         return $this->filteredQuery($user, $scope, $filters)
-            ->with(['corte:id,code', 'orden:id,code'])
+            ->with(['corte:id,code', 'orden:id,code', 'anticipo:id,code', 'cuentaCobro:id,code'])
             ->orderBy('supplier_name')->orderBy('id')
             ->get()
             ->groupBy('frente')
@@ -201,7 +205,7 @@ class PagoService
 
     public function getCuenta(PagoCuenta $cuenta, User $user): array
     {
-        $cuenta->load(['project:id,name', 'corte:id,code', 'orden:id,code', 'prioritizer:id,name', 'creator:id,name', 'movimientos.user:id,name']);
+        $cuenta->load(['project:id,name', 'corte:id,code', 'orden:id,code', 'anticipo:id,code', 'cuentaCobro:id,code', 'prioritizer:id,name', 'creator:id,name', 'movimientos.user:id,name']);
 
         return $this->present($cuenta, $user, true);
     }
@@ -216,7 +220,7 @@ class PagoService
      */
     public function registerFromCorteInvoice(CorteInvoice $invoice, User $user): void
     {
-        $invoice->loadMissing(['corte.tower:id,name', 'corte.contractor:id,name,nit']);
+        $invoice->loadMissing(['corte.tower:id,name', 'corte.contractor:id,name,nit', 'corte.contract:id,contract_code']);
         $corte = $invoice->corte;
         $amount = (float) $invoice->amount;
 
@@ -249,12 +253,12 @@ class PagoService
             'supplier_nit' => $corte->contractor?->nit,
             'supplier_name' => $corte->contractor?->name ?? 'Proveedor sin nombre',
             'document_number' => $invoice->invoice_number,
-            'concept' => "Corte {$corte->code}" . ($invoice->observation ? ". {$invoice->observation}" : ''),
+            'concept' => $corte->reference() . ($invoice->observation ? ". {$invoice->observation}" : ''),
             'amount' => $amount,
             'status' => self::STATUS_PENDIENTE,
             'created_by' => $user->id,
         ]);
-        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Factura confirmada en Multifox (corte {$corte->code}).");
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Factura confirmada en Multifox ({$corte->reference()}).");
 
         // Factura de reemplazo: la anterior se anula y lo que ya se le había pagado pasa a la nueva
         if ($invoice->document_type === CorteInvoice::TYPE_FACTURA_REEMPLAZO && $related) {
@@ -297,6 +301,65 @@ class PagoService
             'created_by' => $user->id,
         ]);
         $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden {$orden->code} completada (entrada de almacén cargada).");
+    }
+
+    /**
+     * Anticipo generado en Multifox por Contabilidad: la cuenta de cobro del anticipo pasa a cuentas por pagar.
+     */
+    public function registerFromAnticipo(Anticipo $anticipo, User $user): void
+    {
+        $anticipo->loadMissing(['tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code,contractor_name']);
+        if (PagoCuenta::where('source_type', PagoCuenta::SOURCE_ANTICIPO)->where('source_id', $anticipo->id)->exists()) {
+            return;
+        }
+
+        $amount = (float) $anticipo->amount;
+        $cuenta = PagoCuenta::create([
+            'source_type' => PagoCuenta::SOURCE_ANTICIPO,
+            'source_id' => $anticipo->id,
+            'anticipo_id' => $anticipo->id,
+            'project_id' => $anticipo->project_id,
+            'frente' => $this->frenteFor($anticipo->tower?->name),
+            'contractor_id' => $anticipo->contractor_id,
+            'supplier_nit' => $anticipo->contractor?->nit,
+            'supplier_name' => $anticipo->contractor?->name ?? $anticipo->contract?->contractor_name ?? 'Proveedor sin nombre',
+            'document_number' => $anticipo->document_number,
+            'concept' => "Anticipo {$anticipo->reference()}" . ($anticipo->multifox_number ? ". Multifox N.º {$anticipo->multifox_number}" : ''),
+            'amount' => $amount,
+            'status' => self::STATUS_PENDIENTE,
+            'created_by' => $user->id,
+        ]);
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Anticipo {$anticipo->code} generado en Multifox.");
+    }
+
+    /**
+     * Cuenta de cobro aprobada (con o sin cargue en Multifox, según decidió Paula): pasa a cuentas por pagar.
+     */
+    public function registerFromCuentaCobro(CuentaCobro $cuentaCobro, User $user): void
+    {
+        $cuentaCobro->loadMissing(['tipo:id,name', 'tower:id,name', 'contractor:id,name,nit']);
+        if (PagoCuenta::where('source_type', PagoCuenta::SOURCE_CUENTA_COBRO)->where('source_id', $cuentaCobro->id)->exists()) {
+            return;
+        }
+
+        $amount = (float) $cuentaCobro->amount;
+        $cuenta = PagoCuenta::create([
+            'source_type' => PagoCuenta::SOURCE_CUENTA_COBRO,
+            'source_id' => $cuentaCobro->id,
+            'cuenta_cobro_id' => $cuentaCobro->id,
+            'project_id' => $cuentaCobro->project_id,
+            'frente' => $this->frenteFor($cuentaCobro->tower?->name),
+            'contractor_id' => $cuentaCobro->contractor_id,
+            'supplier_nit' => $cuentaCobro->contractor?->nit,
+            'supplier_name' => $cuentaCobro->contractor?->name ?? 'Proveedor sin nombre',
+            'document_number' => $cuentaCobro->document_number,
+            'concept' => "Cuenta de cobro {$cuentaCobro->reference()}" . ($cuentaCobro->description ? ". {$cuentaCobro->description}" : ''),
+            'amount' => $amount,
+            'status' => self::STATUS_PENDIENTE,
+            'created_by' => $user->id,
+        ]);
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Cuenta de cobro {$cuentaCobro->code} "
+            . ($cuentaCobro->requires_multifox ? "cargada en Multifox (N.º {$cuentaCobro->multifox_number})." : 'aprobada (no requirió Multifox).'));
     }
 
     /**
@@ -509,9 +572,11 @@ class PagoService
             'id' => $c->id,
             'source_type' => $c->source_type,
             'source_label' => self::SOURCE_LABELS[$c->source_type] ?? $c->source_type,
-            'source_code' => $c->corte?->code ?? $c->orden?->code,
+            'source_code' => $c->corte?->code ?? $c->orden?->code ?? $c->anticipo?->code ?? $c->cuentaCobro?->code,
             'corte_id' => $c->corte_id,
             'orden_id' => $c->orden_id,
+            'anticipo_id' => $c->anticipo_id,
+            'cuenta_cobro_id' => $c->cuenta_cobro_id,
             'project' => $c->project,
             'frente' => $c->frente,
             'supplier_nit' => $c->supplier_nit,

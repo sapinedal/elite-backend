@@ -207,9 +207,10 @@ class ContractService
 
             if ($policy) {
                 $policy->fill($attributes);
-                // Si cambia la vigencia se vuelve a notificar cuando entre en la ventana de alerta
+                // Si cambia la vigencia se vuelven a notificar todos los umbrales (40, 30 y 20 días)
                 if ($policy->isDirty('expires_at')) {
                     $policy->alert_sent_at = null;
+                    $policy->last_alert_days = null;
                 }
                 $policy->save();
             } else {

@@ -92,7 +92,7 @@ class CorteNotificationMail extends Mailable
     protected function texts(): array
     {
         $c = $this->corte;
-        $code = $c->code;
+        $code = $c->reference(); // "CORTE 3 · Contrato 2759"
         $stageLabel = CorteWorkflow::stageLabel($this->stage);
         $where = trim(($c->project?->name ?? '') . ($c->tower ? ' · ' . $c->tower->name : ''));
         $creator = $c->creator?->name ?? 'El residente';
@@ -106,7 +106,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Nuevo corte por revisar',
                 'badge' => 'Requiere tu revisión · Interventor',
                 'tone' => 'action',
-                'intro' => "{$creator} radicó el corte {$code} de {$where}. Revísalo y apruébalo o devuélvelo desde Elite.",
+                'intro' => "{$creator} radicó el {$code} de {$where}. Revísalo y apruébalo o devuélvelo desde Elite.",
                 'commentLabel' => 'Observaciones del residente',
                 'cta' => 'Revisar corte',
             ],
@@ -115,7 +115,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Corte corregido por revisar',
                 'badge' => 'Requiere tu revisión · Interventor',
                 'tone' => 'action',
-                'intro' => "{$creator} corrigió y reenvió el corte {$code} de {$where}, que había sido devuelto. La revisión comienza de nuevo.",
+                'intro' => "{$creator} corrigió y reenvió el {$code} de {$where}, que había sido devuelto. La revisión comienza de nuevo.",
                 'commentLabel' => 'Ajustes realizados',
                 'cta' => 'Revisar corte',
             ],
@@ -124,7 +124,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Corte radicado correctamente',
                 'badge' => 'Radicado',
                 'tone' => 'info',
-                'intro' => "El corte {$code} de {$where} quedó radicado y pendiente de revisión del Interventor. Te avisaremos en cada etapa.",
+                'intro' => "El {$code} de {$where} quedó radicado y pendiente de revisión del Interventor. Te avisaremos en cada etapa.",
                 'commentLabel' => 'Observaciones',
                 'cta' => 'Ver corte',
             ],
@@ -133,7 +133,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Corte pendiente de tu aprobación',
                 'badge' => "Requiere tu revisión · {$stageLabel}",
                 'tone' => 'action',
-                'intro' => "El corte {$code} de {$where} fue aprobado por {$previousLabel} y ahora requiere tu revisión como {$stageLabel}.",
+                'intro' => "El {$code} de {$where} fue aprobado por {$previousLabel} y ahora requiere tu revisión como {$stageLabel}.",
                 'commentLabel' => "Comentario de {$previousLabel}",
                 'cta' => 'Revisar corte',
             ],
@@ -142,7 +142,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => "Aprobado por {$stageLabel}",
                 'badge' => 'En revisión',
                 'tone' => 'success',
-                'intro' => "{$stageLabel} aprobó el corte {$code} de {$where}. Continúa con la revisión de {$nextLabel}.",
+                'intro' => "{$stageLabel} aprobó el {$code} de {$where}. Continúa con la revisión de {$nextLabel}.",
                 'commentLabel' => "Comentario de {$stageLabel}",
                 'cta' => 'Ver corte',
             ],
@@ -151,7 +151,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => "Corte devuelto por {$stageLabel}",
                 'badge' => 'Devuelto',
                 'tone' => 'danger',
-                'intro' => "El corte {$code} de {$where} fue devuelto. El residente debe corregirlo y reenviarlo desde Elite; la revisión comenzará de nuevo con el Interventor.",
+                'intro' => "El {$code} de {$where} fue devuelto. El residente debe corregirlo y reenviarlo desde Elite; la revisión comenzará de nuevo con el Interventor.",
                 'commentLabel' => 'Motivo de la devolución',
                 'cta' => 'Ver corte',
             ],
@@ -160,7 +160,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Corte aprobado',
                 'badge' => 'Aprobado',
                 'tone' => 'success',
-                'intro' => "El corte {$code} de {$where} completó las tres revisiones (Interventor, Director de Obra y Gerencia) y quedó aprobado.",
+                'intro' => "El {$code} de {$where} completó las tres revisiones (Interventor, Director de Obra y Gerencia) y quedó aprobado.",
                 'commentLabel' => 'Comentario de Gerencia',
                 'cta' => 'Ver corte',
             ],
@@ -169,7 +169,7 @@ class CorteNotificationMail extends Mailable
                 'headline' => 'Corte listo para facturación',
                 'badge' => 'Pendiente cargar factura',
                 'tone' => 'success',
-                'intro' => "El corte {$code} del proveedor " . ($c->contractor?->name ?? '—') . " completó las tres aprobaciones. Carga la factura desde Elite indicando número y tipo de documento; al hacerlo se notificará para su registro en Multifox.",
+                'intro' => "El {$code} del proveedor " . ($c->contractor?->name ?? '—') . " completó las tres aprobaciones. Carga la factura en Facturas del mes; el residente responsable la asociará al corte y se notificará para su registro en Multifox.",
                 'commentLabel' => 'Comentario de Gerencia',
                 'cta' => 'Cargar factura',
             ],

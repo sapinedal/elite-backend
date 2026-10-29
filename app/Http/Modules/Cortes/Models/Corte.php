@@ -17,6 +17,9 @@ class Corte extends Model
 
     protected $table = 'cortes';
 
+    // Los cortes se numeran por contrato: CORTE 1, CORTE 2... (los anteriores conservan su código libre)
+    public const CODE_PREFIX = 'CORTE';
+
     protected $fillable = [
         'code',
         'project_id',
@@ -73,6 +76,39 @@ class Corte extends Model
     public function invoices()
     {
         return $this->hasMany(CorteInvoice::class, 'corte_id')->orderByDesc('id');
+    }
+
+    public static function codeFor(int $number): string
+    {
+        return self::CODE_PREFIX . ' ' . $number;
+    }
+
+    /**
+     * Número de un código "CORTE N" (acepta también "corte 3" o "3"); null si no tiene ese formato.
+     */
+    public static function numberOf(?string $code): ?int
+    {
+        return preg_match('/^\s*(?:corte\s*)?(\d{1,6})\s*$/i', (string) $code, $m) && (int) $m[1] > 0 ? (int) $m[1] : null;
+    }
+
+    /**
+     * Nombre para mostrar: "CORTE 3"; los cortes anteriores a la numeración, "Corte 6634".
+     */
+    public function label(): string
+    {
+        return self::numberOf($this->code) !== null && str_starts_with($this->code, self::CODE_PREFIX)
+            ? $this->code
+            : "Corte {$this->code}";
+    }
+
+    /**
+     * Nombre con su contrato, porque el número se repite entre contratos: "CORTE 3 · Contrato 2759".
+     */
+    public function reference(): string
+    {
+        $contract = $this->contract?->contract_code;
+
+        return $this->label() . ($contract ? " · Contrato {$contract}" : '');
     }
 
     /**

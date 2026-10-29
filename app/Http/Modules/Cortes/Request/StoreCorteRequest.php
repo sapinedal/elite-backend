@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Cortes\Request;
 
+use App\Http\Modules\Cortes\Models\Corte;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -14,6 +15,20 @@ class StoreCorteRequest extends FormRequest
 {
     protected bool $fileRequired = true;
 
+    /**
+     * "3" o "corte 3" llegan como "CORTE 3" para validar que no se repita en el contrato.
+     * Un corte anterior a la numeración que se reenvía con su mismo código lo conserva.
+     */
+    protected function prepareForValidation(): void
+    {
+        $current = $this->route('corte')?->code;
+        $number = Corte::numberOf($this->input('code'));
+
+        if ($this->input('code') !== $current && $number !== null) {
+            $this->merge(['code' => Corte::codeFor($number)]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -24,11 +39,11 @@ class StoreCorteRequest extends FormRequest
         $projectId = $this->input('project_id');
 
         return [
+            // CORTE 1, CORTE 2... por contrato. No se repite dentro del mismo contrato (ignora el corte que se reenvía)
             'code' => [
                 'required', 'string', 'max:100',
-                // El código no se repite dentro del mismo proyecto (ignora el corte que se está reenviando)
                 Rule::unique('cortes', 'code')
-                    ->where('project_id', $projectId)
+                    ->where('contract_id', $this->input('contract_id'))
                     ->whereNull('deleted_at')
                     ->ignore($this->route('corte')?->id),
             ],
@@ -75,7 +90,7 @@ class StoreCorteRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'code.unique' => 'Ya existe un corte con ese código en el proyecto.',
+            'code.unique' => 'Ese número de corte ya está radicado en el contrato. Elige el siguiente.',
             'tower_id.exists' => 'La torre no pertenece al proyecto seleccionado.',
             'contract_id.exists' => 'El contrato no pertenece al proyecto seleccionado.',
             'upload_token.required' => 'Adjunta el archivo del corte.',

@@ -109,3 +109,63 @@ test('el correo se renderiza con los datos de la póliza', function () {
 test('la tarea está programada a diario', function () {
     $this->artisan('schedule:list')->expectsOutputToContain('contratacion:policy-alerts')->assertSuccessful();
 });
+
+test('avisa a los 40, 30 y 20 días, una vez en cada umbral', function () {
+    $project = Project::create(['code' => 'p1', 'name' => 'Proyecto 1']);
+    $policy = policyFor(contractFor($project), now()->addDays(45)->toDateString());
+    $run = function () {
+        $this->artisan('contratacion:policy-alerts')->assertSuccessful();
+    };
+
+    $run(); // 45 días: aún no
+    Mail::assertNothingSent();
+
+    $this->travel(5)->days(); // 40 días
+    $run();
+    $run(); // mismo día: no repite
+    Mail::assertSent(PolicyExpiringMail::class, 1);
+    expect($policy->fresh()->last_alert_days)->toBe(40);
+
+    $this->travel(5)->days(); // 35 días: sin aviso
+    $run();
+    Mail::assertSent(PolicyExpiringMail::class, 1);
+
+    $this->travel(5)->days(); // 30 días
+    $run();
+    Mail::assertSent(PolicyExpiringMail::class, 2);
+    expect($policy->fresh()->last_alert_days)->toBe(30);
+
+    $this->travel(10)->days(); // 20 días
+    $run();
+    Mail::assertSent(PolicyExpiringMail::class, 3);
+    expect($policy->fresh()->last_alert_days)->toBe(20);
+
+    $this->travel(25)->days(); // ya venció: no hay más avisos
+    $run();
+    Mail::assertSent(PolicyExpiringMail::class, 3);
+});
+
+test('una póliza que entra tarde recibe el aviso del umbral en que está', function () {
+    $project = Project::create(['code' => 'p1', 'name' => 'Proyecto 1']);
+    $policy = policyFor(contractFor($project), now()->addDays(25)->toDateString()); // ya pasó el de 40
+
+    $this->artisan('contratacion:policy-alerts')->assertSuccessful();
+    expect($policy->fresh()->last_alert_days)->toBe(30);
+
+    $this->travel(5)->days(); // 20 días
+    $this->artisan('contratacion:policy-alerts')->assertSuccessful();
+    Mail::assertSent(PolicyExpiringMail::class, 2);
+    expect($policy->fresh()->last_alert_days)->toBe(20);
+});
+
+test('reciben el aviso los correos configurados y los usuarios con el permiso de alertas de pólizas', function () {
+    $project = Project::create(['code' => 'p1', 'name' => 'Proyecto 1']);
+    policyFor(contractFor($project), now()->addDays(10)->toDateString());
+
+    $mariaJose = App\Http\Modules\Users\Models\User::create(['name' => 'María José Ospina', 'email' => 'mjospina@example.com', 'password' => 'secret']);
+    $mariaJose->givePermissionTo(['contratacion.alertas_polizas', 'proyectos.ver_todos']);
+
+    $this->artisan('contratacion:policy-alerts')->assertSuccessful();
+
+    Mail::assertSent(PolicyExpiringMail::class, fn ($mail) => $mail->hasTo('alertas@example.com') && $mail->hasTo('mjospina@example.com'));
+});

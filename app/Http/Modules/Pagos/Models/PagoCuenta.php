@@ -2,8 +2,10 @@
 
 namespace App\Http\Modules\Pagos\Models;
 
+use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Cortes\Models\Corte;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Users\Models\User;
@@ -21,6 +23,8 @@ class PagoCuenta extends Model
 
     public const SOURCE_CORTE = 'corte';
     public const SOURCE_ORDEN = 'orden';
+    public const SOURCE_ANTICIPO = 'anticipo';
+    public const SOURCE_CUENTA_COBRO = 'cuenta_cobro';
     public const SOURCE_MANUAL = 'manual';
 
     protected $fillable = [
@@ -28,6 +32,8 @@ class PagoCuenta extends Model
         'source_id',
         'corte_id',
         'orden_id',
+        'anticipo_id',
+        'cuenta_cobro_id',
         'project_id',
         'frente',
         'contractor_id',
@@ -82,6 +88,16 @@ class PagoCuenta extends Model
     public function orden()
     {
         return $this->belongsTo(Orden::class, 'orden_id');
+    }
+
+    public function anticipo()
+    {
+        return $this->belongsTo(Anticipo::class, 'anticipo_id');
+    }
+
+    public function cuentaCobro()
+    {
+        return $this->belongsTo(CuentaCobro::class, 'cuenta_cobro_id');
     }
 
     public function prioritizer()

@@ -5,6 +5,7 @@ namespace App\Http\Modules\Facturacion\Service;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteInvoiceService;
+use App\Http\Modules\Cortes\Service\CorteStorageService;
 use App\Http\Modules\Cortes\Service\CorteWorkflow;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoiceSupport;
@@ -12,6 +13,7 @@ use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Service\OrdenService;
+use App\Http\Modules\Ordenes\Service\OrdenStorageService;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
 use App\Http\Modules\Users\Models\User;
 use Carbon\Carbon;
@@ -42,6 +44,8 @@ class FacturacionService
         protected FacturacionStorageService $storage,
         protected CorteInvoiceService $corteInvoices,
         protected OrdenService $ordenes,
+        protected CorteStorageService $corteStorage,
+        protected OrdenStorageService $ordenStorage,
     ) {
     }
 
@@ -103,7 +107,7 @@ class FacturacionService
     public function list(User $user, string $scope, array $filters = []): array
     {
         $query = $this->scopedQuery($user, $scope)
-            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code', 'orden:id,code', 'supports']);
+            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'supports']);
 
         if (!empty($filters['period'])) {
             $query->whereDate('period', $this->parsePeriod($filters['period']));
@@ -153,7 +157,7 @@ class FacturacionService
 
     public function get(FacturacionInvoice $invoice, User $user): array
     {
-        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code', 'orden:id,code', 'supports.uploader:id,name']);
+        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'supports.uploader:id,name']);
 
         return $this->present($invoice, $user, $this->suggestedContractorIds($user));
     }
@@ -260,6 +264,7 @@ class FacturacionService
             'cortes' => $cortes->map(fn (Corte $corte) => [
                 'id' => $corte->id,
                 'code' => $corte->code,
+                'label' => $corte->label(),
                 'status' => $corte->status,
                 'status_label' => CorteWorkflow::statusLabel($corte->status),
                 'project' => $corte->project?->name,
@@ -284,6 +289,8 @@ class FacturacionService
     /**
      * El residente asocia la factura a su corte o a su orden con los soportes: queda procesada por obra y sigue
      * el flujo del corte (Facturado, aviso de Multifox) o de la orden (pasa a Entrada de almacén).
+     * La factura queda en la carpeta del mes y se copia a la carpeta del corte (o de la orden), que es la que
+     * queda registrada en el corte.
      */
     public function associate(FacturacionInvoice $invoice, array $data, User $user): FacturacionInvoice
     {
@@ -309,10 +316,38 @@ class FacturacionService
         $supports = collect($data['support_tokens'])
             ->map(fn (string $token) => $this->storage->claimSupportFile($token, $user, $invoice));
 
-        $file = $invoice->only(['file_name', 'file_path', 'file_size', 'file_mime']);
+        $copyPath = $isCorte
+            ? $this->corteStorage->copyInvoiceFile($target, $invoice->file_path)
+            : $this->ordenStorage->copyStepFile($target, OrdenWorkflow::STEP_FACTURA, $invoice->file_path);
+        $file = [...$invoice->only(['file_size', 'file_mime']), 'file_name' => basename($copyPath), 'file_path' => $copyPath];
         $comment = isset($data['comment']) ? (trim($data['comment']) ?: null) : null;
 
-        [$invoice, $record] = DB::transaction(function () use ($invoice, $target, $isCorte, $amount, $contractorId, $file, $comment, $supports, $user) {
+        try {
+            [$invoice, $record] = $this->associateRecords($invoice, $target, $isCorte, $amount, $contractorId, $file, $comment, $supports, $user);
+        } catch (\Throwable $e) {
+            // Sin asociación no debe quedar la copia en la carpeta del corte / orden
+            $this->storage->delete($copyPath);
+            throw $e;
+        }
+
+        // Después del commit, igual que en el cargue normal de cada módulo
+        $record instanceof CorteInvoice
+            ? $this->corteInvoices->notifyUploaded($record)
+            : $this->ordenes->notifyStepDocument($record);
+
+        return $invoice;
+    }
+
+    /**
+     * Registra la factura en el corte o en la orden (con la copia $file) y la marca como procesada por obra.
+     *
+     * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument}
+     */
+    protected function associateRecords(
+        FacturacionInvoice $invoice, Corte|Orden $target, bool $isCorte, $amount, ?int $contractorId,
+        array $file, ?string $comment, Collection $supports, User $user,
+    ): array {
+        return DB::transaction(function () use ($invoice, $target, $isCorte, $amount, $contractorId, $file, $comment, $supports, $user) {
             $invoice = FacturacionInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE) {
                 throw new InvalidArgumentException('Otro usuario ya procesó esta factura.');
@@ -353,13 +388,6 @@ class FacturacionService
 
             return [$invoice, $record];
         });
-
-        // Después del commit, igual que en el cargue normal de cada módulo
-        $record instanceof CorteInvoice
-            ? $this->corteInvoices->notifyUploaded($record)
-            : $this->ordenes->notifyStepDocument($record);
-
-        return $invoice;
     }
 
     protected function assertCanAssociate(FacturacionInvoice $invoice, Corte|Orden|null $target, bool $isCorte, User $user): void
@@ -369,7 +397,7 @@ class FacturacionService
         }
 
         if ($isCorte && !in_array($target->status, CorteWorkflow::INVOICEABLE_STATUSES, true)) {
-            throw new InvalidArgumentException("El corte {$target->code} aún no tiene las tres aprobaciones.");
+            throw new InvalidArgumentException("El {$target->label()} aún no tiene las tres aprobaciones.");
         }
 
         if (!$isCorte) {
@@ -395,7 +423,7 @@ class FacturacionService
         $cortes = Corte::query()
             ->accessibleBy($user)
             ->where('status', CorteWorkflow::STATUS_APROBADO)
-            ->with(['creator:id,name,email', 'contractor:id,name', 'project:id,name'])
+            ->with(['creator:id,name,email', 'contractor:id,name', 'project:id,name', 'contract:id,contract_code'])
             ->orderBy('approved_at')
             ->get();
 
@@ -420,6 +448,8 @@ class FacturacionService
                     'cortes' => $own($cortes)->map(fn (Corte $corte) => [
                         'id' => $corte->id,
                         'code' => $corte->code,
+                        'label' => $corte->label(),
+                        'contract_code' => $corte->contract?->contract_code,
                         'contractor' => $corte->contractor?->name,
                         'project' => $corte->project?->name,
                         'approved_at' => $corte->approved_at?->toIso8601String(),
@@ -516,7 +546,7 @@ class FacturacionService
     {
         $isPending = $invoice->status === FacturacionInvoice::STATUS_PENDIENTE;
         $target = match ($invoice->target_type) {
-            FacturacionInvoice::TARGET_CORTE => ['type' => 'corte', 'id' => $invoice->corte_id, 'code' => $invoice->corte?->code, 'label' => 'Corte ' . ($invoice->corte?->code ?? '—')],
+            FacturacionInvoice::TARGET_CORTE => ['type' => 'corte', 'id' => $invoice->corte_id, 'code' => $invoice->corte?->code, 'label' => $invoice->corte?->reference() ?? 'Corte eliminado'],
             FacturacionInvoice::TARGET_ORDEN => ['type' => 'orden', 'id' => $invoice->orden_id, 'code' => $invoice->orden?->code, 'label' => 'Orden ' . ($invoice->orden?->code ?? '—')],
             default => null,
         };
