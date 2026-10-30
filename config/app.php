@@ -54,6 +54,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // URL del frontend (SPA): enlaces de los correos, ej. restablecer la contraseña
+    'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
