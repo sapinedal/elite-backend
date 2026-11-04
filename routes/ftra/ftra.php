@@ -6,7 +6,7 @@ use App\Http\Modules\Ftra\Controller\FtraRecordController;
 use App\Http\Modules\Ftra\Controller\ResidenteController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('ftra')->middleware('auth:sanctum')->group(function () {
+Route::prefix('ftra')->middleware(['auth:sanctum', 'project'])->group(function () {
     // CRUD de Formatos
     Route::get('/formats', [FormatController::class, 'index'])->middleware('permission:ftra.ver|ftra.parametrizar');
     Route::post('/formats', [FormatController::class, 'store'])->middleware('permission:ftra.parametrizar');

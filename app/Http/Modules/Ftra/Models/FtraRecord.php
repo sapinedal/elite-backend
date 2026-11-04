@@ -2,14 +2,17 @@
 
 namespace App\Http\Modules\Ftra\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Users\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class FtraRecord extends Model
 {
     protected $table = 'ftra_records';
 
     protected $fillable = [
+        'project_id',
         'contractor_id',
         'format_id',
         'observations',
@@ -30,6 +33,21 @@ class FtraRecord extends Model
     protected $casts = [
         'is_completed' => 'boolean',
     ];
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    /**
+     * Limita a los proyectos que el usuario puede ver (null = todos).
+     */
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        $projectIds = $user->accessibleProjectIds();
+
+        return $projectIds === null ? $query : $query->whereIn('project_id', $projectIds);
+    }
 
     public function contractor()
     {

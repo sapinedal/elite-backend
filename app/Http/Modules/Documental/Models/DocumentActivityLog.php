@@ -14,6 +14,7 @@ class DocumentActivityLog extends Model
 
     protected $fillable = [
         'user_id',
+        'project_id',
         'action',
         'path',
         'details',
@@ -27,5 +28,10 @@ class DocumentActivityLog extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(\App\Http\Modules\Configuracion\Models\Project::class);
     }
 }

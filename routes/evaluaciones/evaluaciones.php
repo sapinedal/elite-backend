@@ -9,5 +9,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/{user}/evaluations', [EvaluationController::class, 'store'])->middleware('permission:kpi.evaluar');
     Route::get('/users/{user}/history', [EvaluationController::class, 'history'])->middleware('permission:kpi.historial|kpi.ver');
     Route::get('/evaluations/{evaluation}/export', [EvaluationController::class, 'exportPdf'])->middleware('permission:kpi.ver|kpi.historial');
+    Route::get('/dashboard/area', [EvaluationController::class, 'areaDashboard'])->middleware('permission:kpi.ver');
     Route::get('/dashboard/export', [EvaluationController::class, 'exportDashboard'])->middleware('permission:kpi.ver');
 });

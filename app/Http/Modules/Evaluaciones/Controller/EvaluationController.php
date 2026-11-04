@@ -9,6 +9,7 @@ use App\Http\Modules\Evaluaciones\Models\EvaluationVersion;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Http\Modules\Evaluaciones\Service\KpiDashboardService;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class EvaluationController extends Controller
@@ -167,42 +168,33 @@ class EvaluationController extends Controller
         return $pdf->stream("Evaluacion_{$evaluation->user->name}_{$evaluation->month}_{$evaluation->year}.pdf");
     }
 
-    public function exportDashboard(Request $request)
+    /**
+     * Datos del Dashboard de KPIs de un área para un periodo.
+     * GET /api/v1/dashboard/area?area=&month=&year=
+     */
+    public function areaDashboard(Request $request, KpiDashboardService $dashboard)
     {
-        $request->validate([
-            'month' => 'required|integer',
-            'year' => 'required|integer',
-            'area' => 'required|string',
+        $validated = $this->validateDashboardRequest($request);
+
+        return response()->json($dashboard->areaReport($validated['area'], (int) $validated['month'], (int) $validated['year']));
+    }
+
+    public function exportDashboard(Request $request, KpiDashboardService $dashboard)
+    {
+        $validated = $this->validateDashboardRequest($request);
+        $report = $dashboard->areaReport($validated['area'], (int) $validated['month'], (int) $validated['year']);
+
+        $pdf = Pdf::loadView('pdf.dashboard', ['report' => $report])->setOption('isRemoteEnabled', true);
+
+        return $pdf->stream("Dashboard_{$report['area']}_{$report['month']}_{$report['year']}.pdf");
+    }
+
+    protected function validateDashboardRequest(Request $request): array
+    {
+        return $request->validate([
+            'month' => 'required|integer|between:1,12',
+            'year' => 'required|integer|between:2000,2100',
+            'area' => 'required|string|max:255',
         ]);
-
-        $month = $request->month;
-        $year = $request->year;
-        $areaName = $request->area;
-
-        // Obtener todos los usuarios del área
-        $users = \App\Http\Modules\Users\Models\User::whereHas('area', function ($q) use ($areaName) {
-            $q->where('name', $areaName);
-        })->with('position')->get();
-
-        // Obtener evaluaciones de usuarios que pertenecen a esa área en el periodo dado
-        $evaluations = Evaluation::with(['user', 'results'])
-            ->where('month', $month)
-            ->where('year', $year)
-            ->whereIn('user_id', $users->pluck('id'))
-            ->get();
-
-        // Obtener todo el historial de evaluaciones para estos usuarios
-        $allEvaluations = Evaluation::whereIn('user_id', $users->pluck('id'))->get();
-
-        $pdf = Pdf::loadView('pdf.dashboard', [
-            'users' => $users,
-            'evaluations' => $evaluations,
-            'allEvaluations' => $allEvaluations,
-            'area' => $areaName,
-            'month' => $month,
-            'year' => $year
-        ])->setOption('isRemoteEnabled', true);
-
-        return $pdf->stream("Dashboard_{$areaName}_{$month}_{$year}.pdf");
     }
 }

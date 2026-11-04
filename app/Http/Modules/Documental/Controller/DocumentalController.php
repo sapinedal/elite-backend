@@ -3,10 +3,13 @@
 namespace App\Http\Modules\Documental\Controller;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ResolveActiveProject;
+use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
 use App\Http\Modules\Documental\Request\CreateFolderRequest;
 use App\Http\Modules\Documental\Request\DeleteItemRequest;
 use App\Http\Modules\Documental\Request\RenameItemRequest;
+use App\Http\Modules\Documental\Request\SetFolderProjectRequest;
 use App\Http\Modules\Documental\Request\SyncFolderRulesRequest;
 use App\Http\Modules\Documental\Request\UpdateSettingsRequest;
 use App\Http\Modules\Documental\Request\UploadFileRequest;
@@ -29,11 +32,21 @@ class DocumentalController extends Controller
     }
 
     /**
+     * Pasa al servicio el proyecto activo (ya validado por el middleware `project`).
+     */
+    protected function applyProjectContext(Request $request): void
+    {
+        $this->documentalService->setActiveProject($request->attributes->get(ResolveActiveProject::ATTRIBUTE));
+    }
+
+    /**
      * Ejecuta una operación del servicio y traduce sus excepciones a respuestas HTTP:
      * 403 sin permisos, 422 datos inválidos, 500 errores de S3 / Spaces.
      */
     protected function respond(callable $operation, int $status = 200): JsonResponse
     {
+        $this->applyProjectContext(request());
+
         try {
             return response()->json([
                 'success' => true,
@@ -142,14 +155,19 @@ class DocumentalController extends Controller
      */
     public function permissions(Request $request): JsonResponse
     {
+        $this->applyProjectContext($request);
         $user = $request->user();
         $effective = $this->documentalService->getUserPermissionsForPath($user, (string) $request->query('path', ''));
 
         $restrictedFolders = [];
         $roles = [];
+        $projectFolders = [];
+        $projects = [];
         if ($effective['is_admin']) {
             $restrictedFolders = $this->documentalService->listRestrictedFolders();
             $roles = Role::select('id', 'name')->orderBy('name')->get();
+            $projectFolders = $this->documentalService->listProjectFolders();
+            $projects = Project::select('id', 'code', 'name')->where('is_active', true)->orderBy('name')->get();
         }
 
         return response()->json([
@@ -162,6 +180,8 @@ class DocumentalController extends Controller
             ],
             'restricted_folders' => $restrictedFolders,
             'roles' => $roles,
+            'project_folders' => $projectFolders,
+            'projects' => $projects,
         ]);
     }
 
@@ -180,6 +200,20 @@ class DocumentalController extends Controller
     }
 
     /**
+     * Asigna una carpeta a un proyecto o la vuelve transversal (project_id = null).
+     * PUT /api/v1/documental/project-folders
+     */
+    public function setFolderProject(SetFolderProjectRequest $request): JsonResponse
+    {
+        return $this->respond(fn () => $this->documentalService->setFolderProject(
+            $request->input('folder_path'),
+            $request->input('project_id') !== null ? (int) $request->input('project_id') : null,
+            $request->user(),
+            $request->ip()
+        ));
+    }
+
+    /**
      * Historial de actividad del repositorio documental, con filtros.
      * GET /api/v1/documental/logs?action=&user=&path=&date_from=&date_to=&page=&per_page=
      */
@@ -192,9 +226,11 @@ class DocumentalController extends Controller
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
             'per_page' => 'nullable|integer|min:1|max:100',
+            'project_id' => 'nullable|integer',
         ]);
 
-        $logs = DocumentActivityLog::with('user:id,name,email')
+        $logs = DocumentActivityLog::with(['user:id,name,email', 'project:id,code,name'])
+            ->when($request->query('project_id'), fn ($q, $projectId) => $q->where('project_id', (int) $projectId))
             ->when($request->query('action'), fn ($q, $action) => $q->where('action', $action))
             ->when($request->query('user'), fn ($q, $term) => $q->whereHas(
                 'user',

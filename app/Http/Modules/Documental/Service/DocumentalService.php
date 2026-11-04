@@ -2,7 +2,9 @@
 
 namespace App\Http\Modules\Documental\Service;
 
+use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
+use App\Http\Modules\Documental\Models\DocumentProjectFolder;
 use App\Http\Modules\Documental\Models\DocumentRolePermission;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -44,6 +46,19 @@ class DocumentalService
     protected const RULES_CACHE_KEY = 'documental_folder_rules';
 
     protected const SEARCH_INDEX_CACHE_KEY = 'documental_search_index';
+
+    protected const PROJECT_FOLDERS_CACHE_KEY = 'documental_project_folders';
+
+    /**
+     * Proyecto activo de la petición (header X-Project-Id). Con proyecto activo se ocultan las carpetas
+     * etiquetadas con otros proyectos; sin él se ven las de todos los proyectos a los que el usuario tiene acceso.
+     */
+    protected ?int $activeProjectId = null;
+
+    /**
+     * Carpetas etiquetadas con proyecto: [folder_path => project_id], cargadas una sola vez por petición.
+     */
+    protected ?array $projectFolders = null;
 
     /**
      * Reglas por carpeta agrupadas por ruta (arrays planos), cargadas una sola vez por petición.
@@ -122,6 +137,11 @@ class DocumentalService
             return $this->noAccess();
         }
 
+        // Contexto de proyecto: aplica también a administradores (es contexto de trabajo, no solo seguridad)
+        if (!$this->projectAllows($context, $path)) {
+            return $this->noAccess();
+        }
+
         $rules = $this->findApplicableRules($path);
 
         if ($context['admin']) {
@@ -167,6 +187,8 @@ class DocumentalService
             'view' => $user->can(self::PERMISSION_VIEW),
             'admin' => $user->can(self::PERMISSION_ADMIN),
             'role_ids' => $user->roles->pluck('id')->all(),
+            // null = ve todos los proyectos
+            'project_ids' => $user->accessibleProjectIds(),
             'base' => [
                 'can_read' => true,
                 'can_upload' => $user->can(self::PERMISSION_UPLOAD),
@@ -190,6 +212,70 @@ class DocumentalService
             'is_admin' => false,
             'restricted' => false,
         ];
+    }
+
+    public function setActiveProject(?int $projectId): static
+    {
+        $this->activeProjectId = $projectId;
+
+        return $this;
+    }
+
+    /**
+     * [folder_path => project_id] de las carpetas etiquetadas con proyecto.
+     */
+    public function getProjectFolders(): array
+    {
+        return $this->projectFolders ??= $this->cache()->rememberForever(
+            self::PROJECT_FOLDERS_CACHE_KEY,
+            fn () => DocumentProjectFolder::pluck('project_id', 'folder_path')->map(fn ($id) => (int) $id)->all()
+        );
+    }
+
+    protected function forgetProjectFolders(): void
+    {
+        $this->cache()->forget(self::PROJECT_FOLDERS_CACHE_KEY);
+        $this->projectFolders = null;
+    }
+
+    /**
+     * Proyecto dueño de una ruta: el de la carpeta etiquetada más cercana (la propia ruta o su ancestro más próximo).
+     */
+    public function projectOwnerOf(string $path): ?int
+    {
+        $folders = $this->getProjectFolders();
+        if ($path === '' || $folders === []) {
+            return null;
+        }
+
+        $segments = explode('/', $path);
+        while (count($segments) > 0) {
+            $candidate = implode('/', $segments);
+            if (isset($folders[$candidate])) {
+                return $folders[$candidate];
+            }
+            array_pop($segments);
+        }
+
+        return null;
+    }
+
+    /**
+     * Una ruta sin proyecto es transversal y siempre visible. Una ruta de un proyecto solo es visible si el
+     * usuario tiene acceso a ese proyecto y, cuando hay proyecto activo, si es el proyecto activo.
+     */
+    protected function projectAllows(array $context, string $path): bool
+    {
+        $owner = $this->projectOwnerOf($path);
+        if ($owner === null) {
+            return true;
+        }
+
+        if ($this->activeProjectId !== null && $owner !== $this->activeProjectId) {
+            return false;
+        }
+
+        return $context['project_ids'] === null || in_array($owner, $context['project_ids'], true);
     }
 
     protected function getFolderRules(): Collection
@@ -233,11 +319,12 @@ class DocumentalService
      */
     protected function assertCanAffectDescendants(User $user, string $path, string $flag, string $action, ?string $ip): void
     {
-        foreach ($this->getFolderRules()->keys() as $rulePath) {
+        $guarded = array_unique([...$this->getFolderRules()->keys()->all(), ...array_keys($this->getProjectFolders())]);
+        foreach ($guarded as $rulePath) {
             if (str_starts_with($rulePath, $path . '/')) {
                 $this->authorize(
                     $this->getUserPermissionsForPath($user, $rulePath)[$flag],
-                    'La carpeta contiene subcarpetas restringidas sobre las que no tienes permisos.',
+                    'La carpeta contiene subcarpetas restringidas o de otro proyecto sobre las que no tienes permisos.',
                     $user, $action, $path, $ip
                 );
             }
@@ -367,6 +454,7 @@ class DocumentalService
         foreach ($result['folders'] as $folder) {
             if ($this->getUserPermissionsForPath($user, $folder['path'])['can_read']) {
                 $folder['restricted'] = $rules->has($folder['path']);
+                $folder['project_id'] = $this->getProjectFolders()[$folder['path']] ?? null;
                 $visibleFolders[] = $folder;
             }
         }
@@ -483,6 +571,7 @@ class DocumentalService
                     'type' => 'folder',
                     'location' => $this->parentOf($folderPath),
                     'restricted' => $rules->has($folderPath),
+                    'project_id' => $this->getProjectFolders()[$folderPath] ?? null,
                 ];
             }
         }
@@ -735,6 +824,8 @@ class DocumentalService
             $disk->deleteDirectory($path);
             $this->folderRulesUnder($path)->delete();
             $this->forgetFolderRules();
+            $this->projectFoldersUnder($path)->delete();
+            $this->forgetProjectFolders();
         } else {
             if (!$disk->exists($path)) {
                 throw new InvalidArgumentException('El archivo especificado no existe.');
@@ -801,8 +892,12 @@ class DocumentalService
                 foreach ($this->folderRulesUnder($normalizedOld)->get() as $rule) {
                     $rule->update(['folder_path' => $normalizedNew . substr($rule->folder_path, strlen($normalizedOld))]);
                 }
+                foreach ($this->projectFoldersUnder($normalizedOld)->get() as $tag) {
+                    $tag->update(['folder_path' => $normalizedNew . substr($tag->folder_path, strlen($normalizedOld))]);
+                }
             });
             $this->forgetFolderRules();
+            $this->forgetProjectFolders();
         } else {
             if ($disk->exists($normalizedNew)) {
                 throw new InvalidArgumentException('Ya existe un archivo con ese nombre en este directorio.');
@@ -931,6 +1026,77 @@ class DocumentalService
     }
 
     /**
+     * Carpetas etiquetadas con proyecto (para el administrador del módulo).
+     */
+    public function listProjectFolders(): array
+    {
+        return DocumentProjectFolder::with('project:id,code,name')
+            ->orderBy('folder_path')
+            ->get()
+            ->map(fn (DocumentProjectFolder $tag) => [
+                'folder_path' => $tag->folder_path,
+                'project_id' => $tag->project_id,
+                'project_code' => $tag->project?->code,
+                'project_name' => $tag->project?->name,
+            ])
+            ->all();
+    }
+
+    /**
+     * Asigna una carpeta (y su contenido) a un proyecto, o la vuelve transversal con $projectId = null.
+     */
+    public function setFolderProject(string $folderPath, ?int $projectId, User $user, ?string $ip = null): array
+    {
+        $path = $this->normalizePath($folderPath);
+        if ($path === '') {
+            throw new InvalidArgumentException('El proyecto se asigna a una carpeta específica, no a la raíz.');
+        }
+        if (!$this->getDisk()->directoryExists($path)) {
+            throw new InvalidArgumentException('La carpeta indicada no existe en el repositorio.');
+        }
+
+        $project = $projectId ? Project::find($projectId) : null;
+        if ($projectId && !$project) {
+            throw new InvalidArgumentException('El proyecto indicado no existe.');
+        }
+
+        $previous = DocumentProjectFolder::where('folder_path', $path)->value('project_id');
+
+        if ($project) {
+            DocumentProjectFolder::updateOrCreate(
+                ['folder_path' => $path],
+                ['project_id' => $project->id, 'created_by' => $user->id]
+            );
+        } else {
+            DocumentProjectFolder::where('folder_path', $path)->delete();
+        }
+        $this->forgetProjectFolders();
+        $this->clearPathCache($path);
+
+        $this->log($user, 'project_tag', $path, [
+            'from_project_id' => $previous,
+            'to_project_id' => $project?->id,
+            'to_project_name' => $project?->name,
+        ], $ip);
+
+        return [
+            'message' => $project
+                ? "La carpeta quedó asignada al proyecto {$project->name}."
+                : 'La carpeta quedó como transversal (visible en todos los proyectos).',
+            'folder_path' => $path,
+            'project_id' => $project?->id,
+        ];
+    }
+
+    protected function projectFoldersUnder(string $path)
+    {
+        $escaped = addcslashes($path, '%_\\');
+
+        return DocumentProjectFolder::where('folder_path', $path)
+            ->orWhere('folder_path', 'like', $escaped . '/%');
+    }
+
+    /**
      * Consulta de reglas de una carpeta y todas sus subcarpetas.
      */
     protected function folderRulesUnder(string $path)
@@ -945,6 +1111,7 @@ class DocumentalService
     {
         DocumentActivityLog::create([
             'user_id' => $user->id,
+            'project_id' => $this->activeProjectId,
             'action' => $action,
             'path' => $path,
             'details' => $details,

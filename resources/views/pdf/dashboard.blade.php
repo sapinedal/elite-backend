@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard por Área - {{ $area }}</title>
+    <title>Dashboard por Área - {{ $report['area'] }}</title>
     <style>
         @page {
             margin: 0.8cm;
@@ -135,246 +135,85 @@
         if (!file_exists($logoPath)) {
             $logoPath = base_path('public/logo_inver.svg');
         }
-        if (!file_exists($logoPath)) {
-            $logoPath = base_path('../elite-frontend/src/assets/logo_inver.svg');
-        }
-        $logoBase64 = '';
-        if (file_exists($logoPath)) {
-            $logoBase64 = base64_encode(file_get_contents($logoPath));
-        }
+        $logoBase64 = file_exists($logoPath) ? base64_encode(file_get_contents($logoPath)) : '';
 
-        // Meses en español
         $months = [
             1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
             5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
             9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
         ];
 
-        // Configuración para el gráfico Evolución Mensual (QuickChart)
-        $avg = $evaluations->count() > 0 ? $evaluations->avg('total_score') : 0;
-        $isComercialArea = trim(strtolower($area)) === 'comercial' || strpos(strtolower($area), 'comercial') !== false;
-        if ($isComercialArea) {
-            $userSara = $users->first(function($u) {
-                $pos = is_object($u->position) ? $u->position->name : ($u->position ?? '');
-                return strpos(strtolower($pos), 'directora comercial') !== false || strpos(strtolower($pos), 'director comercial') !== false;
-            });
-            $userIngrid = $users->first(function($u) {
-                $pos = is_object($u->position) ? $u->position->name : ($u->position ?? '');
-                return strpos(strtolower($pos), 'lider de sala') !== false || strpos(strtolower($pos), 'líder de sala') !== false || strpos(strtolower($pos), 'sala de ventas') !== false;
-            });
-            $userNatalia = $users->first(function($u) {
-                $pos = is_object($u->position) ? $u->position->name : ($u->position ?? '');
-                $name = strtolower($u->name);
-                return (strpos(strtolower($pos), 'asesora comercial') !== false || strpos(strtolower($pos), 'asesor comercial') !== false) 
-                       && (strpos($name, 'natalia') !== false || strpos($name, 'posada') !== false);
-            });
-            $userPaola = $users->first(function($u) {
-                $pos = is_object($u->position) ? $u->position->name : ($u->position ?? '');
-                $name = strtolower($u->name);
-                return (strpos(strtolower($pos), 'asesora comercial') !== false || strpos(strtolower($pos), 'asesor comercial') !== false) 
-                       && (strpos($name, 'paola') !== false || strpos($name, 'arenas') !== false);
-            });
+        // Todo sale de KpiDashboardService (los mismos datos que muestra la pantalla del Dashboard)
+        $area = $report['area'];
+        $month = $report['month'];
+        $year = $report['year'];
+        $avg = $report['average'];
+        $collaborators = collect($report['collaborators']);
+        $palette = ['#1a5b78', '#e65f2b', '#1b5e20', '#0288d1', '#9c27b0', '#55a630', '#0b2c3d', '#7209b7', '#f72585', '#ff9f1c', '#2ec4b6', '#6d597a'];
+        $monthsConfig = collect($report['months'])->values()->map(fn ($m, $i) => $m + ['color' => $palette[$i % count($palette)]]);
+        $scoreColor = fn ($v) => $v >= 90 ? '#10b981' : ($v >= 70 ? '#f59e0b' : '#ef4444');
 
-            $evalSara = $userSara ? $evaluations->firstWhere('user_id', $userSara->id) : null;
-            $evalIngrid = $userIngrid ? $evaluations->firstWhere('user_id', $userIngrid->id) : null;
-            $evalPaola = $userPaola ? $evaluations->firstWhere('user_id', $userPaola->id) : null;
-            $evalNatalia = $userNatalia ? $evaluations->firstWhere('user_id', $userNatalia->id) : null;
+        $chartOptions = fn (float $tickFont) => [
+            'legend' => ['position' => 'bottom', 'labels' => ['fontSize' => 6, 'boxWidth' => 6]],
+            'scales' => [
+                'yAxes' => [[
+                    'gridLines' => ['color' => '#f1f5f9'],
+                    'ticks' => ['min' => 0, 'max' => 100, 'stepSize' => 25, 'fontSize' => 6, 'fontColor' => '#94a3b8'],
+                ]],
+                'xAxes' => [[
+                    'gridLines' => ['display' => false],
+                    'ticks' => ['fontSize' => $tickFont, 'fontColor' => '#94a3b8', 'autoSkip' => false],
+                ]],
+            ],
+        ];
+        $quickChart = fn (array $config) => 'https://quickchart.io/chart?w=300&h=200&c=' . urlencode(json_encode($config));
 
-            $scoreSara = $evalSara ? floatval($evalSara->total_score) : 0;
-            $scoreIngrid = $evalIngrid ? floatval($evalIngrid->total_score) : 0;
-            $scorePaola = $evalPaola ? floatval($evalPaola->total_score) : 0;
-            $scoreNatalia = $evalNatalia ? floatval($evalNatalia->total_score) : 0;
-
-            $kpiData = [
-                ['label' => 'Clientes/Leads', 'incid' => 70, 'calif' => 70 * ($scoreNatalia / 100)],
-                ['label' => 'Op/Ctrl Ventas', 'incid' => 25, 'calif' => 25 * ($scoreNatalia / 100)],
-                ['label' => 'Relaciones/Serv', 'incid' => 5, 'calif' => 5 * ($scoreNatalia / 100)],
-                
-                ['label' => 'Clientes/Leads (A)', 'incid' => 60, 'calif' => 60 * ($scorePaola / 100)],
-                ['label' => 'Op/Ctrl Ventas (A)', 'incid' => 40, 'calif' => 40 * ($scorePaola / 100)],
-                
-                ['label' => 'Planif. Comercial', 'incid' => 30, 'calif' => 30 * ($scoreSara / 100)],
-                ['label' => 'Doc. y Procesos', 'incid' => 10, 'calif' => 10 * ($scoreSara / 100)],
-                ['label' => 'Op/Ctrl Ventas (D)', 'incid' => 30, 'calif' => 30 * ($scoreSara / 100)],
-                ['label' => 'Liderazgo/Gestión', 'incid' => 30, 'calif' => 30 * ($scoreSara / 100)],
-                
-                ['label' => 'Clientes/Leads (L)', 'incid' => 70, 'calif' => 70 * ($scoreIngrid / 100)],
-                ['label' => 'Op/Ctrl Ventas (L)', 'incid' => 25, 'calif' => 25 * ($scoreIngrid / 100)],
-                ['label' => 'Relaciones/Serv (L)', 'incid' => 5, 'calif' => 5 * ($scoreIngrid / 100)],
-            ];
-
-            $chartLabels = [];
-            $incidData = [];
-            $califData = [];
-            foreach ($kpiData as $item) {
-                $chartLabels[] = $item['label'];
-                $incidData[] = round($item['incid'], 1);
-                $califData[] = round($item['calif'], 1);
-            }
-
-            $chartConfig = [
+        // Incidencia (peso) vs calificación (aporte = peso × puntaje / 100) por colaborador y categoría
+        $breakdownChartUrl = null;
+        if (count($report['breakdown']) > 0) {
+            $rows = collect($report['breakdown']);
+            $breakdownChartUrl = $quickChart([
                 'type' => 'line',
                 'data' => [
-                    'labels' => $chartLabels,
+                    'labels' => $rows->map(fn ($r) => strtok($r['short_name'], ' ') . ' · ' . mb_substr($r['category'], 0, 14))->all(),
                     'datasets' => [
-                        [
-                            'label' => 'Incid.',
-                            'data' => $incidData,
-                            'borderColor' => '#004c6c',
-                            'borderWidth' => 2,
-                            'fill' => false,
-                            'pointBackgroundColor' => '#004c6c',
-                            'pointRadius' => 2
-                        ],
-                        [
-                            'label' => 'Calif.',
-                            'data' => $califData,
-                            'borderColor' => '#e65f2b',
-                            'borderWidth' => 2,
-                            'fill' => false,
-                            'pointBackgroundColor' => '#e65f2b',
-                            'pointRadius' => 2
-                        ]
-                    ]
-                ],
-                'options' => [
-                    'legend' => [
-                        'position' => 'bottom',
-                        'labels' => ['fontSize' => 6, 'boxWidth' => 6]
+                        ['label' => 'Incid.', 'data' => $rows->pluck('incidence')->all(), 'borderColor' => '#004c6c', 'borderWidth' => 2, 'fill' => false, 'pointBackgroundColor' => '#004c6c', 'pointRadius' => 2],
+                        ['label' => 'Calif.', 'data' => $rows->pluck('contribution')->all(), 'borderColor' => '#e65f2b', 'borderWidth' => 2, 'fill' => false, 'pointBackgroundColor' => '#e65f2b', 'pointRadius' => 2],
                     ],
-                    'scales' => [
-                        'yAxes' => [[
-                            'gridLines' => ['color' => '#f1f5f9'],
-                            'ticks' => ['min' => 0, 'max' => 100, 'stepSize' => 25, 'fontSize' => 6, 'fontColor' => '#94a3b8']
-                        ]],
-                        'xAxes' => [[
-                            'gridLines' => ['display' => false],
-                            'ticks' => ['fontSize' => 4.5, 'fontColor' => '#94a3b8', 'autoSkip' => false]
-                        ]]
-                    ]
-                ]
-            ];
-            $chartUrl = 'https://quickchart.io/chart?w=300&h=200&c=' . urlencode(json_encode($chartConfig));
-        } else {
-            $chartConfig = [
+                ],
+                'options' => $chartOptions(4.5),
+            ]);
+        }
+
+        // Evolución del promedio del área (solo meses con evaluaciones)
+        $evolutionChartUrl = null;
+        if (count($report['evolution']) > 0) {
+            $evolution = collect($report['evolution']);
+            $evolutionChartUrl = $quickChart([
                 'type' => 'line',
                 'data' => [
-                    'labels' => ['Ene', 'Feb', 'Mar'],
-                    'datasets' => [
-                        [
-                            'data' => [80, 85, round($avg, 1)],
-                            'borderColor' => '#004c6c',
-                            'borderWidth' => 3,
-                            'fill' => false,
-                            'pointBackgroundColor' => '#004c6c',
-                            'pointBorderColor' => '#ffffff',
-                            'pointBorderWidth' => 2,
-                            'pointRadius' => 6
-                        ]
-                    ]
+                    'labels' => $evolution->pluck('label')->all(),
+                    'datasets' => [[
+                        'label' => 'Promedio',
+                        'data' => $evolution->pluck('average')->all(),
+                        'borderColor' => '#004c6c', 'borderWidth' => 3, 'fill' => false,
+                        'pointBackgroundColor' => '#004c6c', 'pointBorderColor' => '#ffffff', 'pointBorderWidth' => 2, 'pointRadius' => 5,
+                    ]],
                 ],
-                'options' => [
-                    'legend' => ['display' => false],
-                    'scales' => [
-                        'yAxes' => [[
-                            'gridLines' => ['color' => '#f1f5f9'],
-                            'ticks' => ['min' => 0, 'max' => 100, 'stepSize' => 25, 'fontSize' => 9, 'fontColor' => '#94a3b8']
-                        ]],
-                        'xAxes' => [[
-                            'gridLines' => ['display' => false],
-                            'ticks' => ['fontSize' => 9, 'fontColor' => '#94a3b8']
-                        ]]
-                    ]
-                ]
-            ];
-            $chartUrl = 'https://quickchart.io/chart?w=300&h=200&c=' . urlencode(json_encode($chartConfig));
+                'options' => $chartOptions(7),
+            ]);
         }
 
-        // Helper para obtener etiqueta de cargo y nombre corto
-        $getCargoLabel = function ($user) {
-            $posName = (is_object($user->position) ? $user->position->name : ($user->position ?? '')) ?: '';
-            $posUpper = mb_strtoupper($posName, 'UTF-8');
-            
-            $nameParts = explode(' ', trim($user->name));
-            $firstName = !empty($user->first_name) ? explode(' ', trim($user->first_name))[0] : ($nameParts[0] ?? '');
-            $lastName = !empty($user->last_name) ? explode(' ', trim($user->last_name))[0] : ($nameParts[1] ?? '');
-            
-            $firstName = mb_strtoupper($firstName, 'UTF-8');
-            $lastName = mb_strtoupper($lastName, 'UTF-8');
-            
-            $shortName = $lastName ? "{$firstName} {$lastName}" : $firstName;
+        // Historial de cada colaborador en la ventana de la comparativa
+        $histories = collect($report['comparison'])->map(function ($c) use ($monthsConfig) {
+            $history = $monthsConfig
+                ->filter(fn ($m) => $c['scores'][$m['key']] !== null)
+                ->map(fn ($m) => ['label' => $m['label'], 'color' => $m['color'], 'score' => $c['scores'][$m['key']]])
+                ->values()
+                ->all();
 
-            if (strpos($posUpper, 'DIRECTORA COMERCIAL') !== false || strpos($posUpper, 'DIRECTOR COMERCIAL') !== false) {
-                return "DIRECTORA COMERCIAL - {$shortName}";
-            }
-            if (strpos($posUpper, 'LÍDER DE SALA') !== false || strpos($posUpper, 'LIDER DE SALA') !== false || strpos($posUpper, 'SALA DE VENTAS') !== false) {
-                return "LIDER SALA DE VENTAS - {$shortName}";
-            }
-            if (strpos($posUpper, 'ASESORA COMERCIAL') !== false || strpos($posUpper, 'ASESOR COMERCIAL') !== false) {
-                return "ASESORA COMERCIAL - {$shortName}";
-            }
-            return "{$posUpper} - {$shortName}";
-        };
-
-        $cargoOrder = [
-            'ASESORA COMERCIAL - PAOLA ARENAS',
-            'ASESORA COMERCIAL - NATALIA POSADA',
-            'LIDER SALA DE VENTAS - INGRID OSPICIO',
-            'DIRECTORA COMERCIAL - SARA MORENO'
-        ];
-
-        // Ordenar usuarios por jerarquía si es comercial
-        if ($isComercialArea) {
-            $sortedUsers = $users->sortBy(function($u) use ($getCargoLabel, $cargoOrder) {
-                $lbl = $getCargoLabel($u);
-                $idx = array_search($lbl, $cargoOrder);
-                return $idx !== false ? $idx : 999;
-            });
-        } else {
-            $sortedUsers = $users->sortBy('name');
-        }
-
-        $monthsConfig = [
-            ['key' => 'Agosto', 'label' => 'Ago', 'color' => '#1a5b78', 'month' => 8, 'year' => 2025],
-            ['key' => 'Septiembre', 'label' => 'Sep', 'color' => '#e65f2b', 'month' => 9, 'year' => 2025],
-            ['key' => 'Octubre', 'label' => 'Oct', 'color' => '#1b5e20', 'month' => 10, 'year' => 2025],
-            ['key' => 'Noviembre', 'label' => 'Nov', 'color' => '#0288d1', 'month' => 11, 'year' => 2025],
-            ['key' => 'Diciembre-Enero', 'label' => 'Dic-Ene', 'color' => '#9c27b0', 'month' => 12, 'year' => 2025],
-            ['key' => 'Febrero', 'label' => 'Feb', 'color' => '#55a630', 'month' => 2, 'year' => 2026],
-            ['key' => 'Marzo', 'label' => 'Mar', 'color' => '#0b2c3d', 'month' => 3, 'year' => 2026],
-        ];
-
-        $findScore = function ($userId, $m, $y) use ($allEvaluations) {
-            $evals = isset($allEvaluations) ? $allEvaluations : collect();
-            $eval = $evals->where('user_id', $userId)
-                          ->where('month', $m)
-                          ->where('year', $y)
-                          ->first();
-            return $eval ? floatval($eval->total_score) : null;
-        };
-
-        $getUserHistory = function ($user) use ($monthsConfig, $findScore) {
-            $history = [];
-            foreach ($monthsConfig as $m) {
-                if ($m['key'] === 'Diciembre-Enero') {
-                    $score = $findScore($user->id, 12, 2025);
-                    if ($score === null) {
-                        $score = $findScore($user->id, 1, 2026);
-                    }
-                } else {
-                    $score = $findScore($user->id, $m['month'], $m['year']);
-                }
-
-                if ($score !== null) {
-                    $history[] = [
-                        'label' => $m['label'],
-                        'color' => $m['color'],
-                        'score' => $score
-                    ];
-                }
-            }
-            return $history;
-        };
+            return $c + ['history' => $history];
+        });
     @endphp
 
     <div class="header">
@@ -404,7 +243,8 @@
                 <td align="right" style="vertical-align: middle;">
                     <div style="text-align: right;">
                         <div style="font-size: 8px; text-transform: uppercase; color: #94a3b8; font-weight: bold;">Promedio del Área</div>
-                        <div style="font-size: 20px; font-weight: bold; color: #004C6C;">{{ number_format($avg, 1) }}%</div>
+                        <div style="font-size: 20px; font-weight: bold; color: #004C6C;">{{ $avg === null ? '—' : number_format($avg, 1) . '%' }}</div>
+                        <div style="font-size: 7px; color: #94a3b8;">{{ $report['evaluated'] }} de {{ $report['total_users'] }} evaluados</div>
                     </div>
                 </td>
             </tr>
@@ -416,39 +256,32 @@
         <div class="section-title">Desempeño Individual de Colaboradores</div>
         <table style="width: 100%; border-collapse: collapse;">
             @php
-                $chunks = $users->chunk(2);
+                $chunks = $collaborators->chunk(2);
             @endphp
             @foreach($chunks as $chunk)
                 <tr>
-                    @foreach($chunk as $user)
+                    @foreach($chunk as $c)
                         @php
-                            $eval = $evaluations->firstWhere('user_id', $user->id);
-                            $score = $eval ? $eval->total_score : 0;
-                            $stages = [
-                                ['id' => 'A', 'name' => 'Estrategia y Planificación', 'incid' => 30, 'calif' => $score * 0.8],
-                                ['id' => 'B', 'name' => 'Liderazgo y Gestión', 'incid' => 30, 'calif' => $score * 0.9],
-                                ['id' => 'C', 'name' => 'Gestión Operativa', 'incid' => 30, 'calif' => $score * 0.95],
-                                ['id' => 'D', 'name' => 'Gestión Documental', 'incid' => 10, 'calif' => $score * 1.0]
-                            ];
+                            $score = $c['total_score'];
                         @endphp
                         <td style="width: 50%; vertical-align: top; padding: 4px;">
                             <div class="employee-card">
                                 <!-- CARD HEADER -->
                                 <div class="card-header">
-                                    <div class="emp-name">{{ $user->name }}</div>
-                                    <div class="emp-position">{{ is_object($user->position) ? $user->position->name : ($user->position ?? 'Colaborador') }}</div>
+                                    <div class="emp-name">{{ $c['name'] }}</div>
+                                    <div class="emp-position">{{ $c['position'] ?? 'Colaborador' }}</div>
                                 </div>
                                 
                                 <!-- CARD BODY -->
                                 <div class="card-body">
                                     <!-- STAGES -->
-                                    @foreach($stages as $stage)
+                                    @forelse($c['categories'] as $stage)
                                         @php
-                                            $califVal = $stage['calif'];
-                                            $califColor = $califVal >= 90 ? '#10b981' : ($califVal >= 70 ? '#f59e0b' : '#ef4444');
+                                            $califVal = $stage['score'] ?? 0;
+                                            $califColor = $stage['score'] === null ? '#cbd5e1' : $scoreColor($califVal);
                                         @endphp
                                         <div class="stage-row">
-                                            <div class="stage-title">{{ $stage['id'] }}. {{ $stage['name'] }}</div>
+                                            <div class="stage-title">{{ $stage['name'] }}</div>
                                             <table width="100%" style="margin-top: 1px;">
                                                 <tr>
                                                     <td align="center" style="width: 50%; padding: 0;">
@@ -456,9 +289,9 @@
                                                         <svg width="34" height="34" viewBox="0 0 30 30" style="display: block; margin: 0 auto;">
                                                             <circle cx="15" cy="15" r="12" stroke="#e2e8f0" stroke-width="2.5" fill="none" />
                                                             <circle cx="15" cy="15" r="12" stroke="#3b82f6" stroke-width="2.5" fill="none" 
-                                                                    stroke-dasharray="75.4" stroke-dashoffset="{{ 75.4 - ($stage['incid'] / 100) * 75.4 }}" 
+                                                                    stroke-dasharray="75.4" stroke-dashoffset="{{ 75.4 - ($stage['incidence'] / 100) * 75.4 }}" 
                                                                     transform="rotate(-90 15 15)" />
-                                                            <text x="15" y="18.5" text-anchor="middle" font-family="Helvetica, Arial" font-size="7" font-weight="bold" fill="#004c6c">{{ round($stage['incid']) }}%</text>
+                                                            <text x="15" y="18.5" text-anchor="middle" font-family="Helvetica, Arial" font-size="7" font-weight="bold" fill="#004c6c">{{ round($stage['incidence']) }}%</text>
                                                         </svg>
                                                         <div class="circle-label">INCIDENCIA</div>
                                                     </td>
@@ -469,19 +302,27 @@
                                                             <circle cx="15" cy="15" r="12" stroke="{{ $califColor }}" stroke-width="2.5" fill="none" 
                                                                     stroke-dasharray="75.4" stroke-dashoffset="{{ 75.4 - ($califVal / 100) * 75.4 }}" 
                                                                     transform="rotate(-90 15 15)" />
-                                                            <text x="15" y="18.5" text-anchor="middle" font-family="Helvetica, Arial" font-size="7" font-weight="bold" fill="{{ $califColor }}">{{ round($califVal) }}%</text>
+                                                            <text x="15" y="18.5" text-anchor="middle" font-family="Helvetica, Arial" font-size="7" font-weight="bold" fill="{{ $califColor }}">{{ $stage['score'] === null ? '—' : round($califVal) . '%' }}</text>
                                                         </svg>
                                                         <div class="circle-label">CALIFICACIÓN</div>
                                                     </td>
                                                 </tr>
                                             </table>
                                         </div>
-                                    @endforeach
-                                    
+                                    @empty
+                                        <div style="font-size: 7px; color: #94a3b8; font-style: italic; text-align: center; padding: 6px 0;">Sin KPIs configurados</div>
+                                    @endforelse
+
                                     <!-- CALIFICACION FINAL TEXT PILL -->
-                                    <div style="margin-top: 6px; border-top: 1px solid #cbd5e1; padding-top: 6px; text-align: center; font-weight: bold; font-size: 8px; color: {{ $score >= 90 ? '#10b981' : ($score >= 70 ? '#f59e0b' : '#ef4444') }};">
-                                        {{ number_format($score, 1) }}% CALIFICACIÓN FINAL
-                                    </div>
+                                    @if($score === null)
+                                        <div style="margin-top: 6px; border-top: 1px solid #cbd5e1; padding-top: 6px; text-align: center; font-weight: bold; font-size: 8px; color: #94a3b8;">
+                                            SIN EVALUACIÓN EN EL PERIODO
+                                        </div>
+                                    @else
+                                        <div style="margin-top: 6px; border-top: 1px solid #cbd5e1; padding-top: 6px; text-align: center; font-weight: bold; font-size: 8px; color: {{ $scoreColor($score) }};">
+                                            {{ number_format($score, 1) }}% CALIFICACIÓN FINAL
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
                         </td>
@@ -518,12 +359,18 @@
             <!-- PANEL 1: EVOLUCIÓN MENSUAL / INCIDENCIA VS CALIFICACIÓN (48% ancho) -->
             <td style="width: 48%; vertical-align: top; padding-right: 12px;">
                 <div style="background-color: #ffffff; border-radius: 12px; border: 1px solid #cbd5e1; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 280px;">
-                    <div style="font-size: 10px; font-weight: bold; color: #004c6c; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; letter-spacing: 0.5px;">
-                        {{ $isComercialArea ? 'Incidencia vs Calificación' : 'Evolución Mensual' }}
-                    </div>
-                    <div style="text-align: center; padding: 6px 0;">
-                        <img src="{{ $chartUrl }}" style="width: 100%; max-width: 280px; height: auto; display: block; margin: 0 auto;" alt="{{ $isComercialArea ? 'Incidencia vs Calificación' : 'Evolución Mensual' }}" />
-                    </div>
+                    @foreach([['Incidencia vs Calificación', $breakdownChartUrl], ['Evolución Mensual', $evolutionChartUrl]] as [$chartTitle, $chartUrl])
+                        <div style="font-size: 10px; font-weight: bold; color: #004c6c; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; letter-spacing: 0.5px;">
+                            {{ $chartTitle }}
+                        </div>
+                        <div style="text-align: center; padding: 6px 0 12px;">
+                            @if($chartUrl)
+                                <img src="{{ $chartUrl }}" style="width: 100%; max-width: 280px; height: auto; display: block; margin: 0 auto;" alt="{{ $chartTitle }}" />
+                            @else
+                                <div style="font-size: 7px; color: #94a3b8; font-style: italic;">Sin evaluaciones para graficar</div>
+                            @endif
+                        </div>
+                    @endforeach
                 </div>
             </td>
             
@@ -534,13 +381,11 @@
                          Comparativa Equipo
                     </div>
                     <div>
-                        @foreach($sortedUsers as $u)
+                        @foreach($histories as $h)
                             @php
-                                $lbl = $getCargoLabel($u);
-                                $parts = explode(' - ', $lbl);
-                                $cargoName = $parts[0] ?? '';
-                                $name = $parts[1] ?? '';
-                                $history = $getUserHistory($u);
+                                $name = $h['short_name'];
+                                $cargoName = $h['position'] ?? '';
+                                $history = $h['history'];
                             @endphp
                             <div style="margin-bottom: 10px; border-bottom: 1px solid #f8fafc; padding-bottom: 6px; page-break-inside: avoid;">
                                 <div style="font-size: 8px; font-weight: bold; color: #1e293b; text-transform: uppercase;">
@@ -596,8 +441,8 @@
     <div style="margin-top: 10px; padding: 6px 10px; background-color: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1;">
         <h4 style="margin: 0 0 2px 0; font-size: 7px; color: #004C6C; text-transform: uppercase; font-weight: bold;">Notas del Reporte</h4>
         <p style="margin: 0; font-size: 7px; color: #64748b; line-height: 1.2;">
-            Este reporte consolida el desempeño de todos los miembros del equipo del área de<strong>{{ $area }}</strong>. 
-            Las calificaciones y desgloses de KPIs se basan en la incidencia estratégica parametrizada en el dashboard.
+            Este reporte consolida el desempeño de todos los miembros del equipo del área de <strong>{{ $area }}</strong>. 
+            Incidencia = peso del KPI parametrizado; calificación = puntaje obtenido en la evaluación del periodo. En la gráfica, la calificación es el aporte a la nota final (peso × puntaje / 100).
         </p>
     </div>
 

@@ -4,6 +4,7 @@ namespace App\Http\Modules\Ftra\Service;
 
 use App\Http\Modules\Ftra\Models\FtraRecord;
 use App\Http\Modules\Ftra\Models\FtraRecordPhoto;
+use App\Http\Modules\Users\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\UploadedFile;
@@ -13,9 +14,15 @@ class FtraRecordService
     /**
      * Obtiene y filtra la lista de registros FTRA.
      */
-    public function listRecords(array $filters = [])
+    public function listRecords(User $user, ?int $projectId, array $filters = [])
     {
-        $query = FtraRecord::query()->with(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
+        $query = FtraRecord::query()
+            ->accessibleBy($user)
+            ->with(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
+
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
 
         if (!empty($filters['contractor_id'])) {
             $query->where('contractor_id', $filters['contractor_id']);

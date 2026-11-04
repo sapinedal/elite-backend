@@ -3,6 +3,7 @@
 namespace App\Http\Modules\Ftra\Controller;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ResolveActiveProject;
 use App\Http\Modules\Ftra\Models\FtraRecord;
 use App\Http\Modules\Ftra\Service\FtraRecordService;
 use App\Http\Modules\Ftra\Request\StoreFtraRecordRequest;
@@ -18,13 +19,26 @@ class FtraRecordController extends Controller
         $this->recordService = $recordService;
     }
 
+    protected function activeProjectId(Request $request): ?int
+    {
+        return $request->attributes->get(ResolveActiveProject::ATTRIBUTE);
+    }
+
+    /**
+     * Corta la petición si el registro pertenece a un proyecto al que el usuario no tiene acceso.
+     */
+    protected function authorizeProject(Request $request, FtraRecord $record): void
+    {
+        abort_unless($request->user()->canAccessProject($record->project_id), 403, 'No tienes acceso al proyecto de este registro.');
+    }
+
     /**
      * Devuelve la lista paginada de registros con filtros.
      */
     public function index(Request $request)
     {
         $filters = $request->only(['contractor_id', 'format_id', 'status', 'search', 'per_page']);
-        $records = $this->recordService->listRecords($filters);
+        $records = $this->recordService->listRecords($request->user(), $this->activeProjectId($request), $filters);
         
         return response()->json($records);
     }
@@ -32,8 +46,9 @@ class FtraRecordController extends Controller
     /**
      * Muestra los detalles de un registro específico.
      */
-    public function show(FtraRecord $record)
+    public function show(Request $request, FtraRecord $record)
     {
+        $this->authorizeProject($request, $record);
         $record->load(['contractor', 'format', 'photos', 'registeredBy:id,name', 'responsable']);
         return response()->json($record);
     }
@@ -43,13 +58,17 @@ class FtraRecordController extends Controller
      */
     public function store(StoreFtraRecordRequest $request)
     {
-        $user = auth()->user() ?: \App\Http\Modules\Users\Models\User::first();
-        if (!$user) {
-            return response()->json(['message' => 'Usuario no autenticado'], 401);
+        $projectId = $this->activeProjectId($request);
+        if (!$projectId) {
+            return response()->json(['message' => 'Selecciona un proyecto activo para registrar el FTRA.'], 422);
         }
 
         $photos = $request->file('photos');
-        $record = $this->recordService->createRecord($request->validated(), $user->id, $photos);
+        $record = $this->recordService->createRecord(
+            [...$request->validated(), 'project_id' => $projectId],
+            $request->user()->id,
+            $photos
+        );
 
         return response()->json([
             'message' => 'Registro FTRA guardado exitosamente.',
@@ -62,6 +81,7 @@ class FtraRecordController extends Controller
      */
     public function update(UpdateFtraRecordRequest $request, FtraRecord $record)
     {
+        $this->authorizeProject($request, $record);
         $photos = $request->file('photos');
         $updatedRecord = $this->recordService->updateRecord($record, $request->validated(), $photos);
 
@@ -76,6 +96,7 @@ class FtraRecordController extends Controller
      */
     public function updateStatus(Request $request, FtraRecord $record)
     {
+        $this->authorizeProject($request, $record);
         $request->validate([
             'status' => 'required|string|in:Registrada,Seguimiento,Aprobada,Rechazada'
         ]);
@@ -91,8 +112,9 @@ class FtraRecordController extends Controller
     /**
      * Elimina un registro y sus fotos.
      */
-    public function destroy(FtraRecord $record)
+    public function destroy(Request $request, FtraRecord $record)
     {
+        $this->authorizeProject($request, $record);
         $this->recordService->deleteRecord($record);
 
         return response()->json([

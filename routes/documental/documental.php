@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
  * El acceso al módulo exige `documental.ver`; las acciones (subir, crear, renombrar, eliminar)
  * se validan en DocumentalService combinando los permisos del rol con las restricciones por carpeta.
  */
-Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.ver'])->group(function () {
+Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.ver', 'project'])->group(function () {
 
     // Navegación del bucket S3 y listado de contenidos
     Route::get('/', [DocumentalController::class, 'index']);
@@ -38,6 +38,8 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
     Route::middleware('permission:documental.administrar')->group(function () {
         Route::put('/permissions/folder', [DocumentalController::class, 'syncFolderRules']);
         Route::put('/settings', [DocumentalController::class, 'updateSettings']);
+        // Asignar una carpeta (y su contenido) a un proyecto, o volverla transversal
+        Route::put('/project-folders', [DocumentalController::class, 'setFolderProject']);
         Route::get('/logs', [DocumentalController::class, 'logs']);
     });
 });
