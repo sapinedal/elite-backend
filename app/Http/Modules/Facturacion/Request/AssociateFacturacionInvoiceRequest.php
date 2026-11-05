@@ -7,8 +7,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * El residente asocia la factura a su corte o a su orden y adjunta los soportes
- * (capturas de las aprobaciones, corte o entrada generada en Multifox).
+ * El residente asocia la factura a su corte o a su orden. Solo la orden lleva soportes al asociar
+ * (capturas de las aprobaciones y entrada de Multifox); el soporte del corte lo carga Paula en Multifox.
  */
 class AssociateFacturacionInvoiceRequest extends FormRequest
 {
@@ -26,7 +26,9 @@ class AssociateFacturacionInvoiceRequest extends FormRequest
             'amount' => ['nullable', 'numeric', 'min:1', 'max:9999999999999'],
             'contractor_id' => ['nullable', 'integer', 'exists:ftra_contractors,id'],
             'comment' => ['nullable', 'string', 'max:2000'],
-            'support_tokens' => ['required', 'array', 'min:1', 'max:20'],
+            // Al corte solo se asocia: el soporte de Multifox lo carga Paula al confirmar (queda en la carpeta del corte).
+            // A la orden se siguen adjuntando los soportes de la entrada.
+            'support_tokens' => ['required_if:target_type,' . FacturacionInvoice::TARGET_ORDEN, 'nullable', 'array', 'min:1', 'max:20'],
             'support_tokens.*' => ['required', 'uuid', 'distinct'],
         ];
     }
@@ -46,8 +48,8 @@ class AssociateFacturacionInvoiceRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'support_tokens.required' => 'Adjunta los soportes: capturas de las aprobaciones y el corte o entrada de Multifox.',
-            'support_tokens.min' => 'Adjunta los soportes: capturas de las aprobaciones y el corte o entrada de Multifox.',
+            'support_tokens.required_if' => 'Adjunta los soportes de la orden: capturas de las aprobaciones y la entrada de Multifox.',
+            'support_tokens.min' => 'Adjunta los soportes de la orden: capturas de las aprobaciones y la entrada de Multifox.',
         ];
     }
 }

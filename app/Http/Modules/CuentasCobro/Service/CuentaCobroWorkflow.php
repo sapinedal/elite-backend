@@ -12,8 +12,8 @@ use App\Http\Modules\Users\Models\User;
  *                     \__________________\___ Devuelta     |-- No -> Cuadro de pagos
  *                                                          '-- Sí -> Pendiente Multifox -> (cargada) -> Cuadro de pagos
  *
- * Las aprobaciones se habilitan con permisos Spatie. Paula se identifica igual que en Cortes (cargo de
- * cortes.multifox_positions o permiso cortes.multifox).
+ * Las aprobaciones se habilitan con permisos Spatie. Paula se identifica igual que en Cortes
+ * (permiso cortes.multifox).
  */
 class CuentaCobroWorkflow
 {

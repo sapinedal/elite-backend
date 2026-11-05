@@ -23,9 +23,38 @@ class ContractService
         return [
             'tower:id,name,code',
             'contractType:id,name',
+            'contractor:id,name,nit',
             'policies',
             'documents:id,contract_id,folder,document_type',
         ];
+    }
+
+    /**
+     * Contratos de un proveedor para los selectores de cortes, anticipos y cuentas de cobro.
+     * Limitado a los proyectos del usuario y, si se indica, a un proyecto.
+     */
+    public function contractsByContractor(User $user, int $contractorId, ?int $projectId = null): array
+    {
+        return ContratacionContract::query()
+            ->accessibleBy($user)
+            ->where('contractor_id', $contractorId)
+            ->when($projectId, fn (Builder $q) => $q->where('project_id', $projectId))
+            ->with(['project:id,name', 'tower:id,name'])
+            ->orderBy('contract_code')
+            ->get(['id', 'project_id', 'tower_id', 'contractor_id', 'contract_code', 'contractor_name', 'object', 'status'])
+            ->map(fn (ContratacionContract $c) => [
+                'id' => $c->id,
+                'project_id' => $c->project_id,
+                'tower_id' => $c->tower_id,
+                'contractor_id' => $c->contractor_id,
+                'contract_code' => $c->contract_code,
+                'contractor_name' => $c->contractor_name,
+                'object' => $c->object,
+                'status' => $c->status,
+                'project' => $c->project?->name,
+                'tower' => $c->tower?->name,
+            ])
+            ->all();
     }
 
     protected function baseQuery(User $user, ?int $projectId): Builder
@@ -93,6 +122,7 @@ class ContractService
         $contract->load([
             'tower:id,name,code',
             'contractType:id,name',
+            'contractor:id,name,nit',
             'policies',
             'documents.uploader:id,name',
             'creator:id,name',
@@ -249,6 +279,8 @@ class ContractService
             'contract_type' => $contract->contractType,
             'contract_code' => $contract->contract_code,
             'consecutive' => $contract->consecutive,
+            'contractor_id' => $contract->contractor_id,
+            'contractor' => $contract->contractor,
             'contractor_name' => $contract->contractor_name,
             'object' => $contract->object,
             'signed_at' => $contract->signed_at?->format('Y-m-d'),

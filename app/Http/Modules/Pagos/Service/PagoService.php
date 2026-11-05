@@ -15,7 +15,6 @@ use App\Http\Modules\Pagos\Models\PagoCuenta;
 use App\Http\Modules\Pagos\Models\PagoMovimiento;
 use App\Http\Modules\Users\Models\User;
 use App\Services\DirectUploadService;
-use App\Services\PositionMatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -75,7 +74,7 @@ class PagoService
 
     public function canPrioritize(User $user): bool
     {
-        return $user->can('pagos.priorizar') || PositionMatcher::matches($user, config('pagos.priorizar_positions', []));
+        return $user->can('pagos.priorizar');
     }
 
     public function canPay(User $user): bool

@@ -4,6 +4,7 @@ namespace App\Http\Modules\Contratacion\Models;
 
 use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Configuracion\Models\Tower;
+use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Juridica\Models\ContractType;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,6 +35,7 @@ class ContratacionContract extends Model
         'project_id',
         'tower_id',
         'contract_type_id',
+        'contractor_id',
         'contract_code',
         'consecutive',
         'contractor_name',
@@ -65,6 +67,14 @@ class ContratacionContract extends Model
     public function contractType()
     {
         return $this->belongsTo(ContractType::class, 'contract_type_id');
+    }
+
+    /**
+     * Proveedor del contrato. contractor_name sigue siendo el nombre de la carpeta en S3.
+     */
+    public function contractor()
+    {
+        return $this->belongsTo(FtraContractor::class, 'contractor_id');
     }
 
     public function creator()

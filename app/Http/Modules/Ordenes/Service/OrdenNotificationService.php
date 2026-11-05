@@ -25,7 +25,7 @@ use Throwable;
  * | Factura del proveedor cargada  | Almacén (cargar la entrada)                             |
  * | Entrada cargada                | Residente (orden completada)                            |
  *
- * "Almacén" = usuarios con el cargo de ordenes.almacen_positions. En TODOS los correos va en copia ordenes.monitor.
+ * "Almacén" = usuarios con el permiso ordenes.gestionar_almacen asignado directamente. En TODOS los correos va en copia ordenes.monitor.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
  */
 class OrdenNotificationService
@@ -101,7 +101,8 @@ class OrdenNotificationService
     }
 
     /**
-     * Responsables de un documento: Almacén por cargo (o correos de respaldo) y Facturación por config.
+     * Responsables de un documento: Almacén por permiso asignado directamente (o correos de respaldo)
+     * y Facturación por config.
      */
     public function stepRecipients(Orden $orden, string $step): Collection
     {
@@ -109,14 +110,10 @@ class OrdenNotificationService
             return collect(config('ordenes.facturacion', []));
         }
 
-        $positions = collect(config('ordenes.almacen_positions', []))->map(fn ($name) => OrdenWorkflow::comparable($name));
-
         $emails = User::query()
+            ->withDirectPermission(OrdenWorkflow::PERMISSION_ALMACEN)
             ->whereNotNull('email')
-            ->whereHas('position')
-            ->with('position:id,name')
-            ->get(['id', 'email', 'position_id'])
-            ->filter(fn (User $user) => $positions->contains(OrdenWorkflow::comparable($user->position->name)))
+            ->get()
             ->filter(fn (User $user) => $user->canAccessProject($orden->project_id))
             ->pluck('email');
 

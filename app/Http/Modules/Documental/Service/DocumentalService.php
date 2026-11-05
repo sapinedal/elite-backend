@@ -605,7 +605,7 @@ class DocumentalService
      * Aplica un cambio hecho desde la app al índice ya construido, para que la búsqueda lo refleje
      * sin tener que volver a listar todo el bucket. Si el índice no existe no hace nada.
      */
-    protected function updateSearchIndex(callable $transform): void
+    public function updateSearchIndex(callable $transform): void
     {
         $index = $this->cache()->get(self::SEARCH_INDEX_CACHE_KEY);
         if (!is_array($index)) {
@@ -1107,7 +1107,7 @@ class DocumentalService
             ->orWhere('folder_path', 'like', $escaped . '/%');
     }
 
-    protected function log(User $user, string $action, string $path, array $details, ?string $ip): void
+    public function log(User $user, string $action, string $path, array $details, ?string $ip): void
     {
         DocumentActivityLog::create([
             'user_id' => $user->id,
@@ -1129,7 +1129,7 @@ class DocumentalService
         return $clean;
     }
 
-    protected function uniqueFilename(string $directory, string $filename): string
+    public function uniqueFilename(string $directory, string $filename): string
     {
         $disk = $this->getDisk();
         $base = pathinfo($filename, PATHINFO_FILENAME);
@@ -1160,12 +1160,12 @@ class DocumentalService
         return $breadcrumbs;
     }
 
-    protected function joinPath(string $directory, string $name): string
+    public function joinPath(string $directory, string $name): string
     {
         return $directory === '' ? $name : $directory . '/' . $name;
     }
 
-    protected function parentOf(string $path): string
+    public function parentOf(string $path): string
     {
         $parent = dirname($path);
 
@@ -1175,7 +1175,7 @@ class DocumentalService
     /**
      * Limpia un nombre de archivo para evitar caracteres problemáticos en URLs / S3.
      */
-    protected function sanitizeFilename(string $filename): string
+    public function sanitizeFilename(string $filename): string
     {
         $filename = trim($filename);
         $filename = str_replace(['/', '\\', '..', '#', '?', '%', '&'], '-', $filename);

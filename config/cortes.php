@@ -40,11 +40,8 @@ return [
     // Facturación: recibe el corte cuando completa las tres aprobaciones
     'facturacion' => $emails('CORTES_FACTURACION_EMAILS', 'facturacion@inverconstruccion.com'),
 
-    // Carga a Multifox (ERP externo): al cargar una factura se notifica a los usuarios con estos CARGOS
-    // (nombre exacto del cargo en Configuración → Áreas y Cargos), para no amarrar el aviso a una persona.
-    // Los cargos se separan con | porque sus nombres pueden tener comas. Si nadie tiene el cargo se usan
-    // los correos de respaldo de CORTES_MULTIFOX_EMAILS.
-    'multifox_positions' => $emails('CORTES_MULTIFOX_CARGOS', 'Profesional de Planeación, Control y Contratos', '|'),
+    // Carga a Multifox (ERP externo): al cargar una factura se notifica a los usuarios con el permiso
+    // cortes.multifox asignado directamente (no por rol). Si nadie lo tiene se usan los correos de respaldo.
     'multifox_emails' => $emails('CORTES_MULTIFOX_EMAILS'),
 
     // Solo se envía el aviso de Multifox a correos de estos dominios (lleva la factura adjunta)

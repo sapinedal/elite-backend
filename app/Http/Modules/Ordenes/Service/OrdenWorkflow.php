@@ -3,7 +3,6 @@
 namespace App\Http\Modules\Ordenes\Service;
 
 use App\Http\Modules\Users\Models\User;
-use Illuminate\Support\Str;
 
 /**
  * Definición del flujo de órdenes, en un solo lugar.
@@ -11,8 +10,8 @@ use Illuminate\Support\Str;
  *   Registrada -> Director de Obra -> Gerencia -> Orden ERP -> Factura proveedor -> Entrada almacén -> Completada
  *                       \__________________\___ Devuelta (al residente)
  *
- * Las aprobaciones (STAGES) se habilitan con permisos Spatie. Los documentos (STEPS) con un permiso o, en los
- * pasos de Almacén, también con el cargo configurado en ordenes.almacen_positions.
+ * Las aprobaciones (STAGES) y los documentos (STEPS) se habilitan con permisos Spatie
+ * (Almacén: ordenes.gestionar_almacen).
  */
 class OrdenWorkflow
 {
@@ -58,7 +57,6 @@ class OrdenWorkflow
             'label' => 'Orden de compra ERP',
             'responsible' => 'Almacén',
             'permission' => self::PERMISSION_ALMACEN,
-            'by_position' => true,
             'status' => self::STATUS_PENDIENTE_ERP,
             'folder' => '01 Orden ERP',
             'number_label' => 'N.º de orden de compra',
@@ -67,7 +65,6 @@ class OrdenWorkflow
             'label' => 'Factura del proveedor',
             'responsible' => 'Facturación',
             'permission' => 'ordenes.facturar',
-            'by_position' => false,
             'status' => self::STATUS_PENDIENTE_FACTURA,
             'folder' => '02 Factura proveedor',
             'number_label' => 'N.º de factura',
@@ -76,7 +73,6 @@ class OrdenWorkflow
             'label' => 'Entrada de almacén',
             'responsible' => 'Almacén',
             'permission' => self::PERMISSION_ALMACEN,
-            'by_position' => true,
             'status' => self::STATUS_PENDIENTE_ENTRADA,
             'folder' => '03 Entrada almacen',
             'number_label' => 'N.º de entrada',
@@ -165,38 +161,16 @@ class OrdenWorkflow
     }
 
     /**
-     * Documentos que el usuario puede cargar: por permiso o, en los pasos de Almacén, por su cargo.
+     * Documentos que el usuario puede cargar según sus permisos.
      *
      * @return list<string>
      */
     public static function stepsFor(User $user): array
     {
-        $isAlmacen = self::hasAlmacenPosition($user);
-
         return array_values(array_filter(
             array_keys(self::STEPS),
-            fn (string $step) => $user->can(self::STEPS[$step]['permission']) || (self::STEPS[$step]['by_position'] && $isAlmacen)
+            fn (string $step) => $user->can(self::STEPS[$step]['permission'])
         ));
-    }
-
-    public static function hasAlmacenPosition(User $user): bool
-    {
-        $user->loadMissing('position:id,name');
-        if (!$user->position) {
-            return false;
-        }
-
-        $positions = collect(config('ordenes.almacen_positions', []))->map(fn ($name) => self::comparable($name));
-
-        return $positions->contains(self::comparable($user->position->name));
-    }
-
-    /**
-     * Texto comparable sin mayúsculas ni tildes (para nombres de cargos).
-     */
-    public static function comparable(string $value): string
-    {
-        return trim(Str::lower(Str::ascii($value)));
     }
 
     /**

@@ -31,3 +31,12 @@ Route::prefix('contratacion')->middleware(['auth:sanctum', 'project'])->group(fu
     Route::get('/documents/{document}/download', [ContractDocumentController::class, 'download'])->middleware('permission:contratacion.ver');
     Route::delete('/documents/{document}', [ContractDocumentController::class, 'destroy'])->middleware('permission:contratacion.editar');
 });
+
+/**
+ * Contratos de un proveedor, para los selectores de los formularios que piden proveedor y contrato.
+ * Sin el middleware `project`: el proyecto es el del formulario (?project_id), no el activo.
+ */
+Route::prefix('contratacion')->middleware('auth:sanctum')->group(function () {
+    Route::get('/contractors/{contractor}/contracts', [ContractController::class, 'byContractor'])
+        ->middleware('permission:contratacion.ver|cortes.crear|anticipos.crear|cuentas_cobro.crear');
+});

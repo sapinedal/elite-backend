@@ -8,10 +8,6 @@ $list = fn (string $key, string $default = '', string $separator = ',') => array
 
 return [
 
-    // Cargos que priorizan y programan los pagos (Configuración → Áreas y Cargos), separados con |.
-    // Quien tenga el permiso pagos.priorizar también puede hacerlo.
-    'priorizar_positions' => $list('PAGOS_PRIORIZAR_CARGOS', 'Profesional de Planeación, Control y Contratos', '|'),
-
     // Frente para las cuentas sin torre (costos indirectos), como la primera sección del cuadro de pagos
     'frente_indirectos' => env('PAGOS_FRENTE_INDIRECTOS', 'INDIRECTOS'),
 

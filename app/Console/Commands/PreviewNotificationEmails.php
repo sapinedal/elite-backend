@@ -93,7 +93,7 @@ class PreviewNotificationEmails extends Command
         if (!$only || $only === $n) {
             $mail = new CorteInvoiceMail($this->fakeInvoice(), $prefix($n), attachFile: false);
             Mail::to($email)->send($mail);
-            $rows[] = [$n, $mail->envelope()->subject, 'Cargo(s) de Multifox (cortes.multifox_positions)'];
+            $rows[] = [$n, $mail->envelope()->subject, 'Permiso cortes.multifox (asignado directamente)'];
         }
 
         $this->table(['#', 'Asunto', 'En la realidad se envía a'], $rows);

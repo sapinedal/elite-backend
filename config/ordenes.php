@@ -28,10 +28,8 @@ return [
         'gerencia' => $emails('ORDENES_GERENCIA_EMAILS', 'gerentedeproyectos@inverconstruccion.com'),
     ],
 
-    // Almacén: carga la orden de compra del ERP y la entrada. Se notifica (y se habilita) a los usuarios con
-    // estos CARGOS (Configuración → Áreas y Cargos), separados con |. Si nadie tiene el cargo se usan los
-    // correos de respaldo de ORDENES_ALMACEN_EMAILS.
-    'almacen_positions' => $emails('ORDENES_ALMACEN_CARGOS', 'Almacenista de Obra', '|'),
+    // Almacén: carga la orden de compra del ERP y la entrada (permiso ordenes.gestionar_almacen). Se notifica
+    // a los usuarios con ese permiso asignado directamente (no por rol); si nadie lo tiene, a estos correos.
     'almacen_emails' => $emails('ORDENES_ALMACEN_EMAILS'),
 
     // Facturación: carga la factura del proveedor

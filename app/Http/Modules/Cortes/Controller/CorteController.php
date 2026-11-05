@@ -5,6 +5,7 @@ namespace App\Http\Modules\Cortes\Controller;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
+use App\Http\Modules\Cortes\Request\ConfirmMultifoxRequest;
 use App\Http\Modules\Cortes\Request\RequestUploadUrlRequest;
 use App\Http\Modules\Cortes\Request\ResubmitCorteRequest;
 use App\Http\Modules\Cortes\Request\ReviewCorteRequest;
@@ -12,6 +13,7 @@ use App\Http\Modules\Cortes\Request\StoreCorteRequest;
 use App\Http\Modules\Cortes\Service\CorteInvoiceService;
 use App\Http\Modules\Cortes\Service\CorteService;
 use App\Http\Modules\Cortes\Service\CorteStorageService;
+use App\Http\Modules\Cortes\Service\CorteWorkflow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -75,6 +77,12 @@ class CorteController extends Controller
      */
     public function uploadUrl(RequestUploadUrlRequest $request): JsonResponse
     {
+        // Suben archivos quien radica cortes y quien carga el soporte de Multifox (Paula, por cargo o permiso)
+        $user = $request->user();
+        if (!$user->can('cortes.crear') && !CorteWorkflow::canConfirmMultifox($user)) {
+            return $this->forbidden();
+        }
+
         try {
             return response()->json([
                 'status' => 'success',
@@ -167,10 +175,10 @@ class CorteController extends Controller
     /**
      * Confirmación de que la factura quedó cargada en Multifox: pasa a cuentas por pagar.
      */
-    public function confirmMultifox(Request $request, CorteInvoice $invoice): JsonResponse
+    public function confirmMultifox(ConfirmMultifoxRequest $request, CorteInvoice $invoice): JsonResponse
     {
         try {
-            $invoice = $this->invoiceService->confirmMultifox($invoice, $request->user());
+            $invoice = $this->invoiceService->confirmMultifox($invoice, $request->validated('upload_token'), $request->user());
 
             return response()->json([
                 'status' => 'success',
@@ -190,12 +198,20 @@ class CorteController extends Controller
             return $this->forbidden();
         }
 
+        // ?multifox=1 descarga el soporte de Multifox que cargó Paula en vez de la factura
+        $multifox = $request->boolean('multifox');
+        if ($multifox && !$invoice->multifox_file_path) {
+            return response()->json(['status' => 'error', 'message' => 'Esta factura no tiene soporte de Multifox.'], 404);
+        }
+        $path = $multifox ? $invoice->multifox_file_path : $invoice->file_path;
+        $name = $multifox ? $invoice->multifox_file_name : $invoice->file_name;
+
         try {
             return response()->json([
                 'status' => 'success',
                 'data' => [
-                    'download_url' => $this->storage->fileDownloadUrl($invoice->file_path, $invoice->file_name),
-                    'name' => $invoice->file_name,
+                    'download_url' => $this->storage->fileDownloadUrl($path, $name),
+                    'name' => $name,
                 ],
             ]);
         } catch (InvalidArgumentException $e) {

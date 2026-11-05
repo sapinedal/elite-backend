@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Anticipos\Request;
 
+use App\Rules\ContractBelongsToContractor;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +23,7 @@ class StoreAnticipoRequest extends FormRequest
     {
         return [
             // El acceso al contrato (proyecto del usuario) lo valida AnticipoService
-            'contract_id' => ['required', 'integer', Rule::exists('contratacion_contracts', 'id')->whereNull('deleted_at')],
+            'contract_id' => ['required', 'integer', Rule::exists('contratacion_contracts', 'id')->whereNull('deleted_at'), new ContractBelongsToContractor()],
             'contractor_id' => ['required', 'integer', Rule::exists('ftra_contractors', 'id')->where('is_active', true)],
             'document_number' => ['required', 'string', 'max:100'],
             'amount' => ['required', 'numeric', 'min:1', 'max:9999999999999'],

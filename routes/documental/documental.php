@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Modules\Documental\Controller\DocumentalController;
+use App\Http\Modules\Documental\Controller\DocumentEditorController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -31,6 +32,11 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
     // Permisos efectivos del usuario (y restricciones por carpeta si administra el módulo)
     Route::get('/permissions', [DocumentalController::class, 'permissions']);
 
+    // Editor en el navegador (ONLYOFFICE): disponibilidad, configuración firmada y archivos nuevos en blanco
+    Route::get('/editor/info', [DocumentEditorController::class, 'info']);
+    Route::get('/editor/config', [DocumentEditorController::class, 'config']);
+    Route::post('/editor/new', [DocumentEditorController::class, 'create']);
+
     // Configuración del módulo (tamaño máximo y extensiones); la consulta la usa el formulario de subida
     Route::get('/settings', [DocumentalController::class, 'settings']);
 
@@ -43,3 +49,8 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
         Route::get('/logs', [DocumentalController::class, 'logs']);
     });
 });
+
+// Callback de guardado de ONLYOFFICE: no lleva sesión; se protege con URL firmada y el JWT del servidor de documentos
+Route::post('/documental/editor/callback', [DocumentEditorController::class, 'callback'])
+    ->middleware(['signed:relative', 'throttle:120,1'])
+    ->name('documental.editor.callback');

@@ -30,6 +30,10 @@ class CorteInvoice extends Model
         'amount',
         'multifox_confirmed_at',
         'multifox_confirmed_by',
+        'multifox_file_name',
+        'multifox_file_path',
+        'multifox_file_size',
+        'multifox_file_mime',
         'observation',
         'file_name',
         'file_path',
@@ -40,6 +44,7 @@ class CorteInvoice extends Model
 
     protected $casts = [
         'file_size' => 'integer',
+        'multifox_file_size' => 'integer',
         'amount' => 'decimal:2',
         'multifox_confirmed_at' => 'datetime',
     ];

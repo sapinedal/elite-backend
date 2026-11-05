@@ -461,6 +461,8 @@ class CorteService
                 'multifox_confirmed_at' => $invoice->multifox_confirmed_at?->toIso8601String(),
                 'multifox_confirmed_by' => $invoice->multifoxConfirmer?->name,
                 'can_confirm_multifox' => !$invoice->multifox_confirmed_at && $invoice->amount !== null && CorteWorkflow::canConfirmMultifox($user),
+                'multifox_file_name' => $invoice->multifox_file_name,
+                'multifox_file_size' => $invoice->multifox_file_size,
                 'file_name' => $invoice->file_name,
                 'file_size' => $invoice->file_size,
                 'uploaded_by' => $invoice->uploader?->name,

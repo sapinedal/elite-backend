@@ -7,6 +7,7 @@ use App\Http\Modules\Cortes\Models\CorteHistory;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
+use App\Services\DirectUploadService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -22,6 +23,8 @@ class CorteInvoiceService
     public function __construct(
         protected CorteNotificationService $notifications,
         protected PagoService $pagos,
+        protected CorteStorageService $storage,
+        protected DirectUploadService $uploads,
     ) {
     }
 
@@ -84,36 +87,56 @@ class CorteInvoiceService
     }
 
     /**
-     * Paula confirma que cargó la factura en Multifox: queda en el historial y pasa a cuentas por pagar
+     * Paula confirma que cargó la factura en Multifox y adjunta el soporte, que queda en la carpeta del corte
+     * (<contrato>/05 CORTES/CORTE N/). Queda en el historial y pasa a cuentas por pagar
      * (la nota crédito descuenta de la factura que afecta y la de reemplazo sustituye a la anterior).
      */
-    public function confirmMultifox(CorteInvoice $invoice, User $user): CorteInvoice
+    public function confirmMultifox(CorteInvoice $invoice, string $uploadToken, User $user): CorteInvoice
     {
         if (!CorteWorkflow::canConfirmMultifox($user) || !$user->canAccessProject($invoice->corte->project_id)) {
             throw new InvalidArgumentException('Solo quien registra las facturas en Multifox puede confirmarlas.');
         }
+        if ($invoice->multifox_confirmed_at) {
+            throw new InvalidArgumentException('Esta factura ya fue confirmada en Multifox.');
+        }
+        if ($invoice->amount === null) {
+            throw new InvalidArgumentException('La factura no tiene valor registrado; no se puede pasar a cuentas por pagar.');
+        }
 
-        return DB::transaction(function () use ($invoice, $user) {
-            $invoice = CorteInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
-            if ($invoice->multifox_confirmed_at) {
-                throw new InvalidArgumentException('Esta factura ya fue confirmada en Multifox.');
-            }
-            if ($invoice->amount === null) {
-                throw new InvalidArgumentException('La factura no tiene valor registrado; no se puede pasar a cuentas por pagar.');
-            }
+        // El soporte se mueve a la carpeta del corte antes de la transacción (igual que los demás cargues)
+        $file = $this->storage->claimCorteFile($uploadToken, $user, $this->storage->folderOf($invoice->corte));
 
-            $invoice->update(['multifox_confirmed_at' => now(), 'multifox_confirmed_by' => $user->id]);
-            $this->pagos->registerFromCorteInvoice($invoice, $user);
+        try {
+            return DB::transaction(function () use ($invoice, $file, $user) {
+                $invoice = CorteInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+                if ($invoice->multifox_confirmed_at) {
+                    throw new InvalidArgumentException('Esta factura ya fue confirmada en Multifox.');
+                }
 
-            $invoice->corte->history()->create([
-                'action' => CorteHistory::ACTION_MULTIFOX,
-                'comment' => $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number} cargada en Multifox. Pasa a cuentas por pagar.",
-                'file_name' => $invoice->file_name,
-                'file_path' => $invoice->file_path,
-                'user_id' => $user->id,
-            ]);
+                $invoice->update([
+                    'multifox_confirmed_at' => now(),
+                    'multifox_confirmed_by' => $user->id,
+                    'multifox_file_name' => $file['file_name'],
+                    'multifox_file_path' => $file['file_path'],
+                    'multifox_file_size' => $file['file_size'],
+                    'multifox_file_mime' => $file['file_mime'],
+                ]);
+                $this->pagos->registerFromCorteInvoice($invoice, $user);
 
-            return $invoice;
-        });
+                $invoice->corte->history()->create([
+                    'action' => CorteHistory::ACTION_MULTIFOX,
+                    'comment' => $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number} cargada en Multifox. Pasa a cuentas por pagar.",
+                    'file_name' => $file['file_name'],
+                    'file_path' => $file['file_path'],
+                    'user_id' => $user->id,
+                ]);
+
+                return $invoice;
+            });
+        } catch (\Throwable $e) {
+            // Sin confirmación no debe quedar el soporte suelto en la carpeta del corte
+            $this->uploads->delete($file['file_path']);
+            throw $e;
+        }
     }
 }

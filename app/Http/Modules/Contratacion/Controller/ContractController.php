@@ -13,6 +13,7 @@ use App\Http\Modules\Contratacion\Request\UpdateContractRequest;
 use App\Http\Modules\Contratacion\Service\ContractDocumentCatalog;
 use App\Http\Modules\Contratacion\Service\ContractService;
 use App\Http\Modules\Documental\Service\DocumentalSettingsService;
+use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Juridica\Models\ContractType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,6 +56,7 @@ class ContractController extends Controller
             'data' => [
                 'towers' => $projectId ? $this->towerService->getTowersByProject($projectId) : [],
                 'contract_types' => ContractType::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+                'contractors' => FtraContractor::where('is_active', true)->orderBy('name')->get(['id', 'name', 'nit']),
                 'statuses' => ContratacionContract::STATUSES,
                 'policy_types' => ContratacionPolicy::POLICY_TYPES,
                 'policy_alert_days' => config('contratacion.policy_alert_days'),
@@ -99,6 +101,24 @@ class ContractController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $this->contractService->listContracts($request->user(), $this->activeProjectId($request), $filters),
+        ]);
+    }
+
+    /**
+     * Contratos del proveedor elegido en los formularios de cortes, anticipos y cuentas de cobro.
+     * El proyecto llega como ?project_id (el del formulario), no como el proyecto activo.
+     */
+    public function byContractor(Request $request, FtraContractor $contractor): JsonResponse
+    {
+        $validated = $request->validate(['project_id' => 'nullable|integer|exists:projects,id']);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->contractService->contractsByContractor(
+                $request->user(),
+                $contractor->id,
+                isset($validated['project_id']) ? (int) $validated['project_id'] : null
+            ),
         ]);
     }
 

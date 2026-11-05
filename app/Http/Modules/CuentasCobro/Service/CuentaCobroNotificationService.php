@@ -23,7 +23,7 @@ use Throwable;
  * | Devuelta                        | Residente (+ Director si la devolvió Gerencia)              |
  * | En cuadro de pagos              | Residente + aprobadores                                     |
  *
- * Paula = el cargo de Multifox de Cortes (cortes.multifox_positions). En TODOS va en copia cuentas_cobro.monitor.
+ * Paula = quien tiene el permiso cortes.multifox asignado directamente. En TODOS va en copia cuentas_cobro.monitor.
  */
 class CuentaCobroNotificationService
 {

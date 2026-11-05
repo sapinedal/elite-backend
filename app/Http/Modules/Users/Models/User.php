@@ -127,4 +127,13 @@ class User extends Authenticatable
     {
         return $this->canSeeAllProjects() || $this->projects()->whereKey($projectId)->exists();
     }
+
+    /**
+     * Usuarios con el permiso asignado directamente (no por rol). Para los avisos de un responsable concreto
+     * (Multifox, Almacén): admin y gerencia tienen todos los permisos por rol y no deben recibirlos.
+     */
+    public function scopeWithDirectPermission(\Illuminate\Database\Eloquent\Builder $query, string $permission): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereHas('permissions', fn ($q) => $q->where('name', $permission));
+    }
 }

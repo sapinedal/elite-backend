@@ -1,0 +1,20 @@
+# ONLYOFFICE Docs (Community) para el editor en el navegador del módulo Documental.
+# Solo escucha en 127.0.0.1: el acceso público pasa por nginx (docs.inverconstruccion.com) con HTTPS.
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:9.4
+    container_name: onlyoffice
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8085:80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: "${ONLYOFFICE_JWT_SECRET:?Define ONLYOFFICE_JWT_SECRET en .env}"
+      JWT_HEADER: "Authorization"
+      JWT_IN_BODY: "true"
+      WOPI_ENABLED: "false"
+    volumes:
+      - ./data/logs:/var/log/onlyoffice
+      - ./data/files:/var/www/onlyoffice/Data
+      - ./data/cache:/var/lib/onlyoffice
+      - ./data/db:/var/lib/postgresql

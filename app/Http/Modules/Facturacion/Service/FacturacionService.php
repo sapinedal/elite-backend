@@ -313,7 +313,7 @@ class FacturacionService
         }
 
         // Los soportes se mueven a la carpeta del mes antes de la transacción (igual que los demás cargues)
-        $supports = collect($data['support_tokens'])
+        $supports = collect($data['support_tokens'] ?? [])
             ->map(fn (string $token) => $this->storage->claimSupportFile($token, $user, $invoice));
 
         $copyPath = $isCorte

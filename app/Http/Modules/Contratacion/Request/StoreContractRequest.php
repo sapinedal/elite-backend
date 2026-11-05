@@ -42,6 +42,7 @@ class StoreContractRequest extends FormRequest
                     ->whereNull('deleted_at')
                     ->ignore($this->ignoredContractId()),
             ],
+            'contractor_id' => ['required', 'integer', Rule::exists('ftra_contractors', 'id')],
             'consecutive' => 'required|string|max:50',
             'contractor_name' => 'required|string|max:255',
             'object' => 'required|string|max:5000',
@@ -76,6 +77,7 @@ class StoreContractRequest extends FormRequest
             'tower_id' => 'frente de obra',
             'contract_type_id' => 'tipo de contrato',
             'contract_code' => 'ID del contrato',
+            'contractor_id' => 'proveedor',
             'consecutive' => 'consecutivo',
             'contractor_name' => 'nombre del contratista',
             'object' => 'objeto del contrato',

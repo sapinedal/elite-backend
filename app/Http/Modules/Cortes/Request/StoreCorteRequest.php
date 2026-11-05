@@ -3,6 +3,7 @@
 namespace App\Http\Modules\Cortes\Request;
 
 use App\Http\Modules\Cortes\Models\Corte;
+use App\Rules\ContractBelongsToContractor;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -56,6 +57,7 @@ class StoreCorteRequest extends FormRequest
             'contract_id' => [
                 'required', 'integer',
                 Rule::exists('contratacion_contracts', 'id')->where('project_id', $projectId)->whereNull('deleted_at'),
+                new ContractBelongsToContractor(),
             ],
             'upload_token' => [$this->fileRequired ? 'required' : 'nullable', 'uuid'],
             'comment' => ['nullable', 'string', 'max:2000'],

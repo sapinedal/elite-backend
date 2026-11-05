@@ -13,6 +13,7 @@ use App\Http\Modules\Users\Models\User;
 use App\Services\DirectUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Spatie\Permission\Models\Permission;
 
 uses(RefreshDatabase::class);
 
@@ -114,7 +115,7 @@ test('contabilidad carga la factura en la carpeta del mes y queda pendiente de o
     ])->assertForbidden();
 });
 
-test('el residente asocia la factura a su corte aprobado con soportes', function () {
+test('el residente asocia la factura a su corte aprobado sin adjuntar soportes', function () {
     $corte = makeCorte($this->residente);
     $invoice = uploadInvoice();
 
@@ -128,7 +129,7 @@ test('el residente asocia la factura a su corte aprobado con soportes', function
         ->assertOk()->assertJsonPath('cortes', null)->assertJsonPath('data.cortes.0.id', $corte->id);
 
     $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id, 'comment' => 'Corte 6634 Multifox', ...supports()])
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id, 'comment' => 'Corte 6634 Multifox'])
         ->assertOk()
         ->assertJsonPath('data.status', FacturacionInvoice::STATUS_PROCESADA)
         ->assertJsonPath('data.target.label', "Corte {$corte->code}");
@@ -145,7 +146,8 @@ test('el residente asocia la factura a su corte aprobado con soportes', function
         ->and($corteInvoice->file_path)->toBe($corte->fresh()->storage_path . '/' . basename($invoice->file_path))
         ->and($invoice->corte_invoice_id)->toBe($corteInvoice->id)
         ->and($invoice->processed_by)->toBe($this->residente->id)
-        ->and($invoice->supports()->count())->toBe(2)
+        // El soporte del corte lo carga Paula al confirmar en Multifox, no el residente al asociar
+        ->and($invoice->supports()->count())->toBe(0)
         ->and($corte->history()->where('action', 'factura')->exists())->toBeTrue();
 
     // No se puede volver a asociar ni eliminar
@@ -168,12 +170,63 @@ test('solo el responsable del corte puede asociar y solo con las tres aprobacion
         ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $enRevision->id, ...supports()])
         ->assertStatus(422);
 
-    // Sin soportes no se puede asociar
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => makeCorte($this->residente)->id])
-        ->assertStatus(422)->assertJsonValidationErrors('support_tokens');
-
     expect($invoice->fresh()->status)->toBe(FacturacionInvoice::STATUS_PENDIENTE);
+});
+
+test('Paula confirma Multifox con el soporte y queda en la carpeta del corte', function () {
+    Permission::firstOrCreate(['name' => 'cortes.multifox', 'guard_name' => 'web']);
+    $paula = makeUser();
+    $paula->givePermissionTo(['cortes.ver', 'cortes.multifox', 'proyectos.ver_todos']);
+
+    $this->mock(DirectUploadService::class, function ($mock) {
+        $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
+        $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
+        $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
+            'file_name' => 'Corte Multifox 6634.pdf',
+            'file_path' => "{$directory}/Corte Multifox 6634.pdf",
+            'file_size' => 2000,
+            'file_mime' => 'application/pdf',
+        ]);
+        $mock->shouldReceive('requestUpload')->andReturn(['upload_token' => 'tok', 'upload_url' => 'https://s3/put', 'headers' => []]);
+    });
+
+    $corte = makeCorte($this->residente);
+    $invoice = uploadInvoice();
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
+        ->assertOk();
+    $corteInvoice = CorteInvoice::first();
+
+    // Sin soporte no se confirma
+    $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox")
+        ->assertStatus(422)->assertJsonValidationErrors('upload_token');
+
+    // El residente no puede confirmar Multifox
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])
+        ->assertStatus(422);
+
+    $this->actingAs($paula)
+        ->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])
+        ->assertOk();
+
+    $corteInvoice->refresh();
+    $folder = $corte->fresh()->storage_path;
+
+    expect($corteInvoice->multifox_confirmed_at)->not->toBeNull()
+        ->and($corteInvoice->multifox_file_path)->toBe("{$folder}/Corte Multifox 6634.pdf")
+        ->and($corteInvoice->multifox_file_name)->toBe('Corte Multifox 6634.pdf')
+        ->and($corte->history()->where('action', 'multifox')->value('file_path'))->toBe("{$folder}/Corte Multifox 6634.pdf");
+
+    // Paula puede pedir la URL de carga aunque no radique cortes
+    $this->actingAs($paula)->postJson('/api/v1/cortes/upload-url', ['file_name' => 'x.pdf', 'file_size' => 10])
+        ->assertOk()->assertJsonPath('data.upload_token', 'tok');
+
+    // Quien solo ve cortes (sin radicar ni Multifox) no puede subir archivos
+    $soloVer = makeUser();
+    $soloVer->givePermissionTo(['cortes.ver']);
+    $this->actingAs($soloVer)->postJson('/api/v1/cortes/upload-url', ['file_name' => 'x.pdf', 'file_size' => 10])
+        ->assertForbidden();
 });
 
 test('si contabilidad no registró el valor, el residente lo indica al asociar', function () {
@@ -205,6 +258,11 @@ test('el residente asocia la factura a su orden pendiente de factura y la orden 
         'approved_at' => now()->subDays(3),
     ]);
     $invoice = uploadInvoice(['invoice_number' => '485126']);
+
+    // A la orden sí se adjuntan los soportes de la entrada
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
+        ->assertStatus(422)->assertJsonValidationErrors('support_tokens');
 
     $this->actingAs($this->residente)
         ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id, ...supports()])

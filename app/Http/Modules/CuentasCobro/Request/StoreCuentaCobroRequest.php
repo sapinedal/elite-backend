@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\CuentasCobro\Request;
 
+use App\Rules\ContractBelongsToContractor;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,7 +28,7 @@ class StoreCuentaCobroRequest extends FormRequest
             'tipo_id' => ['required', 'integer', 'exists:cuentas_cobro_tipos,id'],
             'project_id' => ['required', 'integer', 'exists:projects,id'],
             'tower_id' => ['nullable', 'integer', Rule::exists('towers', 'id')->where('project_id', $projectId)],
-            'contract_id' => ['nullable', 'integer', Rule::exists('contratacion_contracts', 'id')->where('project_id', $projectId)->whereNull('deleted_at')],
+            'contract_id' => ['nullable', 'integer', Rule::exists('contratacion_contracts', 'id')->where('project_id', $projectId)->whereNull('deleted_at'), new ContractBelongsToContractor()],
             'contractor_id' => ['required', 'integer', Rule::exists('ftra_contractors', 'id')->where('is_active', true)],
             'document_number' => ['required', 'string', 'max:100'],
             'amount' => ['required', 'numeric', 'min:1', 'max:9999999999999'],

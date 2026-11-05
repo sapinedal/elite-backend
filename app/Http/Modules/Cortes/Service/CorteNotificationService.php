@@ -26,7 +26,7 @@ use Throwable;
  * | Devuelto por Interventor     | Residentes                                                   |
  * | Devuelto por Director        | Residentes + Interventor                                     |
  * | Devuelto por Gerencia        | Residentes + Interventor + Director                          |
- * | Factura cargada              | Cargo(s) de cortes.multifox_positions (registro en Multifox)  |
+ * | Factura cargada              | Permiso cortes.multifox directo (registro en Multifox)        |
  *
  * "Residentes" = quien radicó el corte + cortes.residentes. En TODOS los correos va en copia cortes.monitor.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
@@ -89,20 +89,15 @@ class CorteNotificationService
     }
 
     /**
-     * Usuarios activos cuyo cargo está en cortes.multifox_positions (sin distinguir mayúsculas ni tildes).
-     * Si nadie tiene el cargo, los correos de respaldo de cortes.multifox_emails.
+     * Usuarios activos con el permiso cortes.multifox asignado directamente (no por rol).
+     * Si nadie lo tiene, los correos de respaldo de cortes.multifox_emails.
      * En ambos casos solo se conservan los correos de los dominios permitidos.
      */
     public function multifoxRecipients(): Collection
     {
-        $positions = collect(config('cortes.multifox_positions', []))->map(fn ($name) => $this->comparable($name));
-
         $emails = User::query()
+            ->withDirectPermission('cortes.multifox')
             ->whereNotNull('email')
-            ->whereHas('position')
-            ->with('position:id,name')
-            ->get(['id', 'email', 'position_id'])
-            ->filter(fn (User $user) => $positions->contains($this->comparable($user->position->name)))
             ->pluck('email');
 
         $emails = $emails->isNotEmpty() ? $emails : collect(config('cortes.multifox_emails', []));
@@ -113,11 +108,6 @@ class CorteNotificationService
         return $domains->isEmpty()
             ? $emails
             : $emails->filter(fn ($email) => $domains->contains(mb_strtolower(Str::after((string) $email, '@'))))->values();
-    }
-
-    protected function comparable(string $value): string
-    {
-        return trim(Str::lower(Str::ascii($value)));
     }
 
     /**
