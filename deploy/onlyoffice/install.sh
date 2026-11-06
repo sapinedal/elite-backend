@@ -9,9 +9,9 @@ APP_DIR="/var/www/html/elite-backend"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 STACK_DIR="/opt/onlyoffice"
 
-echo "==> Verificando DNS de ${DOMAIN}"
+echo "==> Verificando DNS de ${DOMAIN} (contra un DNS público: el del servidor puede tener caché vieja)"
 SERVER_IP="$(curl -s https://api.ipify.org)"
-DNS_IP="$(getent hosts "${DOMAIN}" | awk '{print $1}' | head -1)"
+DNS_IP="$(dig +short A "${DOMAIN}" @1.1.1.1 | tail -1)"
 if [ "${DNS_IP}" != "${SERVER_IP}" ]; then
   echo "El DNS de ${DOMAIN} apunta a '${DNS_IP:-nada}' y este servidor es ${SERVER_IP}. Crea el registro A y vuelve a intentar."
   exit 1
@@ -41,6 +41,12 @@ for i in $(seq 1 60); do
   sleep 5
 done
 curl -fsS http://127.0.0.1:8085/healthcheck | grep -q true || { echo "ONLYOFFICE no respondió; revisa: docker logs onlyoffice"; exit 1; }
+
+echo "==> ${DOMAIN} resuelve a este mismo servidor (la API descarga los archivos editados sin salir a internet)"
+grep -q " ${DOMAIN}$" /etc/hosts || echo "127.0.0.1 ${DOMAIN}" >> /etc/hosts
+
+echo "==> Verificando certbot con el plugin de nginx"
+certbot plugins 2>/dev/null | grep -q nginx || apt-get install -y python3-certbot-nginx
 
 echo "==> Configurando nginx y HTTPS"
 cp "${HERE}/nginx-docs.conf" "/etc/nginx/sites-available/${DOMAIN}"

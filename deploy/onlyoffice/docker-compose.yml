@@ -10,7 +10,9 @@ services:
     environment:
       JWT_ENABLED: "true"
       JWT_SECRET: "${ONLYOFFICE_JWT_SECRET:?Define ONLYOFFICE_JWT_SECRET en .env}"
-      JWT_HEADER: "Authorization"
+      # No usar "Authorization": ONLYOFFICE lo envía también al descargar de Spaces y S3 rechaza
+      # las URLs firmadas que además traen ese encabezado (400 InvalidArgument)
+      JWT_HEADER: "AuthorizationJwt"
       JWT_IN_BODY: "true"
       WOPI_ENABLED: "false"
     volumes:

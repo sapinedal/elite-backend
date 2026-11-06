@@ -88,7 +88,8 @@ class DocumentEditorController extends Controller
                 (string) $request->query('path'),
                 $request->query('project') !== null ? (int) $request->query('project') : null,
                 $request->json()->all(),
-                $request->header('Authorization')
+                // ONLYOFFICE usa el encabezado AuthorizationJwt (ver deploy/onlyoffice/docker-compose.yml)
+                $request->header('AuthorizationJwt') ?? $request->header('Authorization')
             );
 
             return response()->json(['error' => 0]);
