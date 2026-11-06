@@ -1,0 +1,25 @@
+{
+  "name": "Elite",
+  "id": "theme-elite",
+  "type": "light",
+  "colors": {
+    "toolbar-header-document": "#004C6C",
+    "toolbar-header-spreadsheet": "#004C6C",
+    "toolbar-header-presentation": "#004C6C",
+    "toolbar-header-pdf": "#004C6C",
+    "toolbar-header-visio": "#004C6C",
+    "text-toolbar-header": "#FFFFFF",
+    "text-toolbar-header-on-background-document": "#FFFFFF",
+    "text-toolbar-header-on-background-spreadsheet": "#FFFFFF",
+    "text-toolbar-header-on-background-presentation": "#FFFFFF",
+    "text-toolbar-header-on-background-pdf": "#FFFFFF",
+    "text-toolbar-header-on-background-visio": "#FFFFFF",
+    "highlight-header-button-hover": "rgba(255,255,255,0.12)",
+    "highlight-header-button-pressed": "rgba(255,255,255,0.22)",
+    "highlight-header-tab-underline-document": "#EE9D4C",
+    "highlight-header-tab-underline-spreadsheet": "#EE9D4C",
+    "highlight-header-tab-underline-presentation": "#EE9D4C",
+    "highlight-header-tab-underline-pdf": "#EE9D4C",
+    "highlight-header-tab-underline-visio": "#EE9D4C"
+  }
+}

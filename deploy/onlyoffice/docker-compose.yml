@@ -20,3 +20,5 @@ services:
       - ./data/files:/var/www/onlyoffice/Data
       - ./data/cache:/var/lib/onlyoffice
       - ./data/db:/var/lib/postgresql
+      # Tema "Elite" (colores de la app). ONLYOFFICE publica todos los .json de esta carpeta como temas
+      - ./themes/elite.json:/var/www/onlyoffice/documentserver/web-apps/apps/common/main/resources/themes/elite.json:ro

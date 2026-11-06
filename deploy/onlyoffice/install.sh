@@ -27,6 +27,8 @@ fi
 echo "==> Preparando ${STACK_DIR}"
 mkdir -p "${STACK_DIR}"
 cp "${HERE}/docker-compose.yml" "${STACK_DIR}/docker-compose.yml"
+mkdir -p "${STACK_DIR}/themes"
+cp "${HERE}/themes/"*.json "${STACK_DIR}/themes/"
 if [ ! -f "${STACK_DIR}/.env" ]; then
   echo "ONLYOFFICE_JWT_SECRET=$(openssl rand -hex 32)" > "${STACK_DIR}/.env"
   chmod 600 "${STACK_DIR}/.env"

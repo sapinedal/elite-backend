@@ -27,6 +27,9 @@ return [
     // Tamaño máximo de archivo que se abre en el editor
     'max_file_mb' => (int) env('ONLYOFFICE_MAX_FILE_MB', 50),
 
+    // Tema de la interfaz del editor (ver deploy/onlyoffice/themes)
+    'ui_theme' => env('ONLYOFFICE_UI_THEME', 'theme-elite'),
+
     // Versiones anteriores que se conservan por archivo (carpeta oculta .versiones junto al archivo)
     'keep_versions' => (int) env('ONLYOFFICE_KEEP_VERSIONS', 20),
 

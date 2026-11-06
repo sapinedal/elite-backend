@@ -139,9 +139,12 @@ class DocumentEditorService
                     'autosave' => true,
                     'forcesave' => true,
                     'compactHeader' => true,
+                    // El nombre del archivo ya está en la barra de la app
+                    'toolbarHideFileName' => true,
                     'toolbarNoTabs' => false,
                     'hideRightMenu' => false,
-                    'uiTheme' => 'theme-light',
+                    // Tema con los colores de Elite (deploy/onlyoffice/themes/elite.json); si no existe, ONLYOFFICE usa el claro
+                    'uiTheme' => config('onlyoffice.ui_theme'),
                     'unit' => 'cm',
                     'zoom' => 100,
                     'goback' => false,
