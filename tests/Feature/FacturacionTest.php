@@ -259,13 +259,9 @@ test('el residente asocia la factura a su orden pendiente de factura y la orden 
     ]);
     $invoice = uploadInvoice(['invoice_number' => '485126']);
 
-    // A la orden sí se adjuntan los soportes de la entrada
+    // Los soportes de la orden son opcionales: se asocia sin adjuntarlos
     $this->actingAs($this->residente)
         ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
-        ->assertStatus(422)->assertJsonValidationErrors('support_tokens');
-
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id, ...supports()])
         ->assertOk();
 
     $orden->refresh();
