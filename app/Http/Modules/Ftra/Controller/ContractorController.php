@@ -5,10 +5,11 @@ namespace App\Http\Modules\Ftra\Controller;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ftra\Service\ContractorService;
-use App\Http\Modules\Ftra\Request\StoreContractorRequest;
-use App\Http\Modules\Ftra\Request\UpdateContractorRequest;
 use Illuminate\Http\Request;
 
+/**
+ * Consulta de proveedores para FTRA. Se crean y editan desde Contratación, al registrar el contrato.
+ */
 class ContractorController extends Controller
 {
     protected $contractorService;
@@ -16,14 +17,6 @@ class ContractorController extends Controller
     public function __construct(ContractorService $contractorService)
     {
         $this->contractorService = $contractorService;
-    }
-
-    /**
-     * Helper to verify if the user has editor permissions.
-     */
-    protected function checkEditorPermission()
-    {
-        return auth()->user()?->can('ftra.parametrizar') ?? false;
     }
 
     /**
@@ -43,61 +36,5 @@ class ContractorController extends Controller
     public function show(FtraContractor $contractor)
     {
         return response()->json($contractor);
-    }
-
-    /**
-     * Registra un nuevo contratista.
-     */
-    public function store(StoreContractorRequest $request)
-    {
-        if (!$this->checkEditorPermission()) {
-            return response()->json([
-                'message' => 'No tienes permisos para agregar contratistas de FTRA.'
-            ], 403);
-        }
-
-        $contractor = $this->contractorService->createContractor($request->validated());
-
-        return response()->json([
-            'message' => 'Contratista guardado exitosamente.',
-            'contractor' => $contractor
-        ], 201);
-    }
-
-    /**
-     * Actualiza un contratista existente.
-     */
-    public function update(UpdateContractorRequest $request, FtraContractor $contractor)
-    {
-        if (!$this->checkEditorPermission()) {
-            return response()->json([
-                'message' => 'No tienes permisos para modificar contratistas de FTRA.'
-            ], 403);
-        }
-
-        $updatedContractor = $this->contractorService->updateContractor($contractor, $request->validated());
-
-        return response()->json([
-            'message' => 'Contratista actualizado exitosamente.',
-            'contractor' => $updatedFormat ?? $updatedContractor
-        ]);
-    }
-
-    /**
-     * Elimina un contratista.
-     */
-    public function destroy(FtraContractor $contractor)
-    {
-        if (!$this->checkEditorPermission()) {
-            return response()->json([
-                'message' => 'No tienes permisos para eliminar contratistas de FTRA.'
-            ], 403);
-        }
-
-        $this->contractorService->deleteContractor($contractor);
-
-        return response()->json([
-            'message' => 'Contratista eliminado exitosamente.'
-        ]);
     }
 }

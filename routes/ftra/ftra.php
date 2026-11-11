@@ -3,7 +3,6 @@
 use App\Http\Modules\Ftra\Controller\FormatController;
 use App\Http\Modules\Ftra\Controller\ContractorController;
 use App\Http\Modules\Ftra\Controller\FtraRecordController;
-use App\Http\Modules\Ftra\Controller\ResidenteController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('ftra')->middleware(['auth:sanctum', 'project'])->group(function () {
@@ -15,26 +14,25 @@ Route::prefix('ftra')->middleware(['auth:sanctum', 'project'])->group(function (
     Route::put('/formats/{format}', [FormatController::class, 'update'])->middleware('permission:ftra.parametrizar');
     Route::delete('/formats/{format}', [FormatController::class, 'destroy'])->middleware('permission:ftra.parametrizar');
     
-    // CRUD de Contratistas / Proveedores
+    // Proveedores: solo consulta. Se crean al registrar el contrato en Contratación.
     Route::get('/contractors', [ContractorController::class, 'index'])->middleware('permission:ftra.ver|ftra.parametrizar');
-    Route::post('/contractors', [ContractorController::class, 'store'])->middleware('permission:ftra.parametrizar');
     Route::get('/contractors/{contractor}', [ContractorController::class, 'show'])->middleware('permission:ftra.ver|ftra.parametrizar');
-    Route::put('/contractors/{contractor}', [ContractorController::class, 'update'])->middleware('permission:ftra.parametrizar');
-    Route::delete('/contractors/{contractor}', [ContractorController::class, 'destroy'])->middleware('permission:ftra.parametrizar');
 
-    // CRUD de Residentes / Responsables
-    Route::get('/residentes', [ResidenteController::class, 'index'])->middleware('permission:ftra.ver|ftra.parametrizar');
-    Route::post('/residentes', [ResidenteController::class, 'store'])->middleware('permission:ftra.parametrizar');
-    Route::get('/residentes/{residente}', [ResidenteController::class, 'show'])->middleware('permission:ftra.ver|ftra.parametrizar');
-    Route::put('/residentes/{residente}', [ResidenteController::class, 'update'])->middleware('permission:ftra.parametrizar');
-    Route::delete('/residentes/{residente}', [ResidenteController::class, 'destroy'])->middleware('permission:ftra.parametrizar');
+    // Torres del proyecto activo con su distribución de pisos y apartamentos (se configuran en Administración › Proyectos).
+    // El residente responsable es el usuario que registra el FTRA: ya no hay catálogo de residentes.
+    Route::get('/towers', [FtraRecordController::class, 'towers'])->middleware('permission:ftra.ver');
+    Route::get('/towers/{tower}/units', [FtraRecordController::class, 'unitsStatus'])->middleware('permission:ftra.ver');
 
     // CRUD de Registros FTRA (Auditorías operativas)
     Route::get('/records', [FtraRecordController::class, 'index'])->middleware('permission:ftra.ver');
+    Route::get('/records/export', [FtraRecordController::class, 'export'])->middleware('permission:ftra.ver');
     Route::post('/records', [FtraRecordController::class, 'store'])->middleware('permission:ftra.crear');
     Route::get('/records/{record}', [FtraRecordController::class, 'show'])->middleware('permission:ftra.ver');
     Route::post('/records/{record}', [FtraRecordController::class, 'update'])->middleware('permission:ftra.editar|ftra.revisar');
     Route::put('/records/{record}', [FtraRecordController::class, 'update'])->middleware('permission:ftra.editar|ftra.revisar');
-    Route::put('/records/{record}/status', [FtraRecordController::class, 'updateStatus'])->middleware('permission:ftra.revisar|ftra.aprobar');
+    // Flujo: Residente registra → Supervisor (ftra.revisar) → Director de Obra (ftra.aprobar); devolución y reenvío
+    Route::post('/records/{record}/approve', [FtraRecordController::class, 'approve'])->middleware('permission:ftra.revisar|ftra.aprobar');
+    Route::post('/records/{record}/return', [FtraRecordController::class, 'returnRecord'])->middleware('permission:ftra.revisar|ftra.aprobar');
+    Route::post('/records/{record}/resubmit', [FtraRecordController::class, 'resubmit'])->middleware('permission:ftra.crear|ftra.editar');
     Route::delete('/records/{record}', [FtraRecordController::class, 'destroy'])->middleware('permission:ftra.eliminar');
 });

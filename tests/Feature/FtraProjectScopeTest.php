@@ -1,10 +1,10 @@
 <?php
 
 use App\Http\Modules\Configuracion\Models\Project;
+use App\Http\Modules\Configuracion\Models\Tower;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ftra\Models\FtraFormat;
 use App\Http\Modules\Ftra\Models\FtraRecord;
-use App\Http\Modules\Ftra\Models\Residente;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -21,7 +21,7 @@ beforeEach(function () {
 
     $this->contractor = FtraContractor::create(['name' => 'EMELECT GROUP SAS']);
     $this->format = FtraFormat::create(['name' => 'Recibo de obra', 'code' => 'FT-01', 'version' => '1']);
-    $this->residente = Residente::create(['name' => 'Residente', 'email' => 'residente@example.com', 'role' => 'Residente']);
+    $this->tower = Tower::create(['project_id' => $this->sanMiguel->id, 'name' => 'TORRE 2', 'floors' => 20, 'apartments_per_floor' => 10]);
 
     // Solo asignado a San Miguel
     $this->user = User::create(['name' => 'Inspector', 'email' => 'inspector@example.com', 'password' => 'secret']);
@@ -32,7 +32,6 @@ beforeEach(function () {
         'project_id' => $project->id,
         'contractor_id' => $this->contractor->id,
         'format_id' => $this->format->id,
-        'responsable_id' => $this->residente->id,
         'registered_by_id' => $this->user->id,
         'piso' => '1',
         'apartamento' => $apto,
@@ -47,7 +46,7 @@ function ftraPayload(): array
     return [
         'contractor_id' => test()->contractor->id,
         'format_id' => test()->format->id,
-        'responsable_id' => test()->residente->id,
+        'tower_id' => test()->tower->id,
         'piso' => '3',
         'apartamento' => '303',
         'resultado_inspeccion' => 'Recibido a satisfacción',
@@ -81,7 +80,7 @@ it('rechaza un proyecto activo al que el usuario no tiene acceso', function () {
 
 it('no permite ver, cambiar estado ni eliminar registros de otro proyecto', function () {
     $this->actingAs($this->user)->getJson("/api/v1/ftra/records/{$this->recordCaona->id}")->assertForbidden();
-    $this->actingAs($this->user)->putJson("/api/v1/ftra/records/{$this->recordCaona->id}/status", ['status' => 'Seguimiento'])->assertForbidden();
+    $this->actingAs($this->user)->postJson("/api/v1/ftra/records/{$this->recordCaona->id}/approve", ['signature' => 'data:image/png;base64,AAA'])->assertForbidden();
     $this->actingAs($this->user)->deleteJson("/api/v1/ftra/records/{$this->recordCaona->id}")->assertForbidden();
 
     expect($this->recordCaona->fresh()->status)->toBe('Registrada');

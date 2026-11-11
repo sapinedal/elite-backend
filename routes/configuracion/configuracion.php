@@ -21,6 +21,7 @@ Route::prefix('configuracion')->middleware('auth:sanctum')->group(function () {
 
     Route::get('projects/{project}/towers', [TowerController::class, 'index'])->middleware('permission:proyectos.ver|configuracion.ver');
     Route::post('projects/{project}/towers', [TowerController::class, 'store'])->middleware('permission:proyectos.crear|configuracion.editar');
+    Route::put('towers/{tower}', [TowerController::class, 'update'])->middleware('permission:proyectos.editar|configuracion.editar');
     Route::delete('towers/{tower}', [TowerController::class, 'destroy'])->middleware('permission:proyectos.eliminar|configuracion.editar');
 
     Route::get('areas', [ConfiguracionController::class, 'getAreas']);

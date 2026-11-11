@@ -14,6 +14,8 @@ use App\Http\Modules\Contratacion\Service\ContractDocumentCatalog;
 use App\Http\Modules\Contratacion\Service\ContractService;
 use App\Http\Modules\Documental\Service\DocumentalSettingsService;
 use App\Http\Modules\Ftra\Models\FtraContractor;
+use App\Http\Modules\Ftra\Request\StoreContractorRequest;
+use App\Http\Modules\Ftra\Service\ContractorService;
 use App\Http\Modules\Juridica\Models\ContractType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -65,6 +67,41 @@ class ContractController extends Controller
                 ...ContractDocumentCatalog::toArray(),
             ],
         ]);
+    }
+
+    /**
+     * Crea un proveedor desde el formulario del contrato. Es el único lugar donde se crean
+     * (la lista la comparten FTRA, Cortes, Anticipos, Cuentas de cobro, Facturación y Órdenes).
+     */
+    public function storeContractor(StoreContractorRequest $request, ContractorService $contractorService): JsonResponse
+    {
+        $data = $request->validated();
+        $name = trim($data['name']);
+        $nit = isset($data['nit']) ? trim($data['nit']) : null;
+
+        $duplicate = FtraContractor::query()
+            ->where(function ($q) use ($name, $nit) {
+                $q->whereRaw('lower(name) = ?', [mb_strtolower($name)]);
+                if ($nit) {
+                    $q->orWhere('nit', $nit);
+                }
+            })
+            ->first(['id', 'name', 'nit']);
+
+        if ($duplicate) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "Ya existe el proveedor {$duplicate->name}" . ($duplicate->nit ? " (NIT {$duplicate->nit})" : '') . '. Selecciónalo de la lista.',
+            ], 422);
+        }
+
+        $contractor = $contractorService->createContractor([...$data, 'name' => $name, 'nit' => $nit ?: null]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Proveedor creado exitosamente.',
+            'data' => $contractor->only(['id', 'name', 'nit']),
+        ], 201);
     }
 
     /**

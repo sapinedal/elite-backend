@@ -32,37 +32,13 @@ class ContractorService
     }
 
     /**
-     * Crea un nuevo contratista.
+     * Crea un proveedor (desde Contratación, al registrar el contrato).
      */
     public function createContractor(array $data): FtraContractor
     {
         return DB::transaction(function () use ($data) {
             $data['is_active'] = isset($data['is_active']) ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN) : true;
             return FtraContractor::create($data);
-        });
-    }
-
-    /**
-     * Actualiza un contratista existente.
-     */
-    public function updateContractor(FtraContractor $contractor, array $data): FtraContractor
-    {
-        return DB::transaction(function () use ($contractor, $data) {
-            if (isset($data['is_active'])) {
-                $data['is_active'] = filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN);
-            }
-            $contractor->update($data);
-            return $contractor;
-        });
-    }
-
-    /**
-     * Elimina un contratista.
-     */
-    public function deleteContractor(FtraContractor $contractor): void
-    {
-        DB::transaction(function () use ($contractor) {
-            $contractor->delete();
         });
     }
 }

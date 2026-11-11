@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('contratacion')->middleware(['auth:sanctum', 'project'])->group(function () {
     Route::get('/catalogs', [ContractController::class, 'catalogs'])->middleware('permission:contratacion.ver');
     Route::post('/towers', [ContractController::class, 'storeTower'])->middleware('permission:contratacion.crear');
+    // Los proveedores se crean aquí, al registrar el contrato
+    Route::post('/contractors', [ContractController::class, 'storeContractor'])->middleware('permission:contratacion.crear|contratacion.editar');
     // Tipos de contrato (catálogo compartido con Jurídica, administrado desde Contratación)
     Route::get('/contract-types', [ContractTypeController::class, 'index'])->middleware('permission:contratacion.ver');
     Route::post('/contract-types', [ContractTypeController::class, 'store'])->middleware('permission:contratacion.crear|contratacion.editar');
