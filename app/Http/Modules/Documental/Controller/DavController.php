@@ -84,8 +84,9 @@ class DavController extends Controller
         if (!is_dir($locksDir)) {
             mkdir($locksDir, 0775, true);
         }
-        $server->addPlugin(new LocksPlugin(new FileLocks($locksDir . '/locks')));
-        $server->addPlugin(new DavTemporaryFilesPlugin($locksDir . '/tmp'));
+        $locks = new FileLocks($locksDir . '/locks');
+        $server->addPlugin(new LocksPlugin($locks));
+        $server->addPlugin(new DavTemporaryFilesPlugin($locksDir . '/tmp', $locks));
         $server->addPlugin(new DavFastDownloadPlugin());
 
         $sabreRequest = new SabreRequest(

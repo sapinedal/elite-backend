@@ -15,6 +15,8 @@ beforeEach(function () {
     // La cookie de sesión de Office se cifra con APP_KEY (en local puede no existir .env)
     config(['documental.cache_store' => 'array', 'app.key' => 'base64:' . base64_encode(str_repeat('k', 32))]);
     app()->forgetInstance('encrypter');
+    // Los bloqueos WebDAV se guardan en disco: cada prueba empieza sin bloqueos de corridas anteriores
+    @unlink(storage_path('app/dav/locks'));
     Storage::fake('s3');
     Storage::disk('s3')->put('comercial/SAN MIGUEL/promesa.pdf', 'pdf-san-miguel');
     Storage::disk('s3')->put('comercial/CAONA/promesa.pdf', 'pdf-caona');
@@ -287,4 +289,32 @@ it('a Office con credenciales que no sirven también le muestra la ventana de in
 
     // Con una clave de escritorio válida Office entra directo
     dav('PROPFIND', 'comercial/', $this->user, $key, $office)->assertStatus(207);
+});
+
+it('con la sesión de Office ignora las credenciales inválidas que Office envía junto a la cookie', function () {
+    $this->user->forceFill(['password' => bcrypt('Elite2026*')])->save();
+    $login = $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => 'Elite2026*']);
+    $cookie = collect($login->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === DavLoginController::COOKIE)->getValue();
+
+    foreach (['Basic ' . base64_encode('comercial@example.com:CLAVE-VIEJA'), 'NTLM TlRMTVNTUAABAAAA'] as $authorization) {
+        $server = ['HTTP_AUTHORIZATION' => $authorization, 'HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'];
+        $this->call('OPTIONS', '/api/dav/', [], [DavLoginController::COOKIE => $cookie], [], $server)->assertOk();
+        $response = $this->call('GET', '/api/dav/comercial/SAN%20MIGUEL/promesa.pdf', [], [DavLoginController::COOKIE => $cookie], [], $server);
+        $response->assertOk();
+        expect($response->streamedContent())->toBe('pdf-san-miguel');
+    }
+});
+
+it('libera el bloqueo del archivo de propietario de Office al borrarlo', function () {
+    $key = desktopKeyFor($this->user);
+    $owner = 'comercial/SAN MIGUEL/~$acta.xlsx';
+    $lockBody = '<?xml version="1.0"?><d:lockinfo xmlns:d="DAV:"><d:lockscope><d:exclusive/></d:lockscope><d:locktype><d:write/></d:locktype><d:owner>excel</d:owner></d:lockinfo>';
+
+    dav('PUT', $owner, $this->user, $key, [], 'owner')->assertSuccessful();
+    dav('LOCK', $owner, $this->user, $key, ['Content-Type' => 'application/xml', 'Timeout' => 'Second-3600'], $lockBody)->assertSuccessful();
+    dav('DELETE', $owner, $this->user, $key)->assertSuccessful();
+
+    // Al volver a abrir el libro, Excel crea y bloquea de nuevo su archivo de propietario
+    dav('PUT', $owner, $this->user, $key, [], 'owner')->assertSuccessful();
+    dav('LOCK', $owner, $this->user, $key, ['Content-Type' => 'application/xml', 'Timeout' => 'Second-3600'], $lockBody)->assertSuccessful();
 });

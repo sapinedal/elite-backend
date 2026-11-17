@@ -27,7 +27,10 @@ class DavAuthBackend extends AbstractBasic
 
     public function check(RequestInterface $request, ResponseInterface $response)
     {
-        if ($this->cookieUser && !$request->getHeader('Authorization')) {
+        // La sesión de Office es prueba suficiente: Office la envía junto con otras credenciales propias que no
+        // sirven (las que Windows guardó para la unidad, NTLM…); si se probaran primero respondería 401 y Office
+        // mostraría la alerta de "inicio de sesión no seguro" y volvería a pedir la ventana de Elite
+        if ($this->cookieUser) {
             $this->context->user = $this->cookieUser;
 
             return [true, $this->principalPrefix . $this->cookieUser->id];

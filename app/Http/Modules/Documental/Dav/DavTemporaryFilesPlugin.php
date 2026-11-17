@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Documental\Dav;
 
+use Sabre\DAV\Locks\Backend\BackendInterface as LocksBackend;
 use Sabre\DAV\TemporaryFileFilterPlugin;
 use Sabre\HTTP\RequestInterface;
 use Sabre\HTTP\ResponseInterface;
@@ -29,8 +30,21 @@ class DavTemporaryFilesPlugin extends TemporaryFileFilterPlugin
      * Windows ajusta propiedades (fechas, atributos) del archivo de propietario de Office (~$Libro.xlsx) con PROPPATCH.
      * El filtro original no lo atiende y el plugin de bloqueos lo rechazaba con 423: se acepta sin guardar nada.
      */
+    public function __construct(?string $dataDir = null, protected ?LocksBackend $locks = null)
+    {
+        parent::__construct($dataDir);
+    }
+
     public function beforeMethod(RequestInterface $request, ResponseInterface $response)
     {
+        // Al borrar el archivo de propietario de Office (~$Libro.xlsx) se liberan sus bloqueos: el filtro original
+        // no lo hace y la siguiente vez que se abre el libro Windows recibía 423 (archivo bloqueado)
+        if ($this->locks && $request->getMethod() === 'DELETE' && $this->isTempFile($request->getPath())) {
+            foreach ($this->locks->getLocks($request->getPath(), false) as $lock) {
+                $this->locks->unlock($request->getPath(), $lock);
+            }
+        }
+
         if ($request->getMethod() === 'PROPPATCH' && $this->isTempFile($request->getPath())) {
             $properties = [];
             try {
