@@ -208,11 +208,8 @@ it('con descargas aceleradas delega el archivo a nginx tras validar permisos', f
 });
 
 it('a Office sin sesión le indica la ventana de inicio de sesión (MS-OFBA) y al Explorador le pide Basic', function () {
-    // OPTIONS solo anuncia capacidades: se responde sin sesión para no abrir la ventana de más
-    dav('OPTIONS', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014'])->assertOk()
-        ->assertHeaderMissing('X-FORMS_BASED_AUTH_REQUIRED');
-
-    $office = dav('PROPFIND', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014']);
+    // El sondeo OPTIONS es el que hace que Office abra la ventana de inicio de sesión
+    $office = dav('OPTIONS', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014']);
     $office->assertStatus(403);
     expect($office->headers->get('X-FORMS_BASED_AUTH_REQUIRED'))->toEndWith('/api/dav-login')
         ->and($office->headers->get('X-FORMS_BASED_AUTH_RETURN_URL'))->toEndWith('/api/dav-login/listo');
@@ -321,4 +318,22 @@ it('libera el bloqueo del archivo de propietario de Office al borrarlo', functio
     // Al volver a abrir el libro, Excel crea y bloquea de nuevo su archivo de propietario
     dav('PUT', $owner, $this->user, $key, [], 'owner')->assertSuccessful();
     dav('LOCK', $owner, $this->user, $key, ['Content-Type' => 'application/xml', 'Timeout' => 'Second-3600'], $lockBody)->assertSuccessful();
+});
+
+it('la ventana de Office entra sola si ya hay una sesión guardada (Excel reiniciado)', function () {
+    $this->user->forceFill(['password' => bcrypt('Elite2026*')])->save();
+    $login = $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => 'Elite2026*']);
+    $cookie = collect($login->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === DavLoginController::COOKIE)->getValue();
+    $sessions = DocumentDesktopKey::count();
+
+    $again = $this->call('GET', '/api/dav-login', [], [DavLoginController::COOKIE => $cookie]);
+    $again->assertRedirect(DavLoginController::returnUrl());
+    $renewed = collect($again->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === DavLoginController::COOKIE);
+    expect($renewed)->not->toBeNull()
+        ->and(DocumentDesktopKey::count())->toBe($sessions);
+
+    // Sin sesión, o con una sesión revocada, se muestra el formulario
+    $this->get('/api/dav-login')->assertOk()->assertSee('Iniciar sesión');
+    DocumentDesktopKey::query()->delete();
+    $this->call('GET', '/api/dav-login', [], [DavLoginController::COOKIE => $cookie])->assertOk()->assertSee('Iniciar sesión');
 });

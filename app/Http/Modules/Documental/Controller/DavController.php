@@ -54,17 +54,9 @@ class DavController extends Controller
         if (!$cookieUser && $this->isOfficeClient($request) && !$this->hasValidBasic($request)) {
             $this->logOfficeWithoutSession($request);
 
-            // OPTIONS solo pregunta qué soporta el servidor (no entrega datos): algunas partes de Office lo envían
-            // sin la cookie de sesión y, si recibieran 403, abrirían otra vez la ventana de inicio de sesión
-            if ($request->isMethod('OPTIONS')) {
-                return response('', 200, [
-                    'DAV' => '1, 2, 3, extended-mkcol',
-                    'MS-Author-Via' => 'DAV',
-                    'Allow' => 'OPTIONS, GET, HEAD, DELETE, PROPFIND, PUT, PROPPATCH, COPY, MOVE, MKCOL, LOCK, UNLOCK',
-                    'Accept-Ranges' => 'bytes',
-                ]);
-            }
-
+            // Office solo abre la ventana de inicio de sesión cuando el sondeo OPTIONS recibe este 403 (MS-OFBA).
+            // Las partes de Excel que abren y bloquean archivos guardan la sesión solo mientras Excel está abierto;
+            // al reiniciarlo la ventana entra sola con la sesión ya guardada (ver DavLoginController::show)
             return response('', 403, [
                 'X-FORMS_BASED_AUTH_REQUIRED' => DavLoginController::loginUrl(),
                 'X-FORMS_BASED_AUTH_RETURN_URL' => DavLoginController::returnUrl(),

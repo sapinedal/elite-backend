@@ -45,8 +45,16 @@ class DavLoginController extends Controller
         return rtrim((string) config('app.url'), '/') . '/api/dav-login/listo';
     }
 
-    public function show()
+    public function show(Request $request)
     {
+        // Si la ventana ya tiene una sesión vigente (Excel se reinició y olvidó la suya), se renueva y se cierra
+        // al instante: Office toma la cookie al llegar a la página de retorno, sin pedir la contraseña otra vez
+        $user = $this->userFromCookie($request);
+        $token = $user ? $this->tokenFromCookie($request) : null;
+        if ($user && $token) {
+            return $this->completeLogin($request, $token);
+        }
+
         return response()->view('documental.dav-login', ['error' => null, 'email' => '']);
     }
 
@@ -91,7 +99,15 @@ class DavLoginController extends Controller
             'method' => $usedDesktopKey ? 'clave de escritorio' : 'contraseña',
         ], $request->ip());
 
-        // Cookie persistente: Office la comparte entre la ventana de inicio de sesión y sus peticiones a la unidad
+        return $this->completeLogin($request, $token);
+    }
+
+    /**
+     * Redirige a la página de retorno (señal para que Office cierre la ventana) con la cookie de sesión.
+     * Es persistente: Office la comparte entre la ventana de inicio de sesión y sus peticiones a la unidad.
+     */
+    protected function completeLogin(Request $request, string $token): RedirectResponse
+    {
         return redirect()->away(self::returnUrl(), 302)->withCookie(new Cookie(
             self::COOKIE,
             Crypt::encryptString($token),
@@ -115,18 +131,23 @@ class DavLoginController extends Controller
      */
     public function userFromCookie(Request $request): ?User
     {
+        $token = $this->tokenFromCookie($request);
+
+        return $token ? $this->keys->authenticateToken($token, $request->ip()) : null;
+    }
+
+    protected function tokenFromCookie(Request $request): ?string
+    {
         $value = $request->cookies->get(self::COOKIE);
         if (!is_string($value) || $value === '') {
             return null;
         }
 
         try {
-            $token = Crypt::decryptString($value);
+            return Crypt::decryptString($value);
         } catch (\Throwable) {
             return null;
         }
-
-        return $this->keys->authenticateToken($token, $request->ip());
     }
 
     protected function fail(string $email, string $message)
