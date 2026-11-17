@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Modules\Documental\Controller\DavController;
+use App\Http\Modules\Documental\Controller\DavLoginController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -31,3 +32,8 @@ Route::match(
     'dav/{path?}',
     [DavController::class, 'handle']
 )->where('path', '.*')->name('documental.dav');
+
+// Inicio de sesión de Office (Word, Excel…) para la unidad de red: protocolo MS-OFBA, porque Office bloquea Basic
+Route::get('dav-login', [DavLoginController::class, 'show'])->name('documental.dav.login');
+Route::post('dav-login', [DavLoginController::class, 'login'])->middleware('throttle:30,1');
+Route::get('dav-login/listo', [DavLoginController::class, 'done'])->name('documental.dav.login.done');

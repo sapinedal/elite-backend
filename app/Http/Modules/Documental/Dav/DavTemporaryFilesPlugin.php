@@ -3,6 +3,8 @@
 namespace App\Http\Modules\Documental\Dav;
 
 use Sabre\DAV\TemporaryFileFilterPlugin;
+use Sabre\HTTP\RequestInterface;
+use Sabre\HTTP\ResponseInterface;
 
 /**
  * Archivos basura que crean Windows, macOS y Office al navegar o editar (._*, .DS_Store, Thumbs.db, ~$doc.docx…):
@@ -22,4 +24,29 @@ class DavTemporaryFilesPlugin extends TemporaryFileFilterPlugin
         '/^~lock\..*#$/',
         '/^\..*\.swp$/',
     ];
+
+    /**
+     * Windows ajusta propiedades (fechas, atributos) del archivo de propietario de Office (~$Libro.xlsx) con PROPPATCH.
+     * El filtro original no lo atiende y el plugin de bloqueos lo rechazaba con 423: se acepta sin guardar nada.
+     */
+    public function beforeMethod(RequestInterface $request, ResponseInterface $response)
+    {
+        if ($request->getMethod() === 'PROPPATCH' && $this->isTempFile($request->getPath())) {
+            $properties = [];
+            try {
+                $properties = array_keys($this->server->xml->expect('{DAV:}propertyupdate', $request->getBodyAsString())->properties);
+            } catch (\Throwable) {
+            }
+
+            $response->setStatus(207);
+            $response->setHeader('Content-Type', 'application/xml; charset=utf-8');
+            $response->setBody($this->server->generateMultiStatus([
+                ['href' => $request->getPath(), 200 => array_fill_keys($properties, null)],
+            ]));
+
+            return false;
+        }
+
+        return parent::beforeMethod($request, $response);
+    }
 }

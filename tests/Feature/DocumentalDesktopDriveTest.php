@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Modules\Configuracion\Models\Project;
+use App\Http\Modules\Documental\Controller\DavLoginController;
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
+use App\Http\Modules\Documental\Models\DocumentDesktopKey;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -10,7 +12,9 @@ use Spatie\Permission\Models\Permission;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    config(['documental.cache_store' => 'array']);
+    // La cookie de sesión de Office se cifra con APP_KEY (en local puede no existir .env)
+    config(['documental.cache_store' => 'array', 'app.key' => 'base64:' . base64_encode(str_repeat('k', 32))]);
+    app()->forgetInstance('encrypter');
     Storage::fake('s3');
     Storage::disk('s3')->put('comercial/SAN MIGUEL/promesa.pdf', 'pdf-san-miguel');
     Storage::disk('s3')->put('comercial/CAONA/promesa.pdf', 'pdf-caona');
@@ -199,4 +203,74 @@ it('con descargas aceleradas delega el archivo a nginx tras validar permisos', f
 
     // Sin permiso no hay URL firmada
     dav('GET', 'comercial/CAONA/promesa.pdf', $this->user, $key)->assertNotFound()->assertHeaderMissing('X-Dav-Download-Url');
+});
+
+it('a Office sin sesión le indica la ventana de inicio de sesión (MS-OFBA) y al Explorador le pide Basic', function () {
+    $office = dav('OPTIONS', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014']);
+    $office->assertStatus(403);
+    expect($office->headers->get('X-FORMS_BASED_AUTH_REQUIRED'))->toEndWith('/api/dav-login')
+        ->and($office->headers->get('X-FORMS_BASED_AUTH_RETURN_URL'))->toEndWith('/api/dav-login/listo');
+
+    dav('PROPFIND', '', null, null, ['X-FORMS_BASED_AUTH_ACCEPTED' => 'f'])->assertStatus(403);
+
+    $explorer = dav('PROPFIND', '', null, null, ['User-Agent' => 'Microsoft-WebDAV-MiniRedir/10.0.26200']);
+    $explorer->assertStatus(401);
+    expect($explorer->headers->get('WWW-Authenticate'))->toContain('Basic');
+});
+
+it('inicia sesión desde Office con la contraseña de Elite y usa la cookie en la unidad', function () {
+    $this->user->forceFill(['password' => bcrypt('Elite2026*')])->save();
+
+    $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => 'mala'])->assertStatus(422)
+        ->assertSee('Correo o contraseña incorrectos');
+
+    $login = $this->post('/api/dav-login', ['email' => 'COMERCIAL@example.com', 'password' => 'Elite2026*']);
+    $login->assertRedirect(DavLoginController::returnUrl());
+    $cookie = collect($login->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === DavLoginController::COOKIE);
+    expect($cookie)->not->toBeNull()
+        ->and($cookie->isHttpOnly())->toBeTrue()
+        ->and($cookie->getExpiresTime())->toBeGreaterThan(now()->addDays(29)->timestamp)
+        ->and(DocumentDesktopKey::where('user_id', $this->user->id)->where('name', 'like', 'Office en Windows%')->count())->toBe(1)
+        ->and(DocumentActivityLog::where('action', 'desktop_login')->value('details')['method'])->toBe('contraseña');
+
+    $this->get('/api/dav-login/listo')->assertOk()->assertSee('Office quedó conectado');
+
+    // Office repite la petición con la cookie
+    $response = $this->withUnencryptedCookie(DavLoginController::COOKIE, $cookie->getValue())
+        ->call('GET', '/api/dav/comercial/SAN%20MIGUEL/promesa.pdf', [], [DavLoginController::COOKIE => $cookie->getValue()], [], ['HTTP_USER_AGENT' => 'Microsoft Office Excel 2014']);
+    $response->assertOk();
+    expect($response->streamedContent())->toBe('pdf-san-miguel');
+
+    // Los permisos siguen aplicando con la cookie
+    $this->call('GET', '/api/dav/comercial/CAONA/promesa.pdf', [], [DavLoginController::COOKIE => $cookie->getValue()])->assertNotFound();
+
+    // Al revocar la sesión desde Elite, Office vuelve a pedir inicio de sesión
+    DocumentDesktopKey::where('user_id', $this->user->id)->delete();
+    $this->call('OPTIONS', '/api/dav/comercial/', [], [DavLoginController::COOKIE => $cookie->getValue()], [], ['HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'])->assertStatus(403);
+});
+
+it('también acepta una clave de escritorio en la ventana de Office sin crear otra', function () {
+    $key = desktopKeyFor($this->user);
+
+    $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => strtolower($key)])
+        ->assertRedirect(DavLoginController::returnUrl());
+    expect(DocumentDesktopKey::where('user_id', $this->user->id)->count())->toBe(1);
+});
+
+it('bloquea la ventana de Office tras varios intentos fallidos y no deja entrar sin acceso al módulo', function () {
+    foreach (range(1, 5) as $i) {
+        $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => 'mala' . $i])->assertStatus(422);
+    }
+    $this->post('/api/dav-login', ['email' => 'comercial@example.com', 'password' => 'secret'])->assertSee('Demasiados intentos');
+
+    $sinAcceso = User::create(['name' => 'Otro', 'email' => 'otro@example.com', 'password' => 'secret']);
+    $this->post('/api/dav-login', ['email' => 'otro@example.com', 'password' => 'secret'])->assertSee('no tiene acceso a Gestión Documental');
+});
+
+it('acepta el PROPPATCH de Windows sobre el archivo de propietario de Office', function () {
+    $key = desktopKeyFor($this->user);
+    dav('PUT', 'comercial/SAN MIGUEL/~$acta.xlsx', $this->user, $key, [], 'owner')->assertSuccessful();
+
+    $body = '<?xml version="1.0" encoding="utf-8"?><D:propertyupdate xmlns:D="DAV:" xmlns:Z="urn:schemas-microsoft-com:"><D:set><D:prop><Z:Win32FileAttributes>00000020</Z:Win32FileAttributes></D:prop></D:set></D:propertyupdate>';
+    dav('PROPPATCH', 'comercial/SAN MIGUEL/~$acta.xlsx', $this->user, $key, ['Content-Type' => 'text/xml'], $body)->assertStatus(207);
 });

@@ -15,6 +15,9 @@ class DesktopKeyService
 {
     public const MAX_KEYS_PER_USER = 10;
 
+    /** Prefijo de las claves creadas automáticamente al iniciar sesión desde Office (Word, Excel…) */
+    public const OFFICE_KEY_PREFIX = 'Office en Windows';
+
     public function list(User $user): array
     {
         return DocumentDesktopKey::where('user_id', $user->id)
@@ -33,9 +36,7 @@ class DesktopKeyService
             throw new InvalidArgumentException('Alcanzaste el máximo de ' . self::MAX_KEYS_PER_USER . ' claves. Revoca las que ya no uses.');
         }
 
-        // Sin caracteres ambiguos para poder dictarla o copiarla a mano si hace falta
-        $plain = collect(range(1, 4))->map(fn () => Str::upper(Str::random(5)))->join('-');
-        $plain = strtr($plain, ['0' => '8', 'O' => 'P', 'I' => 'J', '1' => '7', 'L' => 'M']);
+        $plain = $this->generatePlain();
 
         $key = DocumentDesktopKey::create([
             'user_id' => $user->id,
@@ -45,6 +46,70 @@ class DesktopKeyService
         ]);
 
         return $this->present($key) + ['key' => $plain];
+    }
+
+    /**
+     * Sesión de Office: al iniciar sesión en la ventana que abre Word o Excel se crea una clave propia
+     * (visible y revocable en "Conectar al escritorio") que viaja cifrada en una cookie.
+     * Si el usuario ya llegó al máximo se reemplaza su sesión de Office más antigua.
+     */
+    public function createOfficeSession(User $user, ?string $ip = null): string
+    {
+        if (DocumentDesktopKey::where('user_id', $user->id)->count() >= self::MAX_KEYS_PER_USER) {
+            $oldest = DocumentDesktopKey::where('user_id', $user->id)
+                ->where('name', 'like', self::OFFICE_KEY_PREFIX . '%')
+                ->orderByRaw('coalesce(last_used_at, created_at)')
+                ->first();
+            if (!$oldest) {
+                throw new InvalidArgumentException('Alcanzaste el máximo de ' . self::MAX_KEYS_PER_USER . ' claves de escritorio. Revoca alguna desde Elite → Gestión Documental → Conectar al escritorio.');
+            }
+            $oldest->delete();
+        }
+
+        $plain = $this->generatePlain();
+        DocumentDesktopKey::create([
+            'user_id' => $user->id,
+            'name' => self::OFFICE_KEY_PREFIX . ($ip ? " · {$ip}" : ''),
+            'token_hash' => $this->hash($plain),
+            'last_four' => substr($plain, -4),
+            'last_used_at' => now(),
+            'last_used_ip' => $ip,
+        ]);
+
+        return $plain;
+    }
+
+    /**
+     * Valida solo la clave (sesión de Office guardada en cookie): el usuario sale de la propia clave.
+     */
+    public function authenticateToken(string $plain, ?string $ip = null): ?User
+    {
+        $key = DocumentDesktopKey::where('token_hash', $this->hash(Str::upper(trim($plain))))->first();
+        if (!$key) {
+            return null;
+        }
+
+        return $this->authenticate(User::whereKey($key->user_id)->value('email') ?? '', $plain, $ip);
+    }
+
+    /**
+     * Comprueba si la clave pertenece al usuario, sin registrar uso (para el formulario de inicio de sesión).
+     */
+    public function belongsTo(User $user, string $plain): bool
+    {
+        return DocumentDesktopKey::where('user_id', $user->id)
+            ->where('token_hash', $this->hash(Str::upper(trim($plain))))
+            ->exists();
+    }
+
+    /**
+     * Sin caracteres ambiguos para poder dictarla o copiarla a mano si hace falta.
+     */
+    protected function generatePlain(): string
+    {
+        $plain = collect(range(1, 4))->map(fn () => Str::upper(Str::random(5)))->join('-');
+
+        return strtr($plain, ['0' => '8', 'O' => 'P', 'I' => 'J', '1' => '7', 'L' => 'M']);
     }
 
     public function revoke(User $user, int $keyId): void

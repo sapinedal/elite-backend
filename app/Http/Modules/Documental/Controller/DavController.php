@@ -3,6 +3,7 @@
 namespace App\Http\Modules\Documental\Controller;
 
 use App\Http\Controllers\Controller;
+use App\Http\Modules\Documental\Dav\DavAuthBackend;
 use App\Http\Modules\Documental\Dav\DavCaptureSapi;
 use App\Http\Modules\Documental\Dav\DavContext;
 use App\Http\Modules\Documental\Dav\DavDirectory;
@@ -12,7 +13,6 @@ use App\Http\Modules\Documental\Service\DesktopKeyService;
 use App\Http\Modules\Documental\Service\DocumentalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
-use Sabre\DAV\Auth\Backend\BasicCallBack;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
 use Sabre\DAV\Locks\Backend\File as FileLocks;
 use Sabre\DAV\Locks\Plugin as LocksPlugin;
@@ -36,6 +36,7 @@ class DavController extends Controller
     public function __construct(
         protected DocumentalService $documentalService,
         protected DesktopKeyService $keyService,
+        protected DavLoginController $loginController,
     ) {
     }
 
@@ -44,12 +45,23 @@ class DavController extends Controller
         $context = new DavContext($this->documentalService, $request->ip());
         $throttleKey = 'documental-dav-auth:' . $request->ip();
 
+        // Office (Word, Excel…) bloquea el inicio de sesión Basic: si llega sin credenciales ni sesión válida,
+        // se le indica la ventana de inicio de sesión de Elite (MS-OFBA) en lugar de pedir usuario y clave
+        $cookieUser = $this->loginController->userFromCookie($request);
+        if (!$cookieUser && !$request->headers->has('Authorization') && $this->isOfficeClient($request)) {
+            return response('', 403, [
+                'X-FORMS_BASED_AUTH_REQUIRED' => DavLoginController::loginUrl(),
+                'X-FORMS_BASED_AUTH_RETURN_URL' => DavLoginController::returnUrl(),
+                'X-FORMS_BASED_AUTH_DIALOG_SIZE' => '460x560',
+            ]);
+        }
+
         $server = new Server(new DavDirectory($context), new DavCaptureSapi());
         $server->setBaseUri(self::BASE_URI);
         Server::$exposeVersion = false;
         $server->debugExceptions = false;
 
-        $auth = new BasicCallBack(function (string $username, string $password) use ($context, $request, $throttleKey) {
+        $auth = new DavAuthBackend(function (string $username, string $password) use ($context, $request, $throttleKey) {
             if (RateLimiter::tooManyAttempts($throttleKey, self::MAX_FAILED_ATTEMPTS)) {
                 return false;
             }
@@ -62,8 +74,7 @@ class DavController extends Controller
             $context->user = $user;
 
             return true;
-        });
-        $auth->setRealm('Elite - Gestion Documental');
+        }, $context, $cookieUser);
         $server->addPlugin(new AuthPlugin($auth));
 
         // Bloqueos (WebDAV clase 2): Finder y Windows montan en solo lectura si el servidor no los soporta
@@ -111,5 +122,21 @@ class DavController extends Controller
                 echo $body;
             }
         }, $response->getStatus(), $headers);
+    }
+
+    /**
+     * Word, Excel, PowerPoint y sus sondeos de protocolo, que aceptan inicio de sesión por formulario (MS-OFBA).
+     * El Explorador de Windows (Microsoft-WebDAV-MiniRedir) y el Finder siguen con Basic.
+     */
+    protected function isOfficeClient(Request $request): bool
+    {
+        if (in_array(strtolower((string) $request->header('X-FORMS_BASED_AUTH_ACCEPTED')), ['t', 'f'], true)) {
+            return true;
+        }
+
+        $agent = (string) $request->userAgent();
+
+        return !str_contains($agent, 'WebDAV-MiniRedir')
+            && preg_match('/Microsoft Office|MSOffice|Microsoft Office Protocol Discovery|Microsoft Office Existence Discovery/i', $agent) === 1;
     }
 }
