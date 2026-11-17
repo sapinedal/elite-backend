@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Modules\Documental\Dav\DavCaptureSapi;
 use App\Http\Modules\Documental\Dav\DavContext;
 use App\Http\Modules\Documental\Dav\DavDirectory;
+use App\Http\Modules\Documental\Dav\DavFastDownloadPlugin;
 use App\Http\Modules\Documental\Dav\DavTemporaryFilesPlugin;
 use App\Http\Modules\Documental\Service\DesktopKeyService;
 use App\Http\Modules\Documental\Service\DocumentalService;
@@ -72,6 +73,7 @@ class DavController extends Controller
         }
         $server->addPlugin(new LocksPlugin(new FileLocks($locksDir . '/locks')));
         $server->addPlugin(new DavTemporaryFilesPlugin($locksDir . '/tmp'));
+        $server->addPlugin(new DavFastDownloadPlugin());
 
         $sabreRequest = new SabreRequest(
             $request->getMethod(),

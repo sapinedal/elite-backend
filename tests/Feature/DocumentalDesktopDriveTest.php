@@ -176,3 +176,27 @@ it('soporta bloqueos para que Finder y Windows monten con escritura', function (
     $options = dav('OPTIONS', '', $this->user, $key)->assertOk();
     expect($options->headers->get('DAV'))->toContain('2');
 });
+
+it('responde HEAD con los metadatos sin abrir el archivo', function () {
+    $key = desktopKeyFor($this->user);
+
+    $response = dav('HEAD', 'comercial/SAN MIGUEL/promesa.pdf', $this->user, $key)->assertOk();
+    expect($response->headers->get('Content-Length'))->toBe((string) strlen('pdf-san-miguel'))
+        ->and($response->headers->get('Content-Type'))->toBe('application/pdf')
+        ->and(DocumentActivityLog::where('action', 'download')->count())->toBe(0);
+});
+
+it('con descargas aceleradas delega el archivo a nginx tras validar permisos', function () {
+    config(['documental.dav_accel' => true]);
+    Storage::disk('s3')->buildTemporaryUrlsUsing(fn (string $path) => 'https://inver.example/obj?X-Amz-Signature=abc');
+    $key = desktopKeyFor($this->user);
+
+    $response = dav('GET', 'comercial/SAN MIGUEL/promesa.pdf', $this->user, $key)->assertOk();
+    expect($response->headers->get('X-Accel-Redirect'))->toBe('/_dav_download')
+        ->and($response->headers->get('X-Dav-Download-Url'))->toBe('https://inver.example/obj?X-Amz-Signature=abc')
+        ->and($response->streamedContent())->toBe('')
+        ->and(DocumentActivityLog::where('action', 'download')->count())->toBe(1);
+
+    // Sin permiso no hay URL firmada
+    dav('GET', 'comercial/CAONA/promesa.pdf', $this->user, $key)->assertNotFound()->assertHeaderMissing('X-Dav-Download-Url');
+});

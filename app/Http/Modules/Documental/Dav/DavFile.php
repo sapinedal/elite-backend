@@ -44,18 +44,32 @@ class DavFile extends File
     }
 
     /**
-     * @return resource
+     * Registra la descarga en auditoría. Los exploradores leen el mismo archivo varias veces (vista previa,
+     * miniaturas, lectura por partes): queda registrada como máximo una vez cada 30 minutos por usuario y archivo.
      */
-    public function get()
+    public function logDownload(): void
     {
         $user = $this->context->user();
-
-        // Los exploradores leen el mismo archivo varias veces (vista previa, miniaturas): una descarga
-        // queda registrada como máximo una vez cada 30 minutos por usuario y archivo
         $logKey = 'documental_dav_download_' . $user->id . '_' . md5($this->path);
         if (Cache::store(config('documental.cache_store'))->add($logKey, true, now()->addMinutes(30))) {
             $this->context->service->log($user, 'download', $this->path, ['filename' => $this->getName()] + DavContext::SOURCE, $this->context->ip);
         }
+    }
+
+    /**
+     * URL firmada temporal de Spaces para que nginx sirva el archivo directamente.
+     */
+    public function temporaryUrl(): string
+    {
+        return $this->context->service->getDisk()->temporaryUrl($this->path, now()->addMinutes(15));
+    }
+
+    /**
+     * @return resource
+     */
+    public function get()
+    {
+        $this->logDownload();
 
         return $this->context->service->getDisk()->readStream($this->path);
     }

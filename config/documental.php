@@ -27,6 +27,10 @@ return [
     // Registrar en auditoría los intentos de acciones negadas por permisos
     'log_denied_attempts' => (bool) env('DOCUMENTAL_LOG_DENIED', true),
 
+    // Descargas de la unidad de red servidas por nginx directo desde Spaces (X-Accel-Redirect a /_dav_download).
+    // Requiere la ubicación interna en nginx (ver deploy/nginx-dav.conf); sin ella dejarlo en false.
+    'dav_accel' => (bool) env('DOCUMENTAL_DAV_ACCEL', false),
+
     // Dirección de la unidad de red (WebDAV) que se muestra a los usuarios para conectarse desde el escritorio
     'dav_url' => rtrim((string) env('DOCUMENTAL_DAV_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/api/dav'), '/') . '/',
 
