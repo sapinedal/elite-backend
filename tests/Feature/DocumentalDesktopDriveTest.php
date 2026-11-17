@@ -274,3 +274,17 @@ it('acepta el PROPPATCH de Windows sobre el archivo de propietario de Office', f
     $body = '<?xml version="1.0" encoding="utf-8"?><D:propertyupdate xmlns:D="DAV:" xmlns:Z="urn:schemas-microsoft-com:"><D:set><D:prop><Z:Win32FileAttributes>00000020</Z:Win32FileAttributes></D:prop></D:set></D:propertyupdate>';
     dav('PROPPATCH', 'comercial/SAN MIGUEL/~$acta.xlsx', $this->user, $key, ['Content-Type' => 'text/xml'], $body)->assertStatus(207);
 });
+
+it('a Office con credenciales que no sirven también le muestra la ventana de inicio de sesión', function () {
+    $key = desktopKeyFor($this->user);
+    $office = ['User-Agent' => 'Microsoft Office Excel 2014'];
+
+    // Basic con una clave vieja o la contraseña de Elite, o NTLM que Windows agrega por su cuenta
+    dav('OPTIONS', 'comercial/', $this->user, 'CLAVE-VIEJA', $office)->assertStatus(403)
+        ->assertHeader('X-FORMS_BASED_AUTH_REQUIRED');
+    $this->call('OPTIONS', '/api/dav/comercial/', [], [], [], ['HTTP_AUTHORIZATION' => 'NTLM TlRMTVNTUAABAAAA', 'HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'])
+        ->assertStatus(403);
+
+    // Con una clave de escritorio válida Office entra directo
+    dav('PROPFIND', 'comercial/', $this->user, $key, $office)->assertStatus(207);
+});

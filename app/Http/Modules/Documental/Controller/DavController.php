@@ -47,8 +47,10 @@ class DavController extends Controller
 
         // Office (Word, Excel…) bloquea el inicio de sesión Basic: si llega sin credenciales ni sesión válida,
         // se le indica la ventana de inicio de sesión de Elite (MS-OFBA) en lugar de pedir usuario y clave
+        // Office puede enviar por su cuenta credenciales que no sirven (las que Windows guardó para la unidad, NTLM…):
+        // si no trae una sesión válida ni un Basic válido, siempre recibe la ventana de inicio de sesión
         $cookieUser = $this->loginController->userFromCookie($request);
-        if (!$cookieUser && !$request->headers->has('Authorization') && $this->isOfficeClient($request)) {
+        if (!$cookieUser && $this->isOfficeClient($request) && !$this->hasValidBasic($request)) {
             return response('', 403, [
                 'X-FORMS_BASED_AUTH_REQUIRED' => DavLoginController::loginUrl(),
                 'X-FORMS_BASED_AUTH_RETURN_URL' => DavLoginController::returnUrl(),
@@ -138,5 +140,25 @@ class DavController extends Controller
 
         return !str_contains($agent, 'WebDAV-MiniRedir')
             && preg_match('/Microsoft Office|MSOffice|Microsoft Office Protocol Discovery|Microsoft Office Existence Discovery/i', $agent) === 1;
+    }
+
+    /**
+     * Basic con correo + clave de escritorio vigente (sin contar como intento fallido: Office reintenta solo).
+     */
+    protected function hasValidBasic(Request $request): bool
+    {
+        $header = (string) $request->header('Authorization');
+        if (!preg_match('/^Basic\s+(\S+)$/i', $header, $m)) {
+            return false;
+        }
+
+        $decoded = base64_decode($m[1], true);
+        if ($decoded === false || !str_contains($decoded, ':')) {
+            return false;
+        }
+
+        [$email, $key] = explode(':', $decoded, 2);
+
+        return $this->keyService->authenticate($email, $key, $request->ip()) !== null;
     }
 }
