@@ -2,6 +2,7 @@
 
 use App\Http\Modules\Documental\Controller\DocumentalController;
 use App\Http\Modules\Documental\Controller\DocumentEditorController;
+use App\Http\Modules\Documental\Controller\DesktopKeyController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -36,6 +37,11 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
     Route::get('/editor/info', [DocumentEditorController::class, 'info']);
     Route::get('/editor/config', [DocumentEditorController::class, 'config']);
     Route::post('/editor/new', [DocumentEditorController::class, 'create']);
+
+    // Claves de escritorio propias para conectar la unidad de red (WebDAV)
+    Route::get('/desktop-keys', [DesktopKeyController::class, 'index']);
+    Route::post('/desktop-keys', [DesktopKeyController::class, 'store']);
+    Route::delete('/desktop-keys/{key}', [DesktopKeyController::class, 'destroy'])->whereNumber('key');
 
     // Configuración del módulo (tamaño máximo y extensiones); la consulta la usa el formulario de subida
     Route::get('/settings', [DocumentalController::class, 'settings']);

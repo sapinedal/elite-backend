@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Modules\Documental\Controller\DavController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -22,3 +23,11 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/pagos/pagos.php';
     
 });
+
+// Unidad de red de Gestión Documental (WebDAV) para el Explorador de Windows y el Finder de macOS.
+// Se autentica con correo + clave de escritorio (Basic sobre HTTPS) dentro del propio controlador.
+Route::match(
+    ['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'COPY', 'MOVE', 'LOCK', 'UNLOCK'],
+    'dav/{path?}',
+    [DavController::class, 'handle']
+)->where('path', '.*')->name('documental.dav');

@@ -874,14 +874,105 @@ class DocumentalService
             throw new InvalidArgumentException('El nuevo nombre es igual al actual.');
         }
 
+        $this->relocate($normalizedOld, $normalizedNew, $type, $user, $ip, 'can_rename', 'renombrar');
+
+        $this->log($user, 'rename', $normalizedNew, ['from' => $normalizedOld, 'to' => $normalizedNew, 'type' => $type], $ip);
+
+        return [
+            'message' => 'Elemento renombrado correctamente.',
+            'old_path' => $normalizedOld,
+            'new_path' => $normalizedNew,
+            'new_name' => $cleanNewName,
+        ];
+    }
+
+    /**
+     * Mueve un archivo o carpeta a otra carpeta (arrastrar desde el explorador de archivos del escritorio).
+     * Exige poder eliminar en el origen y poder subir (o crear carpetas) en el destino.
+     */
+    public function moveItem(string $fromPath, string $toPath, string $type, User $user, ?string $ip = null, array $details = []): array
+    {
+        $from = $this->normalizePath($fromPath);
+        $to = $this->normalizePath($toPath);
+        if ($from === '' || $to === '') {
+            throw new InvalidArgumentException('No se puede mover la raíz del repositorio.');
+        }
+        if ($to === $from || str_starts_with($to, $from . '/')) {
+            throw new InvalidArgumentException('No se puede mover una carpeta dentro de sí misma.');
+        }
+
+        $name = basename($to);
+        $this->cleanItemName($name);
+        if ($type === 'file') {
+            $reason = $this->settings()->validateExtension($name);
+            if ($reason !== null) {
+                $this->rejectInvalidFile($reason, $user, 'move', $from, $ip);
+            }
+        }
+
+        $this->authorize($this->getUserPermissionsForPath($user, $from)['can_delete'], 'No tienes permisos para mover este elemento fuera de su carpeta.', $user, 'move', $from, $ip);
+        $target = $this->getUserPermissionsForPath($user, $this->parentOf($to));
+        $this->authorize(
+            $type === 'folder' ? $target['can_create_folder'] : $target['can_upload'],
+            'No tienes permisos para agregar elementos en la carpeta de destino.',
+            $user, 'move', $to, $ip
+        );
+
+        $this->relocate($from, $to, $type, $user, $ip, 'can_delete', 'mover');
+        $this->log($user, 'move', $to, ['from' => $from, 'to' => $to, 'type' => $type] + $details, $ip);
+
+        return ['message' => 'Elemento movido correctamente.', 'old_path' => $from, 'new_path' => $to];
+    }
+
+    /**
+     * Guarda un archivo a partir de un stream (subidas desde la unidad de red del escritorio).
+     * Crea el archivo o lo reemplaza si ya existe, validando permisos, tamaño y extensión.
+     *
+     * @param resource $stream
+     */
+    public function writeFileStream(string $filePath, $stream, int $size, User $user, ?string $ip = null, array $details = []): void
+    {
+        $path = $this->normalizePath($filePath);
+        $directory = $this->parentOf($path);
+        $name = basename($path);
+        if ($path === '') {
+            throw new InvalidArgumentException('El nombre indicado no es válido.');
+        }
+        $this->cleanItemName($name);
+
+        $this->authorize($this->getUserPermissionsForPath($user, $directory)['can_upload'], 'No tienes permisos para subir archivos en este directorio.', $user, 'upload', $directory, $ip);
+
+        $reason = $this->settings()->validateUpload($name, $size);
+        if ($reason !== null) {
+            $this->rejectInvalidFile($reason, $user, 'upload', $path, $ip);
+        }
+
+        $disk = $this->getDisk();
+        $existed = $disk->exists($path);
+        $disk->writeStream($path, $stream);
+
+        $this->log($user, $existed ? 'update' : 'upload', $path, ['size' => $size, 'mime_type' => $this->guessMimeType(pathinfo($name, PATHINFO_EXTENSION))] + $details, $ip);
+        $this->updateSearchIndex(fn (array $entries) => [
+            ...array_values(array_filter($entries, fn (array $entry) => $entry[0] !== $path)),
+            [$path, $size, time()],
+        ]);
+        $this->clearPathCache($path);
+    }
+
+    /**
+     * Traslada un archivo o carpeta en el bucket (renombrar o mover). En S3 trasladar una carpeta implica copiar
+     * cada objeto a la nueva ruta y eliminar los originales; sus reglas y proyecto se trasladan con ella.
+     */
+    protected function relocate(string $normalizedOld, string $normalizedNew, string $type, User $user, ?string $ip, string $descendantFlag, string $verb): void
+    {
         $disk = $this->getDisk();
 
         if ($type === 'folder') {
             if ($disk->directoryExists($normalizedNew)) {
                 throw new InvalidArgumentException('Ya existe una carpeta con ese nombre en este directorio.');
             }
-            $this->assertCanAffectDescendants($user, $normalizedOld, 'can_rename', 'rename', $ip);
-            $this->assertFolderWithinOperationLimit($normalizedOld, 'renombrar');
+            $this->assertCanAffectDescendants($user, $normalizedOld, $descendantFlag, $verb === 'renombrar' ? 'rename' : 'move', $ip);
+            $this->assertFolderWithinOperationLimit($normalizedOld, $verb);
 
             foreach ($disk->allFiles($normalizedOld) as $file) {
                 $disk->copy($file, $normalizedNew . substr($file, strlen($normalizedOld)));
@@ -905,7 +996,6 @@ class DocumentalService
             $disk->move($normalizedOld, $normalizedNew);
         }
 
-        $this->log($user, 'rename', $normalizedNew, ['from' => $normalizedOld, 'to' => $normalizedNew, 'type' => $type], $ip);
         $this->updateSearchIndex(fn (array $files) => array_map(function (array $entry) use ($normalizedOld, $normalizedNew) {
             if ($entry[0] === $normalizedOld || str_starts_with($entry[0], $normalizedOld . '/')) {
                 $entry[0] = $normalizedNew . substr($entry[0], strlen($normalizedOld));
@@ -915,13 +1005,6 @@ class DocumentalService
         }, $files));
         $this->clearPathCache($normalizedOld);
         $this->clearPathCache($normalizedNew);
-
-        return [
-            'message' => 'Elemento renombrado correctamente.',
-            'old_path' => $normalizedOld,
-            'new_path' => $normalizedNew,
-            'new_name' => $cleanNewName,
-        ];
     }
 
     /**

@@ -27,4 +27,7 @@ return [
     // Registrar en auditoría los intentos de acciones negadas por permisos
     'log_denied_attempts' => (bool) env('DOCUMENTAL_LOG_DENIED', true),
 
+    // Dirección de la unidad de red (WebDAV) que se muestra a los usuarios para conectarse desde el escritorio
+    'dav_url' => rtrim((string) env('DOCUMENTAL_DAV_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/api/dav'), '/') . '/',
+
 ];
