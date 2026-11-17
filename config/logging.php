@@ -73,6 +73,15 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Unidad de red de Gestión Documental: diagnóstico de clientes (Office) sin sesión. Nunca guarda claves ni cookies.
+        'dav' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/dav.log'),
+            'level' => 'info',
+            'days' => 7,
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

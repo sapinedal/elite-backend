@@ -208,7 +208,11 @@ it('con descargas aceleradas delega el archivo a nginx tras validar permisos', f
 });
 
 it('a Office sin sesión le indica la ventana de inicio de sesión (MS-OFBA) y al Explorador le pide Basic', function () {
-    $office = dav('OPTIONS', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014']);
+    // OPTIONS solo anuncia capacidades: se responde sin sesión para no abrir la ventana de más
+    dav('OPTIONS', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014'])->assertOk()
+        ->assertHeaderMissing('X-FORMS_BASED_AUTH_REQUIRED');
+
+    $office = dav('PROPFIND', 'comercial/', null, null, ['User-Agent' => 'Microsoft Office Excel 2014']);
     $office->assertStatus(403);
     expect($office->headers->get('X-FORMS_BASED_AUTH_REQUIRED'))->toEndWith('/api/dav-login')
         ->and($office->headers->get('X-FORMS_BASED_AUTH_RETURN_URL'))->toEndWith('/api/dav-login/listo');
@@ -248,7 +252,7 @@ it('inicia sesión desde Office con la contraseña de Elite y usa la cookie en l
 
     // Al revocar la sesión desde Elite, Office vuelve a pedir inicio de sesión
     DocumentDesktopKey::where('user_id', $this->user->id)->delete();
-    $this->call('OPTIONS', '/api/dav/comercial/', [], [DavLoginController::COOKIE => $cookie->getValue()], [], ['HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'])->assertStatus(403);
+    $this->call('PROPFIND', '/api/dav/comercial/', [], [DavLoginController::COOKIE => $cookie->getValue()], [], ['HTTP_USER_AGENT' => 'Microsoft Office Excel 2014', 'HTTP_DEPTH' => '1'])->assertStatus(403);
 });
 
 it('también acepta una clave de escritorio en la ventana de Office sin crear otra', function () {
@@ -282,9 +286,9 @@ it('a Office con credenciales que no sirven también le muestra la ventana de in
     $office = ['User-Agent' => 'Microsoft Office Excel 2014'];
 
     // Basic con una clave vieja o la contraseña de Elite, o NTLM que Windows agrega por su cuenta
-    dav('OPTIONS', 'comercial/', $this->user, 'CLAVE-VIEJA', $office)->assertStatus(403)
+    dav('GET', 'comercial/SAN MIGUEL/promesa.pdf', $this->user, 'CLAVE-VIEJA', $office)->assertStatus(403)
         ->assertHeader('X-FORMS_BASED_AUTH_REQUIRED');
-    $this->call('OPTIONS', '/api/dav/comercial/', [], [], [], ['HTTP_AUTHORIZATION' => 'NTLM TlRMTVNTUAABAAAA', 'HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'])
+    $this->call('LOCK', '/api/dav/comercial/SAN%20MIGUEL/promesa.pdf', [], [], [], ['HTTP_AUTHORIZATION' => 'NTLM TlRMTVNTUAABAAAA', 'HTTP_USER_AGENT' => 'Microsoft Office Excel 2014'])
         ->assertStatus(403);
 
     // Con una clave de escritorio válida Office entra directo

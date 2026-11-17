@@ -12,6 +12,7 @@ use App\Http\Modules\Documental\Dav\DavTemporaryFilesPlugin;
 use App\Http\Modules\Documental\Service\DesktopKeyService;
 use App\Http\Modules\Documental\Service\DocumentalService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
 use Sabre\DAV\Locks\Backend\File as FileLocks;
@@ -51,6 +52,19 @@ class DavController extends Controller
         // si no trae una sesión válida ni un Basic válido, siempre recibe la ventana de inicio de sesión
         $cookieUser = $this->loginController->userFromCookie($request);
         if (!$cookieUser && $this->isOfficeClient($request) && !$this->hasValidBasic($request)) {
+            $this->logOfficeWithoutSession($request);
+
+            // OPTIONS solo pregunta qué soporta el servidor (no entrega datos): algunas partes de Office lo envían
+            // sin la cookie de sesión y, si recibieran 403, abrirían otra vez la ventana de inicio de sesión
+            if ($request->isMethod('OPTIONS')) {
+                return response('', 200, [
+                    'DAV' => '1, 2, 3, extended-mkcol',
+                    'MS-Author-Via' => 'DAV',
+                    'Allow' => 'OPTIONS, GET, HEAD, DELETE, PROPFIND, PUT, PROPPATCH, COPY, MOVE, MKCOL, LOCK, UNLOCK',
+                    'Accept-Ranges' => 'bytes',
+                ]);
+            }
+
             return response('', 403, [
                 'X-FORMS_BASED_AUTH_REQUIRED' => DavLoginController::loginUrl(),
                 'X-FORMS_BASED_AUTH_RETURN_URL' => DavLoginController::returnUrl(),
@@ -161,5 +175,25 @@ class DavController extends Controller
         [$email, $key] = explode(':', $decoded, 2);
 
         return $this->keyService->authenticate($email, $key, $request->ip()) !== null;
+    }
+
+    /**
+     * Diagnóstico: qué parte de Office llega sin sesión válida. Solo registra nombres de cookies y el tipo de
+     * autenticación, nunca sus valores.
+     */
+    protected function logOfficeWithoutSession(Request $request): void
+    {
+        $authorization = (string) $request->header('Authorization');
+
+        Log::channel('dav')->info('office_sin_sesion', [
+            'method' => $request->getMethod(),
+            'path' => $request->getPathInfo(),
+            'agent' => $request->userAgent(),
+            'auth_scheme' => $authorization === '' ? null : strtok($authorization, ' '),
+            'cookie_names' => array_keys($request->cookies->all()),
+            'session_cookie' => $request->cookies->has(DavLoginController::COOKIE) ? 'presente pero inválida' : 'ausente',
+            'forms_accepted' => $request->header('X-FORMS_BASED_AUTH_ACCEPTED'),
+            'ip' => $request->ip(),
+        ]);
     }
 }
