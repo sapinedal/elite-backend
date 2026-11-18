@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Inspiring;
 use App\Http\Modules\Contratacion\Service\PolicyAlertService;
 use App\Http\Modules\Documental\Service\DocumentalService;
+use App\Http\Modules\Obra\Service\InterventoriaService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -26,3 +27,23 @@ Artisan::command('contratacion:policy-alerts', function (PolicyAlertService $ser
 })->purpose('Envía las alertas de pólizas de contratos próximas a vencer');
 
 Schedule::command('contratacion:policy-alerts')->dailyAt('07:00')->withoutOverlapping();
+
+// Lee el último informe semanal de interventoría que llegó a Spaces (rclone lo copia desde Drive cada mañana).
+// --todos importa todos los informes (historial) y --forzar vuelve a leer aunque no hayan cambiado.
+Artisan::command('interventoria:importar {--todos} {--forzar}', function (InterventoriaService $service) {
+    $summary = $service->import((bool) $this->option('todos'), (bool) $this->option('forzar'));
+    $this->info(sprintf(
+        'Último informe: %s | importados: %s | sin cambios: %d | con error: %s',
+        $summary['latest'] ?? 'ninguno',
+        $summary['imported'] ? implode(', ', $summary['imported']) : '0',
+        count($summary['skipped']),
+        $summary['failed'] ? implode(', ', array_keys($summary['failed'])) : '0'
+    ));
+    foreach ($summary['failed'] as $numero => $error) {
+        $this->warn("Semana {$numero}: {$error}");
+    }
+
+    return $summary['failed'] && !$summary['imported'] ? 1 : 0;
+})->purpose('Importa los informes semanales de interventoría desde Spaces');
+
+Schedule::command('interventoria:importar')->hourly()->withoutOverlapping();
