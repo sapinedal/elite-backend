@@ -14,7 +14,7 @@ const INTERVENTORIA_FOLDER = 'tecnica/INFORMES SEMANALES INTERVENTORÍA';
 function informeJson(int $numero, float $avance, array $extra = []): string
 {
     return json_encode(array_merge([
-        'parser_version' => 1,
+        'parser_version' => 2,
         'numero' => $numero,
         // Fecha mal formada a propósito en informes antiguos: no debe impedir la importación
         'fecha' => $numero < 20 ? '2026-11--10' : '2026-11-17',
@@ -57,7 +57,7 @@ it('no vuelve a leer un informe sin cambios y con --todos importa el historial',
     $this->artisan('interventoria:importar')->expectsOutputToContain('sin cambios: 1')->assertSuccessful();
 
     Process::fake(function ($process) {
-        preg_match('/(\d+)$/', file_get_contents(end($process->command)), $m);
+        preg_match('/(\d+)$/', file_get_contents($process->command[2]), $m); // [python, lector, pdf, --fotos, carpeta]
 
         return Process::result(informeJson((int) $m[1], (float) $m[1]));
     });
@@ -105,4 +105,69 @@ it('entrega el último informe con su serie histórica y el enlace al PDF', func
 it('exige el permiso del Módulo Técnico', function () {
     $otro = User::create(['name' => 'Otro', 'email' => 'otro@example.com', 'password' => 'secret']);
     $this->actingAs($otro)->getJson('/api/v1/obra/interventoria')->assertForbidden();
+});
+
+/** Simula el lector: escribe una foto en la carpeta --fotos y devuelve el JSON del informe */
+function fakeParserWithPhoto(int $numero): void
+{
+    Process::fake(function ($process) use ($numero) {
+        $command = (array) $process->command;
+        $folder = $command[array_search('--fotos', $command, true) + 1] ?? null;
+        if ($folder) {
+            file_put_contents($folder . '/foto-01.jpg', 'jpeg-bytes');
+        }
+
+        return Process::result(informeJson($numero, 65.82, ['fotos' => [['archivo' => 'foto-01.jpg', 'pagina' => 3, 'ancho' => 400, 'alto' => 300]]]));
+    });
+}
+
+it('guarda el registro fotográfico y lo entrega con enlaces firmados y temporales', function () {
+    Storage::fake('local');
+    config(['interventoria.photos_disk' => 'local']);
+    fakeParserWithPhoto(34);
+
+    $this->artisan('interventoria:importar')->assertSuccessful();
+    Storage::disk('local')->assertExists('interventoria/34/foto-01.jpg');
+
+    $url = $this->actingAs($this->user)->getJson('/api/v1/obra/interventoria')->json('data.report.fotos.0.url');
+    expect($url)->toContain('/obra/interventoria/fotos/34/foto-01.jpg')->toContain('signature=');
+
+    // Sin sesión basta el enlace firmado (se usa en <img>); alterado o sin firma no sirve
+    $this->app['auth']->forgetGuards();
+    $this->get($url)->assertOk();
+    $this->get(str_replace('signature=', 'signature=x', $url))->assertForbidden();
+    $this->get('/api/v1/obra/interventoria/fotos/34/foto-01.jpg')->assertForbidden();
+    $this->get('/api/v1/obra/interventoria/fotos/34/..%2F..%2F.env')->assertNotFound();
+});
+
+it('vuelve a leer los informes importados con una versión anterior del lector', function () {
+    Process::fake(fn ($process) => Process::result(informeJson(34, 65.82, ['parser_version' => 1])));
+    $this->artisan('interventoria:importar')->assertSuccessful();
+
+    Process::fake(fn ($process) => Process::result(informeJson(34, 65.82)));
+    $this->artisan('interventoria:importar')->expectsOutputToContain('importados: 34')->assertSuccessful();
+    expect(InterventoriaReport::first()->parser_version)->toBe(2);
+});
+
+it('el botón Sincronizar trae lo nuevo desde Drive si está configurado e importa el último informe', function () {
+    config(['interventoria.sync_command' => 'sudo -n /usr/local/bin/rclone-sync-interventoria.sh']);
+    Process::fake([
+        'sudo *' => Process::result('ok'),
+        '*' => Process::result(informeJson(34, 65.82)),
+    ]);
+
+    $response = $this->actingAs($this->user)->postJson('/api/v1/obra/interventoria/sincronizar')->assertOk();
+    expect($response->json('message'))->toBe('Se cargó el informe N° 34.')
+        ->and($response->json('data.report.numero'))->toBe(34)
+        ->and($response->json('data.sync.desde_drive'))->toBeTrue()
+        ->and($response->json('data.sync.ultima'))->not->toBeNull();
+    Process::assertRan('sudo -n /usr/local/bin/rclone-sync-interventoria.sh');
+
+    // Segunda vez: ya está al día. Si Drive falla, se usa lo que ya está copiado y se avisa
+    Process::fake([
+        'sudo *' => Process::result('', 'sin red', 1),
+        '*' => Process::result(informeJson(34, 65.82)),
+    ]);
+    expect($this->actingAs($this->user)->postJson('/api/v1/obra/interventoria/sincronizar')->json('message'))
+        ->toBe('Ya tienes el último informe (N° 34). No se pudo consultar Drive en este momento; se usó lo que ya estaba copiado.');
 });

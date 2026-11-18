@@ -2,7 +2,9 @@
 """
 Lector de los informes semanales de interventoría (Equiproyectos S.A.S, formato EQP-F-IS).
 
-Uso:  parse_informe.py <ruta.pdf>   ->  imprime un JSON con los datos del informe en stdout.
+Uso:  parse_informe.py <ruta.pdf> [--fotos <carpeta>]
+      Imprime un JSON con los datos del informe en stdout. Con --fotos guarda el registro fotográfico
+      en esa carpeta (foto-01.jpg, foto-02.jpg...).
 
 Los informes son PDF digitales exportados desde Excel, así que se leen sin OCR con pdfplumber.
 El diseño cambia un poco entre semanas (capítulos que aparecen o desaparecen, tablas que se parten),
@@ -15,11 +17,16 @@ import logging
 import re
 import sys
 import unicodedata
+from pathlib import Path
 from datetime import date
 
 import pdfplumber
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2
+
+# Fotos: se recortan tal como se ven en la página (orientación y encuadre correctos) a esta resolución
+PHOTO_DPI = 220
+PHOTO_MIN_POINTS = 40  # descarta franjas y adornos del diseño
 
 MONTHS = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
@@ -248,14 +255,34 @@ def parse_policies(lines: list[str]) -> list[dict]:
     return policies
 
 
-def parse(path: str) -> dict:
+def extract_photos(pdf, folder: str | None) -> list[dict]:
+    """Registro fotográfico: las fotos son JPEG; el logo del encabezado (PNG) y las franjas del diseño se descartan."""
+    photos = []
+    for page_index, page in enumerate(pdf.pages):
+        for image in page.images:
+            if "DCT" not in str(image["stream"].get_filters()):
+                continue
+            if image["width"] < PHOTO_MIN_POINTS or image["height"] < PHOTO_MIN_POINTS:
+                continue
+            name = f"foto-{len(photos) + 1:02d}.jpg"
+            width = height = None
+            if folder:
+                bbox = (max(0, image["x0"]), max(0, image["top"]), min(page.width, image["x1"]), min(page.height, image["bottom"]))
+                rendered = page.crop(bbox).to_image(resolution=PHOTO_DPI).original.convert("RGB")
+                rendered.save(Path(folder) / name, "JPEG", quality=85, optimize=True)
+                width, height = rendered.size
+            photos.append({"archivo": name, "pagina": page_index + 1, "ancho": width, "alto": height})
+    return photos
+
+
+def parse(path: str, photos_folder: str | None = None) -> dict:
     with pdfplumber.open(path) as pdf:
         page_texts = [p.extract_text() or "" for p in pdf.pages]
         rows: list[list[str]] = []
         for page in pdf.pages:
             for table in page.extract_tables():
                 rows.extend([[c or "" for c in r] for r in table])
-        photos = sum(len(p.images) for p in pdf.pages)
+        photos = extract_photos(pdf, photos_folder)
 
     text = "\n".join(page_texts)
     lines = [squash(l) for l in text.splitlines() if squash(l)]
@@ -266,6 +293,9 @@ def parse(path: str) -> dict:
     inicio_fin = re.search(rf"FECHA INICIO\s+({DATE})\s+FECHA FINALIZACI[ÓO]N\s+({DATE})", first)
     interventoria = re.search(r"INTERVENTOR[ÍI]A\s+(.+?)\s+NIT", first)
     proyecto = re.search(r"^PROYECTO\s+(?!:)(.+)$", first, re.MULTILINE)
+    constructor = re.search(r"^CONSTRUCTOR\s+(.+?)(?:\s+NIT\s+([\d\.\-]+))?\s*$", first, re.MULTILINE)
+    ubicacion = re.search(r"^UBICACI[ÓO]N\s+(.+?)\s+FECHA INICIO", first, re.MULTILINE)
+    nit_interventoria = re.search(r"INTERVENTOR[ÍI]A\s+.+?\s+NIT\s+([\d\.\-]+)", first)
 
     by_text = parse_chapters_from_text(lines)
     by_table = parse_chapters_from_tables(rows)
@@ -281,6 +311,10 @@ def parse(path: str) -> dict:
         "fecha": spanish_date_to_iso(fecha.group(1)) if fecha else None,
         "proyecto": squash(proyecto.group(1)) if proyecto else None,
         "interventoria": squash(interventoria.group(1)) if interventoria else None,
+        "interventoria_nit": nit_interventoria.group(1) if nit_interventoria else None,
+        "constructor": squash(constructor.group(1)) if constructor else None,
+        "constructor_nit": constructor.group(2) if constructor else None,
+        "ubicacion": squash(ubicacion.group(1)) if ubicacion else None,
         "fecha_inicio_obra": to_iso(inicio_fin.group(1)) if inicio_fin else None,
         "fecha_fin_obra": to_iso(inicio_fin.group(2)) if inicio_fin else None,
         "presupuesto": parse_budget(rows, text),
@@ -295,11 +329,17 @@ def parse(path: str) -> dict:
 
 def main() -> int:
     logging.disable(logging.CRITICAL)  # pdfminer avisa en stderr de colores inválidos del PDF; no afecta el texto
-    if len(sys.argv) != 2:
-        print("Uso: parse_informe.py <informe.pdf>", file=sys.stderr)
+    args = sys.argv[1:]
+    photos_folder = None
+    if "--fotos" in args:
+        i = args.index("--fotos")
+        photos_folder = args[i + 1] if i + 1 < len(args) else None
+        args = args[:i] + args[i + 2:]
+    if len(args) != 1 or (photos_folder is not None and not Path(photos_folder).is_dir()):
+        print("Uso: parse_informe.py <informe.pdf> [--fotos <carpeta existente>]", file=sys.stderr)
         return 2
     try:
-        data = parse(sys.argv[1])
+        data = parse(args[0], photos_folder)
     except Exception as exc:  # noqa: BLE001 - se informa a Laravel como error legible
         print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
         return 1

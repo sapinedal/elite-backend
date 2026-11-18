@@ -24,4 +24,16 @@ return [
     // Segundos máximos para leer un informe
     'timeout' => (int) env('INTERVENTORIA_TIMEOUT', 120),
 
+    // Versión del lector: los informes leídos con una versión anterior se vuelven a leer en la siguiente importación
+    'parser_version' => 2,
+
+    // Registro fotográfico extraído del PDF (disco privado; se sirve con enlaces firmados temporales)
+    'photos_disk' => env('INTERVENTORIA_PHOTOS_DISK', 'local'),
+    'photos_folder' => 'interventoria',
+
+    // Botón "Sincronizar": comando opcional que trae la carpeta desde Drive antes de importar
+    // (ej. "sudo -n /usr/local/bin/rclone-sync-interventoria.sh"). Vacío = solo importa lo que ya está en Spaces.
+    'sync_command' => env('INTERVENTORIA_SYNC_COMMAND'),
+    'sync_timeout' => (int) env('INTERVENTORIA_SYNC_TIMEOUT', 300),
+
 ];
