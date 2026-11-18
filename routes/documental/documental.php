@@ -30,6 +30,10 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
     // Descarga / URL firmada temporal de archivo
     Route::get('/download', [DocumentalController::class, 'download']);
 
+    // Enlaces públicos permanentes (no caducan) de archivos
+    Route::post('/share-links', [DocumentalController::class, 'createShareLink']);
+    Route::delete('/share-links', [DocumentalController::class, 'revokeShareLink']);
+
     // Permisos efectivos del usuario (y restricciones por carpeta si administra el módulo)
     Route::get('/permissions', [DocumentalController::class, 'permissions']);
 
@@ -60,3 +64,9 @@ Route::prefix('documental')->middleware(['auth:sanctum', 'permission:documental.
 Route::post('/documental/editor/callback', [DocumentEditorController::class, 'callback'])
     ->middleware(['signed:relative', 'throttle:120,1'])
     ->name('documental.editor.callback');
+
+// Enlace público permanente: sin sesión, se protege con el token aleatorio y se puede revocar
+Route::get('/documental/public/{token}', [DocumentalController::class, 'openShareLink'])
+    ->where('token', '[A-Za-z0-9]{48}')
+    ->middleware('throttle:60,1')
+    ->name('documental.share');

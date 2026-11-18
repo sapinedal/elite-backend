@@ -6,6 +6,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Documental\Models\DocumentActivityLog;
 use App\Http\Modules\Documental\Models\DocumentProjectFolder;
 use App\Http\Modules\Documental\Models\DocumentRolePermission;
+use App\Http\Modules\Documental\Models\DocumentShareLink;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Cache\Repository;
@@ -832,6 +833,8 @@ class DocumentalService
             }
             $disk->delete($path);
         }
+        // Los enlaces públicos del archivo (o de lo que contenía la carpeta) dejan de funcionar
+        DocumentShareLink::active()->under($path)->update(['revoked_at' => now()]);
 
         $this->log($user, 'delete', $path, ['type' => $type], $ip);
         $this->updateSearchIndex(fn (array $files) => array_values(array_filter(
@@ -994,6 +997,11 @@ class DocumentalService
                 throw new InvalidArgumentException('Ya existe un archivo con ese nombre en este directorio.');
             }
             $disk->move($normalizedOld, $normalizedNew);
+        }
+
+        // Los enlaces públicos permanentes siguen al archivo (o a lo que contiene la carpeta)
+        foreach (DocumentShareLink::under($normalizedOld)->get() as $link) {
+            $link->update(['path' => $normalizedNew . substr($link->path, strlen($normalizedOld))]);
         }
 
         $this->updateSearchIndex(fn (array $files) => array_map(function (array $entry) use ($normalizedOld, $normalizedNew) {

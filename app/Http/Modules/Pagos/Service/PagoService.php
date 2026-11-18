@@ -447,7 +447,7 @@ class PagoService
     }
 
     /**
-     * Contabilidad registra el pago (total o abono) de una cuenta programada, con soporte opcional.
+     * Contabilidad registra el pago (total o abono) de una cuenta programada, con soporte de pago obligatorio.
      */
     public function pay(PagoCuenta $cuenta, array $data, User $user): PagoCuenta
     {
@@ -463,9 +463,10 @@ class PagoService
             throw new InvalidArgumentException('El valor pagado debe ser mayor a cero y no superar el saldo de $' . number_format($cuenta->balance(), 0, ',', '.') . '.');
         }
 
-        $file = !empty($data['upload_token'])
-            ? $this->uploads->claimUpload($data['upload_token'], $user, $this->supportFolder($cuenta))
-            : null;
+        if (empty($data['upload_token'])) {
+            throw new InvalidArgumentException('Adjunta el soporte de pago para registrar el pago.');
+        }
+        $file = $this->uploads->claimUpload($data['upload_token'], $user, $this->supportFolder($cuenta));
 
         return DB::transaction(function () use ($cuenta, $data, $amount, $file, $user) {
             $cuenta = PagoCuenta::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();

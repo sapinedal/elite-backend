@@ -47,7 +47,7 @@ class ContractController extends Controller
     }
 
     /**
-     * Catálogos del formulario: frentes (torres) del proyecto activo, tipos, estados y carpetas.
+     * Catálogos del formulario: centros de costos (torres) del proyecto activo, tipos, estados y carpetas.
      */
     public function catalogs(Request $request): JsonResponse
     {
@@ -105,13 +105,13 @@ class ContractController extends Controller
     }
 
     /**
-     * Crea un frente de obra (torre) en el proyecto activo.
+     * Crea un centro de costos (torre) en el proyecto activo.
      */
     public function storeTower(Request $request): JsonResponse
     {
         $projectId = $this->activeProjectId($request);
         if (!$projectId) {
-            return response()->json(['status' => 'error', 'message' => 'Selecciona un proyecto activo para crear el frente de obra.'], 422);
+            return response()->json(['status' => 'error', 'message' => 'Selecciona un proyecto activo para crear el centro de costos.'], 422);
         }
 
         $validated = $request->validate([
@@ -121,12 +121,12 @@ class ContractController extends Controller
         ]);
 
         if (Tower::where('project_id', $projectId)->whereRaw('lower(name) = ?', [mb_strtolower($validated['name'])])->exists()) {
-            return response()->json(['status' => 'error', 'message' => 'Ya existe un frente de obra con ese nombre en el proyecto.'], 422);
+            return response()->json(['status' => 'error', 'message' => 'Ya existe un centro de costos con ese nombre en el proyecto.'], 422);
         }
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Frente de obra creado exitosamente.',
+            'message' => 'Centro de costos creado exitosamente.',
             'data' => $this->towerService->createTower($projectId, $validated),
         ], 201);
     }

@@ -74,7 +74,7 @@ class StoreContractRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'tower_id' => 'frente de obra',
+            'tower_id' => 'centro de costos',
             'contract_type_id' => 'tipo de contrato',
             'contract_code' => 'ID del contrato',
             'contractor_id' => 'proveedor',

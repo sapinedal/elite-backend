@@ -18,12 +18,17 @@ class PayPagoCuentaRequest extends FormRequest
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
             'reference' => ['nullable', 'string', 'max:150'],
             'comment' => ['nullable', 'string', 'max:1000'],
-            'upload_token' => ['nullable', 'uuid'],
+            'upload_token' => ['required', 'uuid'],
         ];
     }
 
     public function attributes(): array
     {
-        return ['amount' => 'valor pagado', 'payment_date' => 'fecha de pago', 'reference' => 'referencia'];
+        return ['amount' => 'valor pagado', 'payment_date' => 'fecha de pago', 'reference' => 'referencia', 'upload_token' => 'soporte de pago'];
+    }
+
+    public function messages(): array
+    {
+        return ['upload_token.required' => 'Adjunta el soporte de pago para registrar el pago.'];
     }
 }

@@ -15,9 +15,11 @@ use App\Http\Modules\Documental\Request\UpdateSettingsRequest;
 use App\Http\Modules\Documental\Request\UploadFileRequest;
 use App\Http\Modules\Documental\Service\DocumentalService;
 use App\Http\Modules\Documental\Service\DocumentalSettingsService;
+use App\Http\Modules\Documental\Service\DocumentShareLinkService;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -147,6 +149,54 @@ class DocumentalController extends Controller
             $request->user(),
             $request->ip()
         ));
+    }
+
+    /**
+     * Enlace público permanente (no caduca) del archivo; reutiliza el activo si ya existe.
+     * POST /api/v1/documental/share-links { path }
+     */
+    public function createShareLink(Request $request): JsonResponse
+    {
+        $request->validate(['path' => 'required|string']);
+
+        return $this->respond(fn () => $this->shareLinks()->createLink($request->input('path'), $request->user(), $request->ip()));
+    }
+
+    /**
+     * Revoca el enlace público del archivo.
+     * DELETE /api/v1/documental/share-links?path=...
+     */
+    public function revokeShareLink(Request $request): JsonResponse
+    {
+        $request->validate(['path' => 'required|string']);
+
+        return $this->respond(fn () => $this->shareLinks()->revokeLink($request->input('path'), $request->user(), $request->ip()));
+    }
+
+    /**
+     * Acceso público (sin sesión) a un enlace permanente: redirige a una URL firmada corta de Spaces.
+     * GET /api/v1/documental/public/{token}
+     */
+    public function openShareLink(string $token): RedirectResponse|JsonResponse
+    {
+        try {
+            $url = $this->shareLinks()->resolve($token);
+        } catch (\Throwable $e) {
+            Log::error('Error al abrir enlace público documental', ['exception' => $e]);
+            $url = null;
+        }
+
+        if (!$url) {
+            return response()->json(['success' => false, 'message' => 'El enlace no existe, fue revocado o el archivo ya no está disponible.'], 404);
+        }
+
+        return redirect()->away($url);
+    }
+
+    protected function shareLinks(): DocumentShareLinkService
+    {
+        // Usa la misma instancia del servicio para conservar el proyecto activo
+        return new DocumentShareLinkService($this->documentalService);
     }
 
     /**
