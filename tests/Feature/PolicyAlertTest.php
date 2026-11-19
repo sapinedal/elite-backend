@@ -163,7 +163,7 @@ test('reciben el aviso los correos configurados y los usuarios con el permiso de
     policyFor(contractFor($project), now()->addDays(10)->toDateString());
 
     $mariaJose = App\Http\Modules\Users\Models\User::create(['name' => 'María José Ospina', 'email' => 'mjospina@example.com', 'password' => 'secret']);
-    $mariaJose->givePermissionTo(['contratacion.alertas_polizas', 'proyectos.ver_todos']);
+    $mariaJose->givePermissionTo(['correos.contratacion.polizas', 'proyectos.ver_todos']);
 
     $this->artisan('contratacion:policy-alerts')->assertSuccessful();
 

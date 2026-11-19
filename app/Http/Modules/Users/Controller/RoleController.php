@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Users\Controller;
 
+use App\Http\Modules\Users\Service\MailRecipients;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
@@ -156,6 +157,11 @@ class RoleController extends Controller
                 'description' => 'Cuadro de pagos: priorización, registro de pagos y abonos con trazabilidad',
                 'permissions' => []
             ],
+            'correos' => [
+                'title' => 'Correos de la Herramienta',
+                'description' => 'Quién recibe cada correo de los flujos. Se asigna directamente al usuario (no por rol) y aplica en sus proyectos',
+                'permissions' => []
+            ],
             'documental' => [
                 'title' => 'Gestión Documental',
                 'description' => 'Explorador y repositorio de archivos S3 / Spaces',
@@ -202,7 +208,8 @@ class RoleController extends Controller
 
         return response()->json([
             'all' => $permissions->pluck('name'),
-            'modules' => $modules
+            'modules' => $modules,
+            'labels' => MailRecipients::PERMISSIONS,
         ]);
     }
 }

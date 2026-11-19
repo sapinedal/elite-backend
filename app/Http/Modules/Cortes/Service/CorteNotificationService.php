@@ -7,7 +7,7 @@ use App\Http\Modules\Cortes\Mail\CorteNotificationMail;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteHistory;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
-use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Users\Service\MailRecipients;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -15,7 +15,8 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Correos del flujo de cortes. Quién recibe cada aviso (destinatarios en config/cortes.php):
+ * Correos del flujo de cortes. Cada destinatario es un permiso correos.cortes.* asignado directamente al usuario
+ * (con acceso al proyecto), más los buzones externos de config/cortes.php:
  *
  * | Evento                       | Para                                                         |
  * |------------------------------|--------------------------------------------------------------|
@@ -26,9 +27,9 @@ use Throwable;
  * | Devuelto por Interventor     | Residentes                                                   |
  * | Devuelto por Director        | Residentes + Interventor                                     |
  * | Devuelto por Gerencia        | Residentes + Interventor + Director                          |
- * | Factura cargada              | Permiso cortes.multifox directo (registro en Multifox)        |
+ * | Factura cargada              | Multifox (registro en Multifox)                              |
  *
- * "Residentes" = quien radicó el corte + cortes.residentes. En TODOS los correos va en copia cortes.monitor.
+ * "Residentes" = quien radicó el corte + correos.cortes.residentes. En TODOS los correos va en copia correos.cortes.copia.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
  */
 class CorteNotificationService
@@ -56,7 +57,7 @@ class CorteNotificationService
         // Última etapa: aviso de aprobación a todos los que participaron y correo aparte a Facturación
         $participants = $this->residentes($corte)->merge($this->previousReviewers($corte, $stage));
         $this->send($corte, CorteNotificationMail::EVENT_APPROVED, $participants, $stage, $comment);
-        $this->send($corte, CorteNotificationMail::EVENT_BILLING, collect(config('cortes.facturacion', [])), $stage, $comment);
+        $this->send($corte, CorteNotificationMail::EVENT_BILLING, MailRecipients::for('cortes', 'facturacion', $corte->project_id, config('cortes.facturacion', [])), $stage, $comment);
     }
 
     public function returned(Corte $corte, string $stage, string $comment): void
@@ -70,11 +71,12 @@ class CorteNotificationService
      */
     public function invoiceUploaded(CorteInvoice $invoice): void
     {
-        $to = $this->normalize($this->multifoxRecipients());
-        $cc = $this->normalize(collect(config('cortes.monitor', [])))->diff($to)->values();
+        $projectId = $invoice->corte->project_id;
+        $to = $this->normalize($this->multifoxRecipients('correos.cortes.multifox', $projectId));
+        $cc = $this->normalize($this->copia($projectId))->diff($to)->values();
 
         if ($to->isEmpty()) {
-            Log::warning("Cortes: nadie tiene el cargo de Multifox configurado para la factura {$invoice->invoice_number} (corte {$invoice->corte->code}).");
+            Log::warning("Cortes: nadie tiene el permiso correos.cortes.multifox para la factura {$invoice->invoice_number} (corte {$invoice->corte->code}).");
             if ($cc->isEmpty()) {
                 return;
             }
@@ -89,18 +91,12 @@ class CorteNotificationService
     }
 
     /**
-     * Usuarios activos con el permiso cortes.multifox asignado directamente (no por rol).
-     * Si nadie lo tiene, los correos de respaldo de cortes.multifox_emails.
-     * En ambos casos solo se conservan los correos de los dominios permitidos.
+     * Usuarios con el permiso de correo de Multifox ($permission) asignado directamente y acceso al proyecto, más
+     * los buzones externos de cortes.multifox_emails. Solo se conservan los correos de los dominios permitidos.
      */
-    public function multifoxRecipients(): Collection
+    public function multifoxRecipients(string $permission = 'correos.cortes.multifox', ?int $projectId = null): Collection
     {
-        $emails = User::query()
-            ->withDirectPermission('cortes.multifox')
-            ->whereNotNull('email')
-            ->pluck('email');
-
-        $emails = $emails->isNotEmpty() ? $emails : collect(config('cortes.multifox_emails', []));
+        $emails = collect(config('cortes.multifox_emails', []))->merge(MailRecipients::emails($permission, $projectId));
 
         // El aviso lleva la factura adjunta: solo a correos de la empresa (cortes.multifox_allowed_domains)
         $domains = collect(config('cortes.multifox_allowed_domains', []))->map(fn ($d) => mb_strtolower(ltrim(trim($d), '@')));
@@ -117,7 +113,7 @@ class CorteNotificationService
     public function send(Corte $corte, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
     {
         $to = $this->normalize($recipients);
-        $cc = $this->normalize(collect(config('cortes.monitor', [])))->diff($to)->values();
+        $cc = $this->normalize($this->copia($corte->project_id))->diff($to)->values();
 
         if ($to->isEmpty()) {
             Log::warning("Cortes: no hay destinatarios para el aviso '{$event}' del corte {$corte->code} (etapa: " . ($stage ?? '-') . ').');
@@ -145,30 +141,27 @@ class CorteNotificationService
             ->values();
     }
 
-    /**
-     * Quien radicó el corte más los residentes de obra configurados.
-     */
-    protected function residentes(Corte $corte): Collection
+    /** En copia de todos los correos del flujo: correos.cortes.copia + cortes.monitor. */
+    protected function copia(?int $projectId): Collection
     {
-        return collect([$corte->creator?->email])->merge(config('cortes.residentes', []));
+        return MailRecipients::for('cortes', 'copia', $projectId, config('cortes.monitor', []));
     }
 
     /**
-     * Revisores de una etapa: los correos configurados en cortes.stage_emails; si no hay, los usuarios con
-     * el permiso de la etapa que tienen acceso al proyecto.
+     * Quien radicó el corte más los usuarios con correos.cortes.residentes (y cortes.residentes).
+     */
+    protected function residentes(Corte $corte): Collection
+    {
+        return collect([$corte->creator?->email])
+            ->merge(MailRecipients::for('cortes', 'residentes', $corte->project_id, config('cortes.residentes', [])));
+    }
+
+    /**
+     * Revisores de una etapa: usuarios con correos.cortes.<etapa> y acceso al proyecto, más cortes.stage_emails.
      */
     protected function stageRecipients(Corte $corte, string $stage): Collection
     {
-        $configured = config("cortes.stage_emails.{$stage}", []);
-        if ($configured) {
-            return collect($configured);
-        }
-
-        return User::permission(CorteWorkflow::STAGES[$stage]['permission'])
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($corte->project_id))
-            ->pluck('email');
+        return MailRecipients::for('cortes', $stage, $corte->project_id, config("cortes.stage_emails.{$stage}", []));
     }
 
     /**

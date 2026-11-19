@@ -6,6 +6,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Contratacion\Mail\PolicyExpiringMail;
 use App\Http\Modules\Contratacion\Models\ContratacionPolicy;
 use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Users\Service\MailRecipients;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -19,8 +20,8 @@ use Throwable;
  */
 class PolicyAlertService
 {
-    // Quien lo tenga recibe los avisos de pólizas, además de contratacion.alert_emails
-    public const PERMISSION_RECIPIENT = 'contratacion.alertas_polizas';
+    // Quien lo tenga asignado directamente recibe los avisos de pólizas, además de contratacion.alert_emails
+    public const PERMISSION_RECIPIENT = 'correos.contratacion.polizas';
 
     /**
      * @return array{projects: int, policies: int, skipped: int}
@@ -70,21 +71,19 @@ class PolicyAlertService
     }
 
     /**
-     * Destinatarios: los correos de contratacion.alert_emails (Director de Obra y Paula Camacho) más los usuarios
-     * con el permiso contratacion.alertas_polizas que tienen acceso al proyecto. Si no hay ninguno, los usuarios
-     * con contratacion.editar del proyecto, para que el aviso no se pierda.
+     * Destinatarios: los usuarios con correos.contratacion.polizas asignado directamente y acceso al proyecto, más
+     * los buzones externos de contratacion.alert_emails. Si no hay ninguno, los usuarios con contratacion.editar
+     * del proyecto, para que el aviso no se pierda.
      */
     protected function recipientsFor(Project $project): Collection
     {
-        $usersWith = fn (string $permission) => User::permission($permission)
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($project->id))
-            ->pluck('email');
-
-        $emails = collect(config('contratacion.alert_emails'))->merge($usersWith(self::PERMISSION_RECIPIENT));
+        $emails = MailRecipients::for('contratacion', 'polizas', $project->id, config('contratacion.alert_emails', []));
         if ($emails->filter()->isEmpty()) {
-            $emails = $usersWith('contratacion.editar');
+            $emails = User::permission('contratacion.editar')
+                ->whereNotNull('email')
+                ->get()
+                ->filter(fn (User $user) => $user->canAccessProject($project->id))
+                ->pluck('email');
         }
 
         return $emails

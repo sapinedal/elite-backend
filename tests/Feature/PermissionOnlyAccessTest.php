@@ -33,15 +33,15 @@ beforeEach(function () {
     $this->almacenista = $user('otro@inverconstruccion.com', 'Almacenista de Obra');
 
     $this->paula = $user('paula@inverconstruccion.com');
-    $this->paula->givePermissionTo(['cortes.multifox', 'pagos.priorizar', 'proyectos.ver_todos']);
+    $this->paula->givePermissionTo(['cortes.multifox', 'pagos.priorizar', 'proyectos.ver_todos', 'correos.cortes.multifox']);
 
     $this->juanCarlos = $user('juan@inverconstruccion.com');
-    $this->juanCarlos->givePermissionTo(['ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+    $this->juanCarlos->givePermissionTo(['ordenes.gestionar_almacen', 'proyectos.ver_todos', 'correos.ordenes.almacen']);
 
     // Gerencia tiene todos los permisos por rol: puede actuar, pero no recibe los avisos de responsable
     $this->gerente = $user('gerente@inverconstruccion.com');
     $this->gerente->assignRole(Role::firstOrCreate(['name' => 'gerencia-test', 'guard_name' => 'web'])
-        ->givePermissionTo(['cortes.multifox', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']));
+        ->givePermissionTo(['cortes.multifox', 'ordenes.gestionar_almacen', 'proyectos.ver_todos', 'correos.cortes.multifox', 'correos.ordenes.almacen']));
 });
 
 test('el cargo ya no da acceso: solo el permiso', function () {

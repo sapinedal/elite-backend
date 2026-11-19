@@ -19,24 +19,24 @@ return [
     | Destinatarios de las notificaciones
     |--------------------------------------------------------------------------
     |
-    | Aprobadores de cada etapa. Si una etapa tiene correos configurados se usan SOLO esos; si queda vacía
-    | se notifica a los usuarios con el permiso de la etapa (ordenes.aprobar_*) asignados al proyecto.
+    | Los correos se envían a los usuarios con el permiso correos.ordenes.<destinatario> asignado directamente
+    | (Usuarios > permisos) y acceso al proyecto. Estas variables son SOLO para buzones externos que no son
+    | usuarios de Elite (separados por coma); vacías por defecto.
     |
     */
     'stage_emails' => [
-        'director_obra' => $emails('ORDENES_DIRECTOR_EMAILS', 'dirobrasanmiguel@inverconstruccion.com'),
-        'gerencia' => $emails('ORDENES_GERENCIA_EMAILS', 'gerentedeproyectos@inverconstruccion.com'),
+        'director_obra' => $emails('ORDENES_DIRECTOR_EMAILS'),
+        'gerencia' => $emails('ORDENES_GERENCIA_EMAILS'),
     ],
 
-    // Almacén: carga la orden de compra del ERP y la entrada (permiso ordenes.gestionar_almacen). Se notifica
-    // a los usuarios con ese permiso asignado directamente (no por rol); si nadie lo tiene, a estos correos.
+    // Almacén (correos.ordenes.almacen): carga la orden de compra del ERP y la entrada
     'almacen_emails' => $emails('ORDENES_ALMACEN_EMAILS'),
 
-    // Facturación: carga la factura del proveedor
-    'facturacion' => $emails('ORDENES_FACTURACION_EMAILS', 'facturacion@inverconstruccion.com'),
+    // Facturación (correos.ordenes.facturacion): carga la factura del proveedor
+    'facturacion' => $emails('ORDENES_FACTURACION_EMAILS'),
 
-    // Copia (CC) de TODOS los correos del flujo
-    'monitor' => $emails('ORDENES_MONITOR_EMAILS', 'residentedeobra@inverconstruccion.com'),
+    // Copia (CC) de TODOS los correos del flujo (correos.ordenes.copia)
+    'monitor' => $emails('ORDENES_MONITOR_EMAILS'),
 
     'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),
 

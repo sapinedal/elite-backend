@@ -39,12 +39,12 @@ beforeEach(function () {
         return $u;
     };
     $this->residente = $user('residente@inverconstruccion.com', ['ftra.ver', 'ftra.crear']);
-    $this->supervisor = $user('supervisor@inverconstruccion.com', ['ftra.ver', 'ftra.revisar']);
-    $this->director = $user('director@inverconstruccion.com', ['ftra.ver', 'ftra.aprobar']);
+    $this->supervisor = $user('supervisor@inverconstruccion.com', ['ftra.ver', 'ftra.revisar', 'correos.ftra.supervisor']);
+    $this->director = $user('director@inverconstruccion.com', ['ftra.ver', 'ftra.aprobar', 'correos.ftra.director_obra']);
 
-    // Técnica tiene ftra.revisar y ftra.aprobar por rol: puede actuar, pero no recibe los avisos
+    // Técnica tiene los permisos (también los de correo) por rol: puede actuar, pero no recibe los avisos
     $this->tecnica = User::create(['name' => 'Técnica', 'email' => 'tecnica@inverconstruccion.com', 'password' => 'secret']);
-    $this->tecnica->assignRole(Role::findOrCreate('tecnica-test', 'web')->givePermissionTo(['ftra.ver', 'ftra.revisar', 'ftra.aprobar']));
+    $this->tecnica->assignRole(Role::findOrCreate('tecnica-test', 'web')->givePermissionTo(['ftra.ver', 'ftra.revisar', 'ftra.aprobar', 'correos.ftra.supervisor', 'correos.ftra.director_obra']));
     $this->tecnica->projects()->attach($this->project);
 });
 

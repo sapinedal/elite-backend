@@ -19,21 +19,21 @@ return [
     | Destinatarios de las notificaciones
     |--------------------------------------------------------------------------
     |
-    | Aprobadores de cada etapa. Si una etapa tiene correos configurados se usan SOLO esos; si queda vacía
-    | se notifica a los usuarios con el permiso de la etapa (anticipos.aprobar_*) asignados al proyecto.
+    | Los correos se envían a los usuarios con el permiso correos.anticipos.<destinatario> asignado directamente
+    | (Usuarios > permisos) y acceso al proyecto. Estas variables son SOLO para buzones externos que no son
+    | usuarios de Elite (separados por coma); vacías por defecto.
     |
     */
     'stage_emails' => [
-        'director_obra' => $emails('ANTICIPOS_DIRECTOR_EMAILS', 'dirobrasanmiguel@inverconstruccion.com'),
-        'gerencia' => $emails('ANTICIPOS_GERENCIA_EMAILS', 'gerentedeproyectos@inverconstruccion.com'),
+        'director_obra' => $emails('ANTICIPOS_DIRECTOR_EMAILS'),
+        'gerencia' => $emails('ANTICIPOS_GERENCIA_EMAILS'),
     ],
 
-    // Contabilidad: genera el anticipo en Multifox. Si se configuran correos se usan SOLO esos; si no, los
-    // usuarios con el permiso anticipos.contabilizar asignados al proyecto
-    'contabilidad' => $emails('ANTICIPOS_CONTABILIDAD_EMAILS', 'facturacion@inverconstruccion.com'),
+    // Contabilidad (correos.anticipos.contabilidad): genera el anticipo en Multifox
+    'contabilidad' => $emails('ANTICIPOS_CONTABILIDAD_EMAILS'),
 
-    // Copia (CC) de TODOS los correos del flujo
-    'monitor' => $emails('ANTICIPOS_MONITOR_EMAILS', 'residentedeobra@inverconstruccion.com'),
+    // Copia (CC) de TODOS los correos del flujo (correos.anticipos.copia)
+    'monitor' => $emails('ANTICIPOS_MONITOR_EMAILS'),
 
     'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),
 

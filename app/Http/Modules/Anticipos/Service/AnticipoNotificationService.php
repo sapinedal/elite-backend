@@ -5,14 +5,15 @@ namespace App\Http\Modules\Anticipos\Service;
 use App\Http\Modules\Anticipos\Mail\AnticipoNotificationMail;
 use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Anticipos\Models\AnticipoHistory;
-use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Users\Service\MailRecipients;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Correos del flujo de anticipos. Quién recibe cada aviso (destinatarios en config/anticipos.php):
+ * Correos del flujo de anticipos. Cada destinatario es un permiso correos.anticipos.* asignado directamente al
+ * usuario (con acceso al proyecto), más los buzones externos de config/anticipos.php:
  *
  * | Evento                         | Para                                                        |
  * |--------------------------------|-------------------------------------------------------------|
@@ -23,7 +24,7 @@ use Throwable;
  * | Devuelto por Gerencia          | Residente + Director                                        |
  * | Anticipo cargado de Multifox   | Residente + aprobadores (pasó al cuadro de pagos)           |
  *
- * En TODOS los correos va en copia anticipos.monitor. Un fallo del correo nunca revierte la acción.
+ * En TODOS los correos va en copia correos.anticipos.copia. Un fallo del correo nunca revierte la acción.
  */
 class AnticipoNotificationService
 {
@@ -78,7 +79,7 @@ class AnticipoNotificationService
     public function send(Anticipo $anticipo, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
     {
         $to = $this->normalize($recipients);
-        $cc = $this->normalize(collect(config('anticipos.monitor', [])))->diff($to)->values();
+        $cc = $this->normalize(MailRecipients::for('anticipos', 'copia', $anticipo->project_id, config('anticipos.monitor', [])))->diff($to)->values();
 
         if ($to->isEmpty()) {
             Log::warning("Anticipos: no hay destinatarios para el aviso '{$event}' del anticipo {$anticipo->code} (etapa: " . ($stage ?? '-') . ').');
@@ -98,16 +99,11 @@ class AnticipoNotificationService
     }
 
     /**
-     * Contabilidad: los correos configurados; si no hay, los usuarios con anticipos.contabilizar en el proyecto.
+     * Contabilidad: usuarios con correos.anticipos.contabilidad y acceso al proyecto, más anticipos.contabilidad.
      */
     public function accountingRecipients(Anticipo $anticipo): Collection
     {
-        $configured = config('anticipos.contabilidad', []);
-        if ($configured) {
-            return collect($configured);
-        }
-
-        return $this->usersWithPermission(AnticipoWorkflow::PERMISSION_CONTABILIZAR, $anticipo);
+        return MailRecipients::for('anticipos', 'contabilidad', $anticipo->project_id, config('anticipos.contabilidad', []));
     }
 
     protected function normalize(Collection $emails): Collection
@@ -125,23 +121,11 @@ class AnticipoNotificationService
     }
 
     /**
-     * Aprobadores de una etapa: los correos configurados en anticipos.stage_emails; si no hay, los usuarios con
-     * el permiso de la etapa que tienen acceso al proyecto.
+     * Aprobadores de una etapa: usuarios con correos.anticipos.<etapa> y acceso al proyecto, más anticipos.stage_emails.
      */
     protected function stageRecipients(Anticipo $anticipo, string $stage): Collection
     {
-        $configured = config("anticipos.stage_emails.{$stage}", []);
-
-        return $configured ? collect($configured) : $this->usersWithPermission(AnticipoWorkflow::STAGES[$stage]['permission'], $anticipo);
-    }
-
-    protected function usersWithPermission(string $permission, Anticipo $anticipo): Collection
-    {
-        return User::permission($permission)
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($anticipo->project_id))
-            ->pluck('email');
+        return MailRecipients::for('anticipos', $stage, $anticipo->project_id, config("anticipos.stage_emails.{$stage}", []));
     }
 
     /**

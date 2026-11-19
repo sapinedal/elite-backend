@@ -5,7 +5,7 @@ namespace App\Http\Modules\Ftra\Service;
 use App\Http\Modules\Ftra\Mail\FtraNotificationMail;
 use App\Http\Modules\Ftra\Models\FtraRecord;
 use App\Http\Modules\Ftra\Models\FtraRecordHistory;
-use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Users\Service\MailRecipients;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -22,8 +22,9 @@ use Throwable;
  * | Devuelto por el Supervisor      | Residente                                          |
  * | Devuelto por el Director        | Residente + Supervisor                             |
  *
- * "Residente" = quien registró el FTRA. Revisores = config/ftra.php más los usuarios con el permiso de la
- * etapa asignado directamente y acceso al proyecto. En copia ftra.monitor. Un fallo del correo nunca revierte la acción.
+ * "Residente" = quien registró el FTRA. Revisores = usuarios con el permiso correos.ftra.<etapa> asignado directamente
+ * y acceso al proyecto, más los buzones externos de config/ftra.php. En copia correos.ftra.copia (+ ftra.monitor).
+ * Un fallo del correo nunca revierte la acción.
  */
 class FtraNotificationService
 {
@@ -57,7 +58,7 @@ class FtraNotificationService
     public function send(FtraRecord $record, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
     {
         $to = $this->normalize($recipients);
-        $cc = $this->normalize(collect(config('ftra.monitor', [])))->diff($to)->values();
+        $cc = $this->normalize(MailRecipients::for('ftra', 'copia', $record->project_id, config('ftra.monitor', [])))->diff($to)->values();
 
         if ($to->isEmpty()) {
             Log::warning("FTRA: no hay destinatarios para el aviso '{$event}' del registro {$record->id} (etapa: " . ($stage ?? '-') . ').');
@@ -75,19 +76,12 @@ class FtraNotificationService
     }
 
     /**
-     * Revisores de la etapa: correos configurados + usuarios con el permiso asignado directamente
-     * (no por rol: los roles Técnica, Gerencia y Admin lo tienen todos) con acceso al proyecto.
+     * Revisores de la etapa: usuarios con correos.ftra.<etapa> asignado directamente y acceso al proyecto,
+     * más los buzones externos de ftra.stage_emails.
      */
     public function stageRecipients(FtraRecord $record, string $stage): Collection
     {
-        $users = User::query()
-            ->withDirectPermission(FtraWorkflow::STAGES[$stage]['permission'])
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($record->project_id))
-            ->pluck('email');
-
-        return collect(config("ftra.stage_emails.{$stage}", []))->merge($users);
+        return MailRecipients::for('ftra', $stage, $record->project_id, config("ftra.stage_emails.{$stage}", []));
     }
 
     protected function residente(FtraRecord $record): Collection

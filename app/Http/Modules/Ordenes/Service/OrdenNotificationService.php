@@ -5,14 +5,15 @@ namespace App\Http\Modules\Ordenes\Service;
 use App\Http\Modules\Ordenes\Mail\OrdenNotificationMail;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Models\OrdenHistory;
-use App\Http\Modules\Users\Models\User;
+use App\Http\Modules\Users\Service\MailRecipients;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Correos del flujo de órdenes. Quién recibe cada aviso (destinatarios en config/ordenes.php):
+ * Correos del flujo de órdenes. Cada destinatario es un permiso correos.ordenes.* asignado directamente al usuario
+ * (con acceso al proyecto), más los buzones externos de config/ordenes.php:
  *
  * | Evento                         | Para                                                    |
  * |--------------------------------|---------------------------------------------------------|
@@ -25,7 +26,7 @@ use Throwable;
  * | Factura del proveedor cargada  | Almacén (cargar la entrada)                             |
  * | Entrada cargada                | Residente (orden completada)                            |
  *
- * "Almacén" = usuarios con el permiso ordenes.gestionar_almacen asignado directamente. En TODOS los correos va en copia ordenes.monitor.
+ * "Almacén" = usuarios con correos.ordenes.almacen. En TODOS los correos va en copia correos.ordenes.copia.
  * Un fallo del correo nunca revierte la acción: se registra en el log y el flujo continúa.
  */
 class OrdenNotificationService
@@ -81,7 +82,7 @@ class OrdenNotificationService
     public function send(Orden $orden, string $event, Collection $recipients, ?string $stage = null, ?string $comment = null): void
     {
         $to = $this->normalize($recipients);
-        $cc = $this->normalize(collect(config('ordenes.monitor', [])))->diff($to)->values();
+        $cc = $this->normalize(MailRecipients::for('ordenes', 'copia', $orden->project_id, config('ordenes.monitor', [])))->diff($to)->values();
 
         if ($to->isEmpty()) {
             Log::warning("Órdenes: no hay destinatarios para el aviso '{$event}' de la orden {$orden->code} (etapa: " . ($stage ?? '-') . ').');
@@ -101,23 +102,14 @@ class OrdenNotificationService
     }
 
     /**
-     * Responsables de un documento: Almacén por permiso asignado directamente (o correos de respaldo)
-     * y Facturación por config.
+     * Responsables de un documento: Facturación (correos.ordenes.facturacion) carga la factura del proveedor y
+     * Almacén (correos.ordenes.almacen) la orden ERP y la entrada.
      */
     public function stepRecipients(Orden $orden, string $step): Collection
     {
-        if ($step === OrdenWorkflow::STEP_FACTURA) {
-            return collect(config('ordenes.facturacion', []));
-        }
-
-        $emails = User::query()
-            ->withDirectPermission(OrdenWorkflow::PERMISSION_ALMACEN)
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($orden->project_id))
-            ->pluck('email');
-
-        return $emails->isNotEmpty() ? $emails : collect(config('ordenes.almacen_emails', []));
+        return $step === OrdenWorkflow::STEP_FACTURA
+            ? MailRecipients::for('ordenes', 'facturacion', $orden->project_id, config('ordenes.facturacion', []))
+            : MailRecipients::for('ordenes', 'almacen', $orden->project_id, config('ordenes.almacen_emails', []));
     }
 
     protected function normalize(Collection $emails): Collection
@@ -135,21 +127,11 @@ class OrdenNotificationService
     }
 
     /**
-     * Aprobadores de una etapa: los correos configurados en ordenes.stage_emails; si no hay, los usuarios con
-     * el permiso de la etapa que tienen acceso al proyecto.
+     * Aprobadores de una etapa: usuarios con correos.ordenes.<etapa> y acceso al proyecto, más ordenes.stage_emails.
      */
     protected function stageRecipients(Orden $orden, string $stage): Collection
     {
-        $configured = config("ordenes.stage_emails.{$stage}", []);
-        if ($configured) {
-            return collect($configured);
-        }
-
-        return User::permission(OrdenWorkflow::STAGES[$stage]['permission'])
-            ->whereNotNull('email')
-            ->get()
-            ->filter(fn (User $user) => $user->canAccessProject($orden->project_id))
-            ->pluck('email');
+        return MailRecipients::for('ordenes', $stage, $orden->project_id, config("ordenes.stage_emails.{$stage}", []));
     }
 
     /**

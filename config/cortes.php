@@ -24,24 +24,25 @@ return [
     | Destinatarios de las notificaciones
     |--------------------------------------------------------------------------
     |
-    | Revisores de cada etapa. Si una etapa tiene correos configurados se usan SOLO esos; si queda vacía
-    | se notifica a los usuarios con el permiso de la etapa (cortes.aprobar_*) asignados al proyecto.
+    | Los correos se envían a los usuarios con el permiso correos.cortes.<destinatario> asignado directamente
+    | (Usuarios > permisos) y acceso al proyecto. Estas variables son SOLO para buzones externos que no son
+    | usuarios de Elite (separados por coma); vacías por defecto.
     |
     */
     'stage_emails' => [
-        'interventor' => $emails('CORTES_INTERVENTOR_EMAILS', 'druizeqp@gmail.com'),
-        'director_obra' => $emails('CORTES_DIRECTOR_EMAILS', 'dirobrasanmiguel@inverconstruccion.com'),
-        'gerencia' => $emails('CORTES_GERENCIA_EMAILS', 'gerentedeproyectos@inverconstruccion.com'),
+        'interventor' => $emails('CORTES_INTERVENTOR_EMAILS'),
+        'director_obra' => $emails('CORTES_DIRECTOR_EMAILS'),
+        'gerencia' => $emails('CORTES_GERENCIA_EMAILS'),
     ],
 
-    // Residentes de obra: reciben, junto con quien radicó el corte, los avisos dirigidos al residente
-    'residentes' => $emails('CORTES_RESIDENTES_EMAILS', 'residenteacabados@inverconstruccion.com,residenteobrasanmiguel@inverconstruccion.com'),
+    // Residentes de obra (correos.cortes.residentes): reciben, junto con quien radicó el corte, los avisos al residente
+    'residentes' => $emails('CORTES_RESIDENTES_EMAILS'),
 
-    // Facturación: recibe el corte cuando completa las tres aprobaciones
-    'facturacion' => $emails('CORTES_FACTURACION_EMAILS', 'facturacion@inverconstruccion.com'),
+    // Facturación (correos.cortes.facturacion): recibe el corte cuando completa las tres aprobaciones
+    'facturacion' => $emails('CORTES_FACTURACION_EMAILS'),
 
-    // Carga a Multifox (ERP externo): al cargar una factura se notifica a los usuarios con el permiso
-    // cortes.multifox asignado directamente (no por rol). Si nadie lo tiene se usan los correos de respaldo.
+    // Carga a Multifox (ERP externo): al cargar una factura se notifica a los usuarios con correos.cortes.multifox
+    // (y en cuentas de cobro con correos.cuentas_cobro.multifox), más estos buzones externos.
     'multifox_emails' => $emails('CORTES_MULTIFOX_EMAILS'),
 
     // Solo se envía el aviso de Multifox a correos de estos dominios (lleva la factura adjunta)
@@ -50,8 +51,8 @@ return [
     // Facturas que pesen hasta este tamaño (MB) se adjuntan al correo de Multifox
     'invoice_attach_max_mb' => (int) env('CORTES_INVOICE_ATTACH_MAX_MB', 10),
 
-    // Copia (CC) de TODOS los correos del flujo, para verificar que las notificaciones están llegando
-    'monitor' => $emails('CORTES_MONITOR_EMAILS', 'residentedeobra@inverconstruccion.com'),
+    // Copia (CC) de TODOS los correos del flujo (correos.cortes.copia), para verificar que están llegando
+    'monitor' => $emails('CORTES_MONITOR_EMAILS'),
 
     // URL del frontend para el enlace "Ver corte" de los correos
     'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),

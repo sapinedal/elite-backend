@@ -12,12 +12,10 @@ return [
     // Ventana de alerta (el umbral mayor): desde aquí la póliza se marca como próxima a vencer en la aplicación
     'policy_alert_days' => max($thresholds ?: [40]),
 
-    // Destinatarios de las alertas de pólizas (separados por coma): Director de Obra y Paula Camacho (Planeación,
-    // Control y Contratos). Además reciben el aviso los usuarios con el permiso contratacion.alertas_polizas
-    // (ej. María José Ospina). Si no hay ninguno se notifica a los usuarios con contratacion.editar del proyecto
-    'alert_emails' => array_values(array_filter(array_map('trim', explode(',', (string) (
-        env('CONTRATACION_ALERT_EMAILS') ?: 'residentedeobra@inverconstruccion.com,dirobrasanmiguel@inverconstruccion.com'
-    ))))),
+    // Las alertas de pólizas llegan a los usuarios con el permiso correos.contratacion.polizas asignado directamente
+    // y acceso al proyecto. Esta variable es SOLO para buzones externos (separados por coma). Si no hay ninguno se
+    // notifica a los usuarios con contratacion.editar del proyecto
+    'alert_emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('CONTRATACION_ALERT_EMAILS', ''))))),
 
     // URL del frontend para el enlace "Ver contratos" del correo
     'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),
