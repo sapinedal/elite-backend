@@ -152,6 +152,16 @@ class RoleController extends Controller
                 'description' => 'Órdenes con aprobación Director de Obra y Gerencia, orden de compra ERP, factura y entrada',
                 'permissions' => []
             ],
+            'anticipos' => [
+                'title' => 'Anticipos',
+                'description' => 'Anticipos con aprobación Director de Obra y Gerencia, y generación en Multifox por Contabilidad',
+                'permissions' => []
+            ],
+            'cuentas_cobro' => [
+                'title' => 'Cuentas de Cobro',
+                'description' => 'Cuentas de cobro con aprobación Director de Obra y Gerencia, decisión y carga de Multifox',
+                'permissions' => []
+            ],
             'pagos' => [
                 'title' => 'Cuentas por Pagar',
                 'description' => 'Cuadro de pagos: priorización, registro de pagos y abonos con trazabilidad',

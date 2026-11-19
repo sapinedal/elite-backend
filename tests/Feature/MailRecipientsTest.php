@@ -27,6 +27,13 @@ test('existe un permiso de correo por cada destinatario y aparece en el catálog
 
     expect($catalog['modules']['correos']['permissions'])->toContain('correos.cortes.interventor')
         ->and($catalog['labels']['correos.cortes.interventor'])->toBe(MailRecipients::PERMISSIONS['correos.cortes.interventor']);
+
+    // Todo permiso existente pertenece a un módulo del catálogo (si no, no se puede asignar desde la pantalla)
+    Permission::findOrCreate('anticipos.aprobar_director', 'web');
+    Permission::findOrCreate('cuentas_cobro.aprobar_gerencia', 'web');
+    $catalog = $this->getJson('/api/v1/permissions')->assertOk()->json();
+
+    expect(collect($catalog['all'])->diff(collect($catalog['modules'])->flatMap(fn ($m) => $m['permissions']))->values()->all())->toBe([]);
 });
 
 test('reciben solo los usuarios con el permiso asignado directamente y acceso al proyecto, más los externos', function () {
