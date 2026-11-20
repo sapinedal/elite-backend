@@ -20,13 +20,15 @@ class AreaPositionSeeder extends Seeder
         ];
 
         foreach ($areas as $areaName => $positions) {
-            $area = \App\Http\Modules\Configuracion\Models\Area::create([
-                'name' => $areaName,
-                'description' => "Área de $areaName"
-            ]);
+            // Idempotente: si el área ya existe (sin importar mayúsculas/espacios) se reutiliza
+            $area = \App\Http\Modules\Configuracion\Models\Area::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($areaName)])->first()
+                ?? \App\Http\Modules\Configuracion\Models\Area::create([
+                    'name' => $areaName,
+                    'description' => "Área de $areaName"
+                ]);
 
             foreach ($positions as $posName) {
-                \App\Http\Modules\Configuracion\Models\Position::create([
+                \App\Http\Modules\Configuracion\Models\Position::firstOrCreate([
                     'name' => $posName,
                     'area_id' => $area->id
                 ]);
