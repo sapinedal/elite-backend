@@ -7,6 +7,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Configuracion\Models\Tower;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Ftra\Models\FtraContractor;
+use App\Http\Modules\Pagos\Mail\AccountingApprovalMail;
 use App\Http\Modules\Pagos\Models\PagoCuenta;
 use App\Http\Modules\Users\Models\User;
 use App\Services\DirectUploadService;
@@ -53,6 +54,7 @@ beforeEach(function () {
     $this->director = $user('director@example.com', ['anticipos.ver', 'anticipos.aprobar_director']);
     $this->gerencia = $user('gerencia@example.com', ['anticipos.ver', 'anticipos.aprobar_gerencia']);
     $this->contabilidad = $user('contabilidad@example.com', ['anticipos.ver', 'anticipos.contabilizar']);
+    $this->contador = $user('contador@example.com', ['anticipos.ver', 'anticipos.aprobar_contabilidad', 'correos.anticipos.aprobacion_contable']);
 });
 
 function radicarAnticipo(array $overrides = [])
@@ -102,7 +104,26 @@ test('flujo completo: radica, aprueban director y gerencia, contabilidad carga M
     $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-77', 'upload_token' => (string) Str::uuid()])
         ->assertForbidden();
 
+    // Cargado en Multifox: espera la aprobación de Contabilidad antes del cuadro de pagos
+    $this->actingAs($this->contabilidad)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-70', 'upload_token' => (string) Str::uuid()])
+        ->assertOk()->assertJsonPath('data.status', AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    expect(PagoCuenta::count())->toBe(0)
+        ->and(Mail::sent(AccountingApprovalMail::class, fn ($m) => $m->event === AccountingApprovalMail::EVENT_PENDING && $m->hasTo('contador@example.com'))->isNotEmpty())->toBeTrue();
+
+    // Quien genera en Multifox no aprueba en Contabilidad; la devolución exige motivo
+    $this->actingAs($this->contabilidad)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'aprobar'])->assertForbidden();
+    $this->actingAs($this->contador)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'devolver'])->assertStatus(422);
+
+    // Contabilidad lo devuelve: vuelve a Multifox y se avisa a quien lo genera
+    $this->actingAs($this->contador)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'devolver', 'comment' => 'El número no coincide'])
+        ->assertOk()->assertJsonPath('data.status', AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD);
+    expect($anticipo->fresh()->multifox_number)->toBeNull()
+        ->and(PagoCuenta::count())->toBe(0)
+        ->and(Mail::sent(AccountingApprovalMail::class, fn ($m) => $m->event === AccountingApprovalMail::EVENT_RETURNED && $m->hasTo('contabilidad@example.com'))->isNotEmpty())->toBeTrue();
+
     $this->actingAs($this->contabilidad)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-77', 'upload_token' => (string) Str::uuid()])
+        ->assertOk();
+    $this->actingAs($this->contador)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'aprobar'])
         ->assertOk()->assertJsonPath('data.status', AnticipoWorkflow::STATUS_COMPLETADO);
 
     $anticipo->refresh();

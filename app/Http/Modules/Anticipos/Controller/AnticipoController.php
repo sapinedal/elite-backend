@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Anticipos\Controller;
 
+use App\Http\Modules\Pagos\Request\AccountingDecisionRequest;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Anticipos\Request\RegisterMultifoxRequest;
@@ -136,7 +137,21 @@ class AnticipoController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Anticipo cargado. Pasó al cuadro de pagos.',
+                'message' => 'Anticipo cargado. Pasó a la aprobación de Contabilidad.',
+                'data' => $this->service->getAnticipo($anticipo, $request->user()),
+            ]);
+        });
+    }
+
+    public function reviewAccounting(AccountingDecisionRequest $request, Anticipo $anticipo): JsonResponse
+    {
+        return $this->attempt('registrar la aprobación de Contabilidad', function () use ($request, $anticipo) {
+            $decision = $request->validated('decision');
+            $anticipo = $this->service->reviewAccounting($anticipo, $decision, $request->validated('comment'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $decision === 'aprobar' ? 'Anticipo aprobado. Pasó al cuadro de pagos.' : 'Anticipo devuelto a Multifox.',
                 'data' => $this->service->getAnticipo($anticipo, $request->user()),
             ]);
         });

@@ -27,4 +27,5 @@ Route::prefix('cuentas-cobro')->middleware('auth:sanctum')->group(function () {
     // Paula (cargo de Multifox o permiso cortes.multifox): lo valida CuentaCobroService
     Route::post('/{cuenta}/multifox-decision', [CuentaCobroController::class, 'decideMultifox'])->middleware('permission:cuentas_cobro.ver');
     Route::post('/{cuenta}/multifox', [CuentaCobroController::class, 'registerMultifox'])->middleware('permission:cuentas_cobro.ver');
+    Route::post('/{cuenta}/accounting', [CuentaCobroController::class, 'reviewAccounting'])->middleware('permission:cuentas_cobro.aprobar_contabilidad');
 });

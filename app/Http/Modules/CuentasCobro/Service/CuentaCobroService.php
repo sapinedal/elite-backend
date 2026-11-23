@@ -9,6 +9,7 @@ use App\Http\Modules\CuentasCobro\Models\CuentaCobroAdjunto;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroHistory;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroTipo;
 use App\Http\Modules\Ftra\Models\FtraContractor;
+use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,14 +20,16 @@ use InvalidArgumentException;
  * Cuentas de cobro:
  *
  *   Radicada (con adjuntos si el tipo los exige) -> Director de Obra -> Gerencia -> Paula decide:
- *     - no requiere Multifox: pasa al cuadro de pagos
- *     - requiere Multifox: pasa al cuadro de pagos cuando se carga en Multifox
+ *     - no requiere Multifox: pasa a la aprobación de Contabilidad
+ *     - requiere Multifox: pasa a la aprobación de Contabilidad cuando se carga en Multifox
+ *   Contabilidad la aprueba (cuadro de pagos) o la devuelve a Paula.
  */
 class CuentaCobroService
 {
     public const SCOPE_MINE = 'mine';
     public const SCOPE_PENDING = 'pending';   // Esperan una aprobación del usuario
     public const SCOPE_MULTIFOX = 'multifox'; // Aprobadas que Paula debe revisar / cargar en Multifox
+    public const SCOPE_ACCOUNTING_APPROVAL = 'accounting_approval'; // Por aprobar en Contabilidad
     public const SCOPE_ALL = 'all';
 
     public function __construct(
@@ -34,6 +37,7 @@ class CuentaCobroService
         protected CuentaCobroNotificationService $notifications,
         protected CuentaCobroTipoService $tipos,
         protected PagoService $pagos,
+        protected AccountingApprovalNotifier $accounting,
     ) {
     }
 
@@ -76,6 +80,7 @@ class CuentaCobroService
             'can_view_all' => $user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL),
             'can_create' => $user->can('cuentas_cobro.crear'),
             'can_handle_multifox' => CuentaCobroWorkflow::canHandleMultifox($user),
+            'can_approve_accounting' => CuentaCobroWorkflow::canApproveAccounting($user),
             'can_parametrize' => $user->can(CuentaCobroWorkflow::PERMISSION_PARAMETRIZAR),
             ...CuentaCobroWorkflow::toArray(),
         ];
@@ -114,6 +119,7 @@ class CuentaCobroService
             self::SCOPE_MINE => $this->scopedQuery($user, self::SCOPE_MINE)->count(),
             self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
             self::SCOPE_MULTIFOX => CuentaCobroWorkflow::canHandleMultifox($user) ? $this->scopedQuery($user, self::SCOPE_MULTIFOX)->count() : 0,
+            self::SCOPE_ACCOUNTING_APPROVAL => CuentaCobroWorkflow::canApproveAccounting($user) ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING_APPROVAL)->count() : 0,
         ];
     }
 
@@ -129,7 +135,11 @@ class CuentaCobroService
             return $query->accessibleBy($user)->whereIn('status', CuentaCobroWorkflow::MULTIFOX_STATUSES);
         }
 
-        if ($scope === self::SCOPE_ALL && ($user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL) || CuentaCobroWorkflow::canHandleMultifox($user))) {
+        if ($scope === self::SCOPE_ACCOUNTING_APPROVAL && CuentaCobroWorkflow::canApproveAccounting($user)) {
+            return $query->accessibleBy($user)->where('status', CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+        }
+
+        if ($scope === self::SCOPE_ALL && ($user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL) || CuentaCobroWorkflow::canHandleMultifox($user) || CuentaCobroWorkflow::canApproveAccounting($user))) {
             return $query->accessibleBy($user);
         }
 
@@ -154,7 +164,8 @@ class CuentaCobroService
 
         return $user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL)
             || CuentaCobroWorkflow::stagesFor($user) !== []
-            || CuentaCobroWorkflow::canHandleMultifox($user);
+            || CuentaCobroWorkflow::canHandleMultifox($user)
+            || CuentaCobroWorkflow::canApproveAccounting($user);
     }
 
     public function canReview(CuentaCobro $cuenta, User $user): bool
@@ -173,6 +184,13 @@ class CuentaCobroService
     {
         return in_array($cuenta->status, CuentaCobroWorkflow::MULTIFOX_STATUSES, true)
             && CuentaCobroWorkflow::canHandleMultifox($user)
+            && $user->canAccessProject($cuenta->project_id);
+    }
+
+    public function canReviewAccounting(CuentaCobro $cuenta, User $user): bool
+    {
+        return $cuenta->status === CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE
+            && CuentaCobroWorkflow::canApproveAccounting($user)
             && $user->canAccessProject($cuenta->project_id);
     }
 
@@ -287,7 +305,7 @@ class CuentaCobroService
     }
 
     /**
-     * Paula decide si la cuenta requiere Multifox. Si no, pasa al cuadro de pagos; si sí, queda pendiente del cargue.
+     * Paula decide si la cuenta requiere Multifox. Si no, pasa a la aprobación de Contabilidad; si sí, queda pendiente del cargue.
      */
     public function decideMultifox(CuentaCobro $cuenta, bool $requiresMultifox, ?string $comment, User $user): CuentaCobro
     {
@@ -310,23 +328,26 @@ class CuentaCobroService
                 $this->log($cuenta, CuentaCobroHistory::ACTION_REQUIERE_MULTIFOX, $user, CuentaCobroWorkflow::STEP_MULTIFOX,
                     'Requiere cargue en Multifox antes de pasar al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
             } else {
-                $this->moveToPayments($cuenta, $user);
+                $cuenta->update(['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE]);
                 $this->log($cuenta, CuentaCobroHistory::ACTION_SIN_MULTIFOX, $user, CuentaCobroWorkflow::STEP_MULTIFOX,
-                    'No requiere Multifox. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
+                    'No requiere Multifox. Pendiente de aprobación de Contabilidad.' . ($comment ? " {$comment}" : ''));
             }
 
             return $cuenta;
         });
 
         if (!$requiresMultifox) {
-            $this->notifications->inPayments($cuenta, $comment);
+            $this->accounting->pending('cuentas_cobro', $cuenta->project_id, [
+                ...$this->accountingPayload($cuenta),
+                'pending_intro' => "Paula indicó que la cuenta de cobro {$cuenta->reference()} no requiere Multifox.",
+            ], $comment);
         }
 
         return $cuenta;
     }
 
     /**
-     * Paula carga la cuenta en Multifox (número y, si lo hay, el soporte): pasa al cuadro de pagos.
+     * Paula carga la cuenta en Multifox (número y, si lo hay, el soporte): pasa a la aprobación de Contabilidad.
      * Se puede hacer directamente desde la revisión (implica que sí requería Multifox).
      */
     public function registerMultifox(CuentaCobro $cuenta, array $data, User $user): CuentaCobro
@@ -356,16 +377,95 @@ class CuentaCobroService
                 'multifox_by' => $user->id,
                 'multifox_at' => now(),
             ]);
-            $this->moveToPayments($cuenta, $user);
+            $cuenta->update(['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE]);
             $this->log($cuenta, CuentaCobroHistory::ACTION_MULTIFOX, $user, CuentaCobroWorkflow::STEP_MULTIFOX,
-                "Cargada en Multifox (N.º {$cuenta->multifox_number}). Pasa al cuadro de pagos." . ($comment ? " {$comment}" : ''), $file['file_name'] ?? null);
+                "Cargada en Multifox (N.º {$cuenta->multifox_number}). Pendiente de aprobación de Contabilidad." . ($comment ? " {$comment}" : ''), $file['file_name'] ?? null);
 
             return $cuenta;
         });
 
-        $this->notifications->inPayments($cuenta, $comment);
+        $this->accounting->pending('cuentas_cobro', $cuenta->project_id, $this->accountingPayload($cuenta), $comment);
 
         return $cuenta;
+    }
+
+    /**
+     * Contabilidad aprueba la cuenta (pasa al cuadro de pagos) o la devuelve a Paula: si se había cargado en Multifox
+     * vuelve al cargue (con el número y el soporte limpios); si no requería Multifox, vuelve a la revisión.
+     */
+    public function reviewAccounting(CuentaCobro $cuenta, string $decision, ?string $comment, User $user): CuentaCobro
+    {
+        $comment = $comment !== null ? (trim($comment) ?: null) : null;
+        if (!$this->canReviewAccounting($cuenta, $user)) {
+            throw new InvalidArgumentException('Esta cuenta de cobro no está pendiente de la aprobación de Contabilidad o no puedes aprobarla.');
+        }
+        if ($decision === 'devolver' && !$comment) {
+            throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
+        }
+
+        $multifoxEmail = ($cuenta->multifoxUser ?? $cuenta->multifoxDecider)?->email;
+
+        $cuenta = DB::transaction(function () use ($cuenta, $decision, $comment, $user) {
+            $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
+            if ($cuenta->status !== CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE) {
+                throw new InvalidArgumentException('Otro usuario ya revisó esta cuenta de cobro.');
+            }
+
+            if ($decision === 'aprobar') {
+                $this->moveToPayments($cuenta, $user);
+                $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
+                    'Aprobada por Contabilidad. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
+            } else {
+                $loaded = $cuenta->requires_multifox && $cuenta->multifox_number;
+                $cuenta->update($loaded
+                    ? [
+                        'status' => CuentaCobroWorkflow::STATUS_PENDIENTE_MULTIFOX,
+                        'multifox_number' => null,
+                        'multifox_file_name' => null,
+                        'multifox_file_path' => null,
+                        'multifox_file_size' => null,
+                        'multifox_file_mime' => null,
+                        'multifox_by' => null,
+                        'multifox_at' => null,
+                    ]
+                    : ['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_REVISION, 'requires_multifox' => null, 'multifox_decided_by' => null, 'multifox_decided_at' => null]);
+                $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
+                    "Devuelta por Contabilidad a Multifox. {$comment}");
+            }
+
+            return $cuenta;
+        });
+
+        if ($decision === 'aprobar') {
+            $this->notifications->inPayments($cuenta, $comment);
+        } else {
+            // Paula: permiso cortes.multifox (o el correo de Multifox de cuentas de cobro) y quien la había gestionado
+            $multifox = $this->accounting->usersWith(['cortes.multifox', 'correos.cuentas_cobro.multifox'], $cuenta->project_id)->push($multifoxEmail);
+            $this->accounting->returned('cuentas_cobro', $cuenta->project_id, $multifox, [...$this->accountingPayload($cuenta), 'returned_to' => 'Multifox'], (string) $comment, $user->name);
+        }
+
+        return $cuenta;
+    }
+
+    protected function accountingPayload(CuentaCobro $cuenta): array
+    {
+        $cuenta->loadMissing(['tipo:id,name', 'project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code', 'creator:id,name']);
+
+        return [
+            'module' => 'Cuentas de cobro',
+            'reference' => "Cuenta de cobro {$cuenta->reference()}",
+            'details' => [
+                'Cuenta de cobro' => $cuenta->code,
+                'Tipo' => $cuenta->tipo?->name,
+                'N.º documento' => $cuenta->document_number,
+                'N.º Multifox' => $cuenta->multifox_number ?? ($cuenta->requires_multifox === false ? 'No requiere' : null),
+                'Valor' => '$' . number_format((float) $cuenta->amount, 0, ',', '.'),
+                'Proveedor' => $cuenta->contractor?->name,
+                'Proyecto / Torre' => trim(($cuenta->project?->name ?? '—') . ($cuenta->tower ? ' · ' . $cuenta->tower->name : '')),
+                'Radicada por' => $cuenta->creator?->name,
+            ],
+            'cta_url' => config('cuentas_cobro.frontend_url') . '/app/contratacion/cuentas-cobro?cuenta=' . $cuenta->id,
+        ];
     }
 
     public function downloadUrl(CuentaCobro $cuenta, string $file, ?int $adjuntoId = null): string
@@ -413,18 +513,34 @@ class CuentaCobroService
             ];
         }, array_keys(CuentaCobroWorkflow::STAGES));
 
+        $done = in_array($cuenta->status, [CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, CuentaCobroWorkflow::STATUS_EN_PAGOS], true);
         $final = $history->whereIn('action', [CuentaCobroHistory::ACTION_SIN_MULTIFOX, CuentaCobroHistory::ACTION_MULTIFOX])->last();
         $steps[] = [
             'key' => CuentaCobroWorkflow::STEP_MULTIFOX,
             'label' => $cuenta->requires_multifox === false ? 'Sin Multifox' : 'Multifox',
             'kind' => 'document',
             'state' => match (true) {
-                $cuenta->status === CuentaCobroWorkflow::STATUS_EN_PAGOS => 'aprobado',
+                $done => 'aprobado',
                 in_array($cuenta->status, CuentaCobroWorkflow::MULTIFOX_STATUSES, true) => 'actual',
                 default => 'pendiente',
             },
-            'user' => $final?->user?->name,
-            'at' => $final?->created_at?->toIso8601String(),
+            'user' => $done ? $final?->user?->name : null,
+            'at' => $done ? $final?->created_at?->toIso8601String() : null,
+        ];
+
+        $accounting = $history->whereIn('action', [CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA])->last();
+        $steps[] = [
+            'key' => CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
+            'label' => 'Aprobación Contabilidad',
+            'kind' => 'approval',
+            'state' => match (true) {
+                $cuenta->status === CuentaCobroWorkflow::STATUS_EN_PAGOS => 'aprobado',
+                $cuenta->status === CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE => 'actual',
+                in_array($cuenta->status, CuentaCobroWorkflow::MULTIFOX_STATUSES, true) && $accounting?->action === CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA => 'devuelto',
+                default => 'pendiente',
+            },
+            'user' => $accounting?->user?->name,
+            'at' => $accounting?->created_at?->toIso8601String(),
         ];
 
         return $steps;
@@ -521,6 +637,7 @@ class CuentaCobroService
             'can_review' => $this->canReview($cuenta, $user),
             'can_resubmit' => $this->canResubmit($cuenta, $user),
             'can_handle_multifox' => $this->canHandleMultifox($cuenta, $user),
+            'can_review_accounting' => $this->canReviewAccounting($cuenta, $user),
         ];
 
         if ($withDetail) {

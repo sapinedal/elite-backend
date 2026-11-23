@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Request\ConfirmMultifoxRequest;
+use App\Http\Modules\Pagos\Request\AccountingDecisionRequest;
 use App\Http\Modules\Cortes\Request\RequestUploadUrlRequest;
 use App\Http\Modules\Cortes\Request\ResubmitCorteRequest;
 use App\Http\Modules\Cortes\Request\ReviewCorteRequest;
@@ -182,13 +183,36 @@ class CorteController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Carga en Multifox confirmada. La factura pasó a cuentas por pagar.',
+                'message' => 'Carga en Multifox confirmada. La factura pasó a la aprobación de Contabilidad.',
                 'data' => $this->corteService->getCorte($invoice->corte, $request->user()),
             ]);
         } catch (InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             return $this->serverError('confirmar la carga en Multifox', $e);
+        }
+    }
+
+    /**
+     * Contabilidad aprueba la factura cargada en Multifox (pasa a cuentas por pagar) o la devuelve a Multifox.
+     */
+    public function reviewAccounting(AccountingDecisionRequest $request, CorteInvoice $invoice): JsonResponse
+    {
+        try {
+            $decision = $request->validated('decision');
+            $invoice = $this->invoiceService->reviewAccounting($invoice, $decision, $request->validated('comment'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $decision === 'aprobar'
+                    ? 'Factura aprobada por Contabilidad. Pasó a cuentas por pagar.'
+                    : 'Factura devuelta a Multifox. Se notificó a quien la carga.',
+                'data' => $this->corteService->getCorte($invoice->corte, $request->user()),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('registrar la aprobación de Contabilidad', $e);
         }
     }
 

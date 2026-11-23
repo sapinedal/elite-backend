@@ -21,4 +21,5 @@ Route::prefix('ordenes')->middleware('auth:sanctum')->group(function () {
         ->middleware('permission:ordenes.aprobar_director|ordenes.aprobar_gerencia');
     Route::post('/{orden}/resubmit', [OrdenController::class, 'resubmit'])->middleware('permission:ordenes.crear');
     Route::post('/{orden}/documents', [OrdenController::class, 'storeDocument'])->middleware('permission:ordenes.ver');
+    Route::post('/{orden}/accounting', [OrdenController::class, 'reviewAccounting'])->middleware('permission:ordenes.aprobar_contabilidad');
 });

@@ -15,9 +15,11 @@ class CuentaCobroHistory extends Model
     public const ACTION_APROBADO = 'aprobado';
     public const ACTION_DEVUELTO = 'devuelto';
     public const ACTION_REENVIADA = 'reenviada';
-    public const ACTION_SIN_MULTIFOX = 'sin_multifox';   // Paula decidió que no requiere Multifox: pasa al cuadro de pagos
+    public const ACTION_SIN_MULTIFOX = 'sin_multifox';   // Paula decidió que no requiere Multifox: pasa a la aprobación de Contabilidad
     public const ACTION_REQUIERE_MULTIFOX = 'requiere_multifox'; // Paula decidió que requiere Multifox
-    public const ACTION_MULTIFOX = 'multifox';           // Cargada en Multifox: pasa al cuadro de pagos
+    public const ACTION_MULTIFOX = 'multifox';           // Cargada en Multifox: pasa a la aprobación de Contabilidad
+    public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Aprobada por Contabilidad: pasa al cuadro de pagos
+    public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Devuelta a Paula (Multifox)
 
     protected $fillable = [
         'cuenta_cobro_id',

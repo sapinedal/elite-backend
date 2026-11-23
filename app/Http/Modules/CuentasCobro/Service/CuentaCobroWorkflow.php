@@ -9,8 +9,9 @@ use App\Http\Modules\Users\Models\User;
  * Definición del flujo de cuentas de cobro, en un solo lugar.
  *
  *   Radicada -> Director de Obra -> Gerencia -> Paula (¿requiere Multifox?)
- *                     \__________________\___ Devuelta     |-- No -> Cuadro de pagos
- *                                                          '-- Sí -> Pendiente Multifox -> (cargada) -> Cuadro de pagos
+ *                     \__________________\___ Devuelta     |-- No -> Aprobación de Contabilidad -> Cuadro de pagos
+ *                                                          '-- Sí -> Pendiente Multifox -> (cargada) -> Aprobación de Contabilidad -> Cuadro de pagos
+ *   Si Contabilidad la devuelve, vuelve a Paula (revisión o cargue de Multifox).
  *
  * Las aprobaciones se habilitan con permisos Spatie. Paula se identifica igual que en Cortes
  * (permiso cortes.multifox).
@@ -20,16 +21,19 @@ class CuentaCobroWorkflow
     public const STAGE_DIRECTOR = 'director_obra';
     public const STAGE_GERENCIA = 'gerencia';
     public const STEP_MULTIFOX = 'multifox';
+    public const STEP_APROBACION_CONTABLE = 'aprobacion_contable';
 
     public const STATUS_PENDIENTE_DIRECTOR = 'pendiente_director';
     public const STATUS_PENDIENTE_GERENCIA = 'pendiente_gerencia';
     public const STATUS_DEVUELTA = 'devuelta';
     public const STATUS_PENDIENTE_REVISION = 'pendiente_revision'; // Paula decide si requiere Multifox
     public const STATUS_PENDIENTE_MULTIFOX = 'pendiente_multifox'; // Requiere Multifox y aún no se carga
+    public const STATUS_PENDIENTE_APROBACION_CONTABLE = 'pendiente_aprobacion_contable'; // Falta la aprobación de Contabilidad
     public const STATUS_EN_PAGOS = 'en_pagos';
 
     public const PERMISSION_VIEW_ALL = 'cuentas_cobro.ver_todos';
     public const PERMISSION_PARAMETRIZAR = 'cuentas_cobro.parametrizar';
+    public const PERMISSION_ACCOUNTING = 'cuentas_cobro.aprobar_contabilidad';
 
     public const STAGES = [
         self::STAGE_DIRECTOR => [
@@ -50,6 +54,7 @@ class CuentaCobroWorkflow
         self::STATUS_DEVUELTA => 'Devuelta',
         self::STATUS_PENDIENTE_REVISION => 'Pendiente revisión Multifox',
         self::STATUS_PENDIENTE_MULTIFOX => 'Pendiente cargue en Multifox',
+        self::STATUS_PENDIENTE_APROBACION_CONTABLE => 'Pendiente aprobación Contabilidad',
         self::STATUS_EN_PAGOS => 'En cuadro de pagos',
     ];
 
@@ -84,6 +89,9 @@ class CuentaCobroWorkflow
         if ($stage === self::STEP_MULTIFOX) {
             return 'Multifox';
         }
+        if ($stage === self::STEP_APROBACION_CONTABLE) {
+            return 'Aprobación Contabilidad';
+        }
 
         return $stage ? (self::STAGES[$stage]['label'] ?? $stage) : null;
     }
@@ -110,6 +118,11 @@ class CuentaCobroWorkflow
     public static function canHandleMultifox(User $user): bool
     {
         return CorteWorkflow::canConfirmMultifox($user);
+    }
+
+    public static function canApproveAccounting(User $user): bool
+    {
+        return $user->can(self::PERMISSION_ACCOUNTING);
     }
 
     public static function toArray(): array

@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\CuentasCobro\Controller;
 
+use App\Http\Modules\Pagos\Request\AccountingDecisionRequest;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Cortes\Request\RequestUploadUrlRequest;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
@@ -137,7 +138,7 @@ class CuentaCobroController extends Controller
 
             return $this->respond($cuenta, $request, $requires
                 ? 'Marcada como pendiente de cargue en Multifox.'
-                : 'No requiere Multifox: pasó al cuadro de pagos.');
+                : 'No requiere Multifox: pasó a la aprobación de Contabilidad.');
         });
     }
 
@@ -146,7 +147,19 @@ class CuentaCobroController extends Controller
         return $this->attempt('cargar en Multifox', function () use ($request, $cuenta) {
             $cuenta = $this->service->registerMultifox($cuenta, $request->validated(), $request->user());
 
-            return $this->respond($cuenta, $request, 'Cargada en Multifox: pasó al cuadro de pagos.');
+            return $this->respond($cuenta, $request, 'Cargada en Multifox: pasó a la aprobación de Contabilidad.');
+        });
+    }
+
+    public function reviewAccounting(AccountingDecisionRequest $request, CuentaCobro $cuenta): JsonResponse
+    {
+        return $this->attempt('registrar la aprobación de Contabilidad', function () use ($request, $cuenta) {
+            $decision = $request->validated('decision');
+            $cuenta = $this->service->reviewAccounting($cuenta, $decision, $request->validated('comment'), $request->user());
+
+            return $this->respond($cuenta, $request, $decision === 'aprobar'
+                ? 'Cuenta de cobro aprobada: pasó al cuadro de pagos.'
+                : 'Cuenta de cobro devuelta a Multifox.');
         });
     }
 

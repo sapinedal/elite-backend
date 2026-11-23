@@ -6,6 +6,7 @@ use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Anticipos\Models\AnticipoHistory;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Ftra\Models\FtraContractor;
+use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,19 +17,21 @@ use InvalidArgumentException;
  * Anticipos de contratos:
  *
  *   Residente radica la cuenta de cobro -> Director de Obra -> Gerencia -> Contabilidad genera el anticipo
- *   en Multifox y carga el soporte -> Cuadro de pagos
+ *   en Multifox y carga el soporte -> Aprobación de Contabilidad -> Cuadro de pagos (si lo devuelve, vuelve a Multifox)
  */
 class AnticipoService
 {
     public const SCOPE_MINE = 'mine';
     public const SCOPE_PENDING = 'pending';   // Anticipos que esperan una aprobación del usuario
     public const SCOPE_ACCOUNTING = 'accounting'; // Aprobados que Contabilidad debe generar en Multifox
+    public const SCOPE_ACCOUNTING_APPROVAL = 'accounting_approval'; // Cargados en Multifox por aprobar en Contabilidad
     public const SCOPE_ALL = 'all';
 
     public function __construct(
         protected AnticipoStorageService $storage,
         protected AnticipoNotificationService $notifications,
         protected PagoService $pagos,
+        protected AccountingApprovalNotifier $accounting,
     ) {
     }
 
@@ -72,6 +75,7 @@ class AnticipoService
             'can_view_all' => $user->can(AnticipoWorkflow::PERMISSION_VIEW_ALL),
             'can_create' => $user->can('anticipos.crear'),
             'can_contabilizar' => AnticipoWorkflow::canContabilizar($user),
+            'can_approve_accounting' => AnticipoWorkflow::canApproveAccounting($user),
             ...AnticipoWorkflow::toArray(),
         ];
     }
@@ -110,6 +114,7 @@ class AnticipoService
             self::SCOPE_MINE => $this->scopedQuery($user, self::SCOPE_MINE)->count(),
             self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
             self::SCOPE_ACCOUNTING => AnticipoWorkflow::canContabilizar($user) ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING)->count() : 0,
+            self::SCOPE_ACCOUNTING_APPROVAL => AnticipoWorkflow::canApproveAccounting($user) ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING_APPROVAL)->count() : 0,
         ];
     }
 
@@ -125,7 +130,11 @@ class AnticipoService
             return $query->accessibleBy($user)->where('status', AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD);
         }
 
-        if ($scope === self::SCOPE_ALL && ($user->can(AnticipoWorkflow::PERMISSION_VIEW_ALL) || AnticipoWorkflow::canContabilizar($user))) {
+        if ($scope === self::SCOPE_ACCOUNTING_APPROVAL && AnticipoWorkflow::canApproveAccounting($user)) {
+            return $query->accessibleBy($user)->where('status', AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+        }
+
+        if ($scope === self::SCOPE_ALL && ($user->can(AnticipoWorkflow::PERMISSION_VIEW_ALL) || AnticipoWorkflow::canContabilizar($user) || AnticipoWorkflow::canApproveAccounting($user))) {
             return $query->accessibleBy($user);
         }
 
@@ -154,7 +163,8 @@ class AnticipoService
 
         return $user->can(AnticipoWorkflow::PERMISSION_VIEW_ALL)
             || AnticipoWorkflow::stagesFor($user) !== []
-            || AnticipoWorkflow::canContabilizar($user);
+            || AnticipoWorkflow::canContabilizar($user)
+            || AnticipoWorkflow::canApproveAccounting($user);
     }
 
     public function canReview(Anticipo $anticipo, User $user): bool
@@ -173,6 +183,13 @@ class AnticipoService
     {
         return $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD
             && AnticipoWorkflow::canContabilizar($user)
+            && $user->canAccessProject($anticipo->project_id);
+    }
+
+    public function canReviewAccounting(Anticipo $anticipo, User $user): bool
+    {
+        return $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE
+            && AnticipoWorkflow::canApproveAccounting($user)
             && $user->canAccessProject($anticipo->project_id);
     }
 
@@ -301,7 +318,7 @@ class AnticipoService
     }
 
     /**
-     * Contabilidad carga el anticipo generado en Multifox (número y soporte): queda completado y pasa al cuadro de pagos.
+     * Contabilidad carga el anticipo generado en Multifox (número y soporte): pasa a la aprobación de Contabilidad.
      */
     public function registerMultifox(Anticipo $anticipo, array $data, User $user): Anticipo
     {
@@ -319,7 +336,7 @@ class AnticipoService
             }
 
             $anticipo->update([
-                'status' => AnticipoWorkflow::STATUS_COMPLETADO,
+                'status' => AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE,
                 'multifox_number' => trim($data['multifox_number']),
                 'multifox_file_name' => $file['file_name'],
                 'multifox_file_path' => $file['file_path'],
@@ -332,20 +349,95 @@ class AnticipoService
             $anticipo->history()->create([
                 'stage' => AnticipoWorkflow::STEP_CONTABILIDAD,
                 'action' => AnticipoHistory::ACTION_MULTIFOX,
-                'comment' => "Anticipo N.º {$anticipo->multifox_number} generado en Multifox. Pasa al cuadro de pagos." . ($comment ? " {$comment}" : ''),
+                'comment' => "Anticipo N.º {$anticipo->multifox_number} generado en Multifox. Pendiente de aprobación de Contabilidad." . ($comment ? " {$comment}" : ''),
                 'file_name' => $file['file_name'],
                 'file_path' => $file['file_path'],
                 'user_id' => $user->id,
             ]);
 
-            $this->pagos->registerFromAnticipo($anticipo, $user);
+            return $anticipo;
+        });
+
+        $this->accounting->pending('anticipos', $anticipo->project_id, $this->accountingPayload($anticipo), $comment);
+
+        return $anticipo;
+    }
+
+    /**
+     * Contabilidad aprueba el anticipo cargado en Multifox (pasa al cuadro de pagos) o lo devuelve a quien lo genera
+     * en Multifox, que debe cargarlo de nuevo.
+     */
+    public function reviewAccounting(Anticipo $anticipo, string $decision, ?string $comment, User $user): Anticipo
+    {
+        $comment = $comment !== null ? (trim($comment) ?: null) : null;
+        if (!$this->canReviewAccounting($anticipo, $user)) {
+            throw new InvalidArgumentException('Este anticipo no está pendiente de la aprobación de Contabilidad o no puedes aprobarlo.');
+        }
+        if ($decision === 'devolver' && !$comment) {
+            throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
+        }
+
+        $multifoxEmail = $anticipo->multifoxUser?->email;
+
+        $anticipo = DB::transaction(function () use ($anticipo, $decision, $comment, $user) {
+            $anticipo = Anticipo::whereKey($anticipo->id)->lockForUpdate()->firstOrFail();
+            if ($anticipo->status !== AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE) {
+                throw new InvalidArgumentException('Otro usuario ya revisó este anticipo.');
+            }
+
+            if ($decision === 'aprobar') {
+                $anticipo->update(['status' => AnticipoWorkflow::STATUS_COMPLETADO]);
+                $this->log($anticipo, AnticipoHistory::ACTION_CONTABILIDAD_APROBADA, $user, AnticipoWorkflow::STEP_APROBACION_CONTABLE,
+                    'Aprobado por Contabilidad. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
+                $this->pagos->registerFromAnticipo($anticipo, $user);
+            } else {
+                // Vuelve a Multifox: el soporte anterior queda en el historial
+                $anticipo->update([
+                    'status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD,
+                    'multifox_number' => null,
+                    'multifox_file_name' => null,
+                    'multifox_file_path' => null,
+                    'multifox_file_size' => null,
+                    'multifox_file_mime' => null,
+                    'multifox_by' => null,
+                    'multifox_at' => null,
+                ]);
+                $this->log($anticipo, AnticipoHistory::ACTION_CONTABILIDAD_DEVUELTA, $user, AnticipoWorkflow::STEP_APROBACION_CONTABLE,
+                    "Devuelto por Contabilidad a Multifox. {$comment}");
+            }
 
             return $anticipo;
         });
 
-        $this->notifications->completed($anticipo, $comment);
+        if ($decision === 'aprobar') {
+            // El flujo: residente y aprobadores saben que pasó al cuadro de pagos
+            $this->notifications->completed($anticipo, $comment);
+        } else {
+            $multifox = $this->accounting->usersWith([AnticipoWorkflow::PERMISSION_CONTABILIZAR, 'correos.anticipos.contabilidad'], $anticipo->project_id)->push($multifoxEmail);
+            $this->accounting->returned('anticipos', $anticipo->project_id, $multifox, [...$this->accountingPayload($anticipo), 'returned_to' => 'Multifox'], (string) $comment, $user->name);
+        }
 
         return $anticipo;
+    }
+
+    protected function accountingPayload(Anticipo $anticipo): array
+    {
+        $anticipo->loadMissing(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code,contractor_name', 'creator:id,name']);
+
+        return [
+            'module' => 'Anticipos',
+            'reference' => "Anticipo {$anticipo->reference()}",
+            'details' => [
+                'Anticipo' => $anticipo->code,
+                'N.º Multifox' => $anticipo->multifox_number,
+                'Valor' => '$' . number_format((float) $anticipo->amount, 0, ',', '.'),
+                'Contrato' => $anticipo->contract?->contract_code,
+                'Proveedor' => $anticipo->contractor?->name ?? $anticipo->contract?->contractor_name,
+                'Proyecto / Torre' => trim(($anticipo->project?->name ?? '—') . ($anticipo->tower ? ' · ' . $anticipo->tower->name : '')),
+                'Radicado por' => $anticipo->creator?->name,
+            ],
+            'cta_url' => config('anticipos.frontend_url') . '/app/contratacion/anticipos?anticipo=' . $anticipo->id,
+        ];
     }
 
     public function downloadUrl(Anticipo $anticipo, bool $multifox = false): string
@@ -386,18 +478,34 @@ class AnticipoService
             ];
         }, array_keys(AnticipoWorkflow::STAGES));
 
-        $multifox = $history->firstWhere('action', AnticipoHistory::ACTION_MULTIFOX);
+        $multifox = $history->where('action', AnticipoHistory::ACTION_MULTIFOX)->last();
+        $loaded = in_array($anticipo->status, [AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, AnticipoWorkflow::STATUS_COMPLETADO], true);
         $stages[] = [
             'key' => AnticipoWorkflow::STEP_CONTABILIDAD,
             'label' => 'Anticipo Multifox',
             'kind' => 'document',
             'state' => match (true) {
-                $anticipo->status === AnticipoWorkflow::STATUS_COMPLETADO => 'aprobado',
+                $loaded => 'aprobado',
                 $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD => 'actual',
                 default => 'pendiente',
             },
-            'user' => $multifox?->user?->name,
-            'at' => $multifox?->created_at?->toIso8601String(),
+            'user' => $loaded ? $multifox?->user?->name : null,
+            'at' => $loaded ? $multifox?->created_at?->toIso8601String() : null,
+        ];
+
+        $accounting = $history->whereIn('action', [AnticipoHistory::ACTION_CONTABILIDAD_APROBADA, AnticipoHistory::ACTION_CONTABILIDAD_DEVUELTA])->last();
+        $stages[] = [
+            'key' => AnticipoWorkflow::STEP_APROBACION_CONTABLE,
+            'label' => 'Aprobación Contabilidad',
+            'kind' => 'approval',
+            'state' => match (true) {
+                $anticipo->status === AnticipoWorkflow::STATUS_COMPLETADO => 'aprobado',
+                $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE => 'actual',
+                $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD && $accounting?->action === AnticipoHistory::ACTION_CONTABILIDAD_DEVUELTA => 'devuelto',
+                default => 'pendiente',
+            },
+            'user' => $accounting?->user?->name,
+            'at' => $accounting?->created_at?->toIso8601String(),
         ];
 
         return $stages;
@@ -472,6 +580,7 @@ class AnticipoService
             'can_review' => $this->canReview($anticipo, $user),
             'can_resubmit' => $this->canResubmit($anticipo, $user),
             'can_register_multifox' => $this->canRegisterMultifox($anticipo, $user),
+            'can_review_accounting' => $this->canReviewAccounting($anticipo, $user),
         ];
 
         if ($withDetail) {

@@ -7,6 +7,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteStorageService;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
+use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Service\OrdenStorageService;
@@ -25,7 +26,8 @@ use InvalidArgumentException;
  *   Pendiente --(Paula prioriza y programa)--> Priorizada --(Contabilidad paga)--> Pagada
  *                                                  \-- abono --> Parcial (vuelve a priorizarse el saldo)
  *
- * Las cuentas llegan solas desde cortes (factura confirmada en Multifox) y órdenes (entrada cargada),
+ * Las cuentas llegan solas, después de la aprobación de Contabilidad, desde cortes (factura confirmada en Multifox),
+ * órdenes (entrada cargada), anticipos y cuentas de cobro,
  * o las registra Contabilidad a mano. Cada acción queda en pagos_movimientos con usuario y fecha.
  */
 class PagoService
@@ -257,7 +259,7 @@ class PagoService
             'status' => self::STATUS_PENDIENTE,
             'created_by' => $user->id,
         ]);
-        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Factura confirmada en Multifox ({$corte->reference()}).");
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Factura confirmada en Multifox y aprobada por Contabilidad ({$corte->reference()}).");
 
         // Factura de reemplazo: la anterior se anula y lo que ya se le había pagado pasa a la nueva
         if ($invoice->document_type === CorteInvoice::TYPE_FACTURA_REEMPLAZO && $related) {
@@ -271,7 +273,8 @@ class PagoService
     }
 
     /**
-     * Orden completada (entrada cargada): la factura del proveedor pasa a cuentas por pagar.
+     * Orden completada (entrada cargada y aprobada por Contabilidad): la factura del proveedor pasa a cuentas por pagar.
+     * El proveedor sale del documento o, si no se indicó, de la factura del mes que se asoció a la orden.
      */
     public function registerFromOrden(Orden $orden, User $user): void
     {
@@ -282,6 +285,8 @@ class PagoService
         }
 
         $contractor = $invoice->contractor_id ? FtraContractor::find($invoice->contractor_id) : null;
+        $monthly = $contractor ? null : FacturacionInvoice::with('contractor:id,name,nit')->where('orden_document_id', $invoice->id)->first();
+        $contractor ??= $monthly?->contractor;
         $amount = (float) $invoice->amount;
 
         $cuenta = PagoCuenta::create([
@@ -292,14 +297,14 @@ class PagoService
             'frente' => $this->frenteFor($orden->tower?->name),
             'contractor_id' => $contractor?->id,
             'supplier_nit' => $contractor?->nit,
-            'supplier_name' => $contractor?->name ?? 'Proveedor sin nombre',
+            'supplier_name' => $contractor?->name ?? $monthly?->supplier_name ?? 'Proveedor sin nombre',
             'document_number' => $invoice->number,
             'concept' => "Orden {$orden->code}. " . $orden->description,
             'amount' => $amount,
             'status' => self::STATUS_PENDIENTE,
             'created_by' => $user->id,
         ]);
-        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden {$orden->code} completada (entrada de almacén cargada).");
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden {$orden->code} completada (entrada de almacén cargada y aprobada por Contabilidad).");
     }
 
     /**

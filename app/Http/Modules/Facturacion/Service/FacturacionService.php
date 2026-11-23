@@ -242,20 +242,37 @@ class FacturacionService
     /**
      * A qué puede asociar el residente: sus cortes con las tres aprobaciones y sus órdenes pendientes de factura.
      */
-    public function targets(User $user): array
+    /**
+     * Cortes del residente que admiten la factura: con las tres aprobaciones y aún sin factura (Aprobado).
+     * Las notas crédito y facturas de reemplazo afectan una factura anterior, así que van a cortes ya Facturados.
+     */
+    public static function corteStatusesFor(?string $documentType): array
+    {
+        return FacturacionInvoice::requiresRelatedDocument($documentType)
+            ? [CorteWorkflow::STATUS_FACTURADO]
+            : [CorteWorkflow::STATUS_APROBADO];
+    }
+
+    public function targets(User $user, ?FacturacionInvoice $invoice = null): array
     {
         $cortes = Corte::query()
             ->where('created_by', $user->id)
-            ->whereIn('status', CorteWorkflow::INVOICEABLE_STATUSES)
+            ->whereIn('status', self::corteStatusesFor($invoice?->document_type))
             ->with(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code'])
             ->withCount('invoices')
             ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [CorteWorkflow::STATUS_APROBADO])
             ->orderByDesc('approved_at')
             ->get();
 
+        // Órdenes esperando la factura del proveedor (sin factura cargada). A una orden solo se asocia la factura o
+        // cuenta de cobro del proveedor, nunca notas crédito ni facturas de reemplazo.
+        $ordenCompatible = !$invoice || in_array($invoice->document_type, [FacturacionInvoice::TYPE_FACTURA, FacturacionInvoice::TYPE_CUENTA_COBRO], true);
         $ordenes = Orden::query()
             ->where('created_by', $user->id)
             ->where('status', OrdenWorkflow::STATUS_PENDIENTE_FACTURA)
+            ->where('current_step', OrdenWorkflow::STEP_FACTURA)
+            ->whereDoesntHave('documents', fn ($q) => $q->where('step', OrdenWorkflow::STEP_FACTURA))
+            ->when(!$ordenCompatible, fn ($q) => $q->whereRaw('1 = 0'))
             ->with(['project:id,name', 'tower:id,name'])
             ->orderByDesc('approved_at')
             ->get();
@@ -307,10 +324,8 @@ class FacturacionService
         $target = $isCorte ? Corte::find($data['target_id']) : Orden::find($data['target_id']);
         $this->assertCanAssociate($invoice, $target, $isCorte, $user);
 
+        // Igual que en el corte, no se pide el proveedor al asociar: cuentas por pagar usa el de la factura del mes
         $contractorId = $invoice->contractor_id ?: ($data['contractor_id'] ?? null);
-        if (!$isCorte && !$contractorId) {
-            throw new InvalidArgumentException('Indica el proveedor de la factura: con él pasa a cuentas por pagar.');
-        }
 
         // Los soportes se mueven a la carpeta del mes antes de la transacción (igual que los demás cargues)
         $supports = collect($data['support_tokens'] ?? [])
@@ -398,6 +413,11 @@ class FacturacionService
 
         if ($isCorte && !in_array($target->status, CorteWorkflow::INVOICEABLE_STATUSES, true)) {
             throw new InvalidArgumentException("El {$target->label()} aún no tiene las tres aprobaciones.");
+        }
+        if ($isCorte && !in_array($target->status, self::corteStatusesFor($invoice->document_type), true)) {
+            throw new InvalidArgumentException(FacturacionInvoice::requiresRelatedDocument($invoice->document_type)
+                ? "El {$target->label()} aún no tiene una factura que esta {$invoice->documentTypeLabel()} pueda afectar."
+                : "El {$target->label()} ya tiene factura asociada. Para corregirla usa una nota crédito o una factura de reemplazo.");
         }
 
         if (!$isCorte) {

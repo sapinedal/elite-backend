@@ -95,6 +95,7 @@ class PermissionSeeder extends Seeder
             'cortes.aprobar_gerencia',
             'cortes.facturar', // Cargar facturas a cortes aprobados (aviso a Multifox)
             'cortes.multifox', // Confirmar la carga en Multifox (también por cargo, ver config/cortes.php)
+            'cortes.aprobar_contabilidad', // Aprobar en Contabilidad la factura cargada en Multifox (pasa a cuentas por pagar)
 
             // Registro de Orden (aprobación Director de Obra -> Gerencia y documentos ERP / factura / entrada)
             'ordenes.ver',
@@ -104,6 +105,7 @@ class PermissionSeeder extends Seeder
             'ordenes.aprobar_gerencia',
             'ordenes.gestionar_almacen', // Orden de compra ERP y entrada (también por cargo, ver config/ordenes.php)
             'ordenes.facturar',          // Factura del proveedor
+            'ordenes.aprobar_contabilidad', // Aprobar en Contabilidad la orden completada (pasa a cuentas por pagar)
 
             // Cuentas por pagar (cuadro de pagos)
             'pagos.ver',
@@ -210,7 +212,7 @@ class PermissionSeeder extends Seeder
         $mercadeoRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
         // CONTABLE: Tareas + Gestión Documental + Facturación de cortes y órdenes
-        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar', 'ordenes.ver', 'ordenes.facturar', 'pagos.ver', 'pagos.pagar', 'pagos.registrar']));
+        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar', 'cortes.aprobar_contabilidad', 'ordenes.ver', 'ordenes.facturar', 'ordenes.aprobar_contabilidad', 'pagos.ver', 'pagos.pagar', 'pagos.registrar']));
 
         // CARTERA Y TRÁMITES: Tareas + Gestión Documental
         $carteraTramitesRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));

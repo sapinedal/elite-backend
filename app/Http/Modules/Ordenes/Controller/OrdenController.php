@@ -2,6 +2,7 @@
 
 namespace App\Http\Modules\Ordenes\Controller;
 
+use App\Http\Modules\Pagos\Request\AccountingDecisionRequest;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
@@ -162,6 +163,27 @@ class OrdenController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             return $this->serverError('cargar el documento', $e);
+        }
+    }
+
+    /**
+     * Contabilidad aprueba la orden con su entrada (pasa a cuentas por pagar) o la devuelve a Almacén.
+     */
+    public function reviewAccounting(AccountingDecisionRequest $request, Orden $orden): JsonResponse
+    {
+        try {
+            $decision = $request->validated('decision');
+            $orden = $this->ordenService->reviewAccounting($orden, $decision, $request->validated('comment'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $decision === 'aprobar' ? 'Orden aprobada. Pasó a cuentas por pagar.' : 'Orden devuelta a Almacén.',
+                'data' => $this->ordenService->getOrden($orden, $request->user()),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('registrar la aprobación de Contabilidad', $e);
         }
     }
 

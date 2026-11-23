@@ -7,8 +7,8 @@ use App\Http\Modules\Users\Models\User;
 /**
  * Definición del flujo de anticipos, en un solo lugar.
  *
- *   Radicado -> Director de Obra -> Gerencia -> Contabilidad (anticipo en Multifox) -> Completado (cuadro de pagos)
- *                     \__________________\___ Devuelto (al residente)
+ *   Radicado -> Director de Obra -> Gerencia -> Contabilidad (anticipo en Multifox) -> Aprobación de Contabilidad -> Completado (cuadro de pagos)
+ *                     \__________________\___ Devuelto (al residente)          ^__________ devuelto _________/
  *
  * Cada aprobación y el paso de Contabilidad se habilitan con permisos Spatie, así se configuran desde Roles.
  */
@@ -17,15 +17,18 @@ class AnticipoWorkflow
     public const STAGE_DIRECTOR = 'director_obra';
     public const STAGE_GERENCIA = 'gerencia';
     public const STEP_CONTABILIDAD = 'contabilidad';
+    public const STEP_APROBACION_CONTABLE = 'aprobacion_contable';
 
     public const STATUS_PENDIENTE_DIRECTOR = 'pendiente_director';
     public const STATUS_PENDIENTE_GERENCIA = 'pendiente_gerencia';
     public const STATUS_DEVUELTO = 'devuelto';
     public const STATUS_PENDIENTE_CONTABILIDAD = 'pendiente_contabilidad';
+    public const STATUS_PENDIENTE_APROBACION_CONTABLE = 'pendiente_aprobacion_contable'; // Cargado en Multifox, falta la aprobación
     public const STATUS_COMPLETADO = 'completado';
 
     public const PERMISSION_VIEW_ALL = 'anticipos.ver_todos';
     public const PERMISSION_CONTABILIZAR = 'anticipos.contabilizar';
+    public const PERMISSION_ACCOUNTING = 'anticipos.aprobar_contabilidad';
 
     /**
      * Aprobaciones en orden.
@@ -48,6 +51,7 @@ class AnticipoWorkflow
         self::STATUS_PENDIENTE_GERENCIA => 'Pendiente Gerencia',
         self::STATUS_DEVUELTO => 'Devuelto',
         self::STATUS_PENDIENTE_CONTABILIDAD => 'Pendiente Contabilidad',
+        self::STATUS_PENDIENTE_APROBACION_CONTABLE => 'Pendiente aprobación Contabilidad',
         self::STATUS_COMPLETADO => 'En cuadro de pagos',
     ];
 
@@ -82,6 +86,9 @@ class AnticipoWorkflow
         if ($stage === self::STEP_CONTABILIDAD) {
             return 'Contabilidad';
         }
+        if ($stage === self::STEP_APROBACION_CONTABLE) {
+            return 'Aprobación Contabilidad';
+        }
 
         return $stage ? (self::STAGES[$stage]['label'] ?? $stage) : null;
     }
@@ -105,6 +112,11 @@ class AnticipoWorkflow
     public static function canContabilizar(User $user): bool
     {
         return $user->can(self::PERMISSION_CONTABILIZAR);
+    }
+
+    public static function canApproveAccounting(User $user): bool
+    {
+        return $user->can(self::PERMISSION_ACCOUNTING);
     }
 
     public static function toArray(): array

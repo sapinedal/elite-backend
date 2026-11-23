@@ -25,6 +25,7 @@ class MailRecipients
         'correos.cortes.residentes' => 'Cortes: recibe los avisos al residente (radicado, avance, devuelto y aprobado)',
         'correos.cortes.facturacion' => 'Cortes: recibe los cortes con las tres aprobaciones para facturar',
         'correos.cortes.multifox' => 'Cortes: recibe las facturas cargadas para registrarlas en Multifox',
+        'correos.cortes.aprobacion_contable' => 'Cortes: recibe las facturas cargadas en Multifox para la aprobación de Contabilidad antes de cuentas por pagar',
         'correos.cortes.copia' => 'Cortes: en copia de todos los correos del flujo',
 
         'correos.ftra.supervisor' => 'FTRA: recibe los FTRA registrados para la revisión del Supervisor',
@@ -34,17 +35,20 @@ class MailRecipients
         'correos.anticipos.director_obra' => 'Anticipos: recibe los anticipos radicados para la aprobación del Director de Obra',
         'correos.anticipos.gerencia' => 'Anticipos: recibe los anticipos aprobados por el Director para la aprobación de Gerencia',
         'correos.anticipos.contabilidad' => 'Anticipos: recibe los anticipos aprobados para generarlos en Multifox',
+        'correos.anticipos.aprobacion_contable' => 'Anticipos: recibe los anticipos cargados en Multifox para la aprobación de Contabilidad antes del cuadro de pagos',
         'correos.anticipos.copia' => 'Anticipos: en copia de todos los correos del flujo',
 
         'correos.cuentas_cobro.director_obra' => 'Cuentas de cobro: recibe las cuentas radicadas para la aprobación del Director de Obra',
         'correos.cuentas_cobro.gerencia' => 'Cuentas de cobro: recibe las cuentas aprobadas por el Director para la aprobación de Gerencia',
         'correos.cuentas_cobro.multifox' => 'Cuentas de cobro: recibe las cuentas aprobadas para decidir y cargar Multifox',
+        'correos.cuentas_cobro.aprobacion_contable' => 'Cuentas de cobro: recibe las cuentas cargadas en Multifox para la aprobación de Contabilidad antes del cuadro de pagos',
         'correos.cuentas_cobro.copia' => 'Cuentas de cobro: en copia de todos los correos del flujo',
 
         'correos.ordenes.director_obra' => 'Órdenes: recibe las órdenes registradas para la aprobación del Director de Obra',
         'correos.ordenes.gerencia' => 'Órdenes: recibe las órdenes aprobadas por el Director para la aprobación de Gerencia',
         'correos.ordenes.almacen' => 'Órdenes: recibe las órdenes aprobadas y las facturas para cargar la orden ERP y la entrada de almacén',
         'correos.ordenes.facturacion' => 'Órdenes: recibe las órdenes con orden de compra ERP para cargar la factura del proveedor',
+        'correos.ordenes.aprobacion_contable' => 'Órdenes: recibe las órdenes con entrada de almacén para la aprobación de Contabilidad antes de cuentas por pagar',
         'correos.ordenes.copia' => 'Órdenes: en copia de todos los correos del flujo',
 
         'correos.contratacion.polizas' => 'Contratación: recibe las alertas de pólizas próximas a vencer (40, 30 y 20 días)',

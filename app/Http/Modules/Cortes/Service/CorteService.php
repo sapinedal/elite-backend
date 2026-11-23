@@ -20,6 +20,7 @@ class CorteService
     public const SCOPE_ALL = 'all';
     public const SCOPE_BILLING = 'billing'; // Cortes aprobados para cargar facturas (cortes.facturar)
     public const SCOPE_MULTIFOX = 'multifox'; // Cortes con facturas por confirmar en Multifox (Paula)
+    public const SCOPE_ACCOUNTING = 'accounting'; // Cortes con facturas cargadas en Multifox por aprobar (Contabilidad)
 
     public function __construct(
         protected CorteStorageService $storage,
@@ -80,6 +81,7 @@ class CorteService
             'can_view_all' => $user->can(CorteWorkflow::PERMISSION_VIEW_ALL),
             'can_invoice' => $user->can(CorteWorkflow::PERMISSION_INVOICE),
             'can_confirm_multifox' => CorteWorkflow::canConfirmMultifox($user),
+            'can_approve_accounting' => CorteWorkflow::canApproveAccounting($user),
             'invoice_document_types' => collect(CorteInvoice::DOCUMENT_TYPES)
                 ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])
                 ->values(),
@@ -136,6 +138,9 @@ class CorteService
             self::SCOPE_MULTIFOX => CorteWorkflow::canConfirmMultifox($user)
                 ? $this->scopedQuery($user, self::SCOPE_MULTIFOX)->count()
                 : 0,
+            self::SCOPE_ACCOUNTING => CorteWorkflow::canApproveAccounting($user)
+                ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING)->count()
+                : 0,
         ];
     }
 
@@ -161,12 +166,16 @@ class CorteService
             return $query->accessibleBy($user)->whereHas('invoices', fn ($q) => $q->whereNull('multifox_confirmed_at'));
         }
 
+        if ($scope === self::SCOPE_ACCOUNTING && CorteWorkflow::canApproveAccounting($user)) {
+            return $query->accessibleBy($user)->whereHas('invoices', fn ($q) => $q->where('accounting_status', CorteInvoice::ACCOUNTING_PENDIENTE));
+        }
+
         return $query->where('created_by', $user->id);
     }
 
     public function getCorte(Corte $corte, User $user): array
     {
-        $corte->load([...$this->listRelations(), 'history.user:id,name', 'invoices.uploader:id,name', 'invoices.multifoxConfirmer:id,name']);
+        $corte->load([...$this->listRelations(), 'history.user:id,name', 'invoices.uploader:id,name', 'invoices.multifoxConfirmer:id,name', 'invoices.accountingUser:id,name']);
 
         return $this->present($corte, $user, true);
     }
@@ -187,7 +196,7 @@ class CorteService
         return $user->can(CorteWorkflow::PERMISSION_VIEW_ALL)
             || CorteWorkflow::stagesFor($user) !== []
             || $this->canInvoice($corte, $user)
-            || ($corte->invoices()->exists() && CorteWorkflow::canConfirmMultifox($user));
+            || ($corte->invoices()->exists() && (CorteWorkflow::canConfirmMultifox($user) || CorteWorkflow::canApproveAccounting($user)));
     }
 
     /**
@@ -463,6 +472,13 @@ class CorteService
                 'can_confirm_multifox' => !$invoice->multifox_confirmed_at && $invoice->amount !== null && CorteWorkflow::canConfirmMultifox($user),
                 'multifox_file_name' => $invoice->multifox_file_name,
                 'multifox_file_size' => $invoice->multifox_file_size,
+                // Aprobación de Contabilidad: null (sin Multifox) · pendiente · aprobada · devuelta
+                'accounting_status' => $invoice->accounting_status,
+                'accounting_by' => $invoice->accountingUser?->name,
+                'accounting_at' => $invoice->accounting_at?->toIso8601String(),
+                'accounting_comment' => $invoice->accounting_comment,
+                'can_review_accounting' => $invoice->accounting_status === CorteInvoice::ACCOUNTING_PENDIENTE
+                    && CorteWorkflow::canApproveAccounting($user) && $user->canAccessProject($corte->project_id),
                 'file_name' => $invoice->file_name,
                 'file_size' => $invoice->file_size,
                 'uploaded_by' => $invoice->uploader?->name,

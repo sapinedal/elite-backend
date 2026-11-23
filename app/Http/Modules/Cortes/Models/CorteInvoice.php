@@ -16,6 +16,11 @@ class CorteInvoice extends Model
     public const TYPE_NOTA_CREDITO = 'nota_credito';
     public const TYPE_FACTURA_REEMPLAZO = 'factura_reemplazo';
 
+    // Aprobación de Contabilidad después de Multifox (null mientras no se carga en Multifox)
+    public const ACCOUNTING_PENDIENTE = 'pendiente';
+    public const ACCOUNTING_APROBADA = 'aprobada';
+    public const ACCOUNTING_DEVUELTA = 'devuelta';
+
     public const DOCUMENT_TYPES = [
         self::TYPE_FACTURA_INICIAL => 'Factura inicial',
         self::TYPE_NOTA_CREDITO => 'Nota crédito',
@@ -34,6 +39,10 @@ class CorteInvoice extends Model
         'multifox_file_path',
         'multifox_file_size',
         'multifox_file_mime',
+        'accounting_status',
+        'accounting_by',
+        'accounting_at',
+        'accounting_comment',
         'observation',
         'file_name',
         'file_path',
@@ -47,6 +56,7 @@ class CorteInvoice extends Model
         'multifox_file_size' => 'integer',
         'amount' => 'decimal:2',
         'multifox_confirmed_at' => 'datetime',
+        'accounting_at' => 'datetime',
     ];
 
     public function corte()
@@ -57,6 +67,11 @@ class CorteInvoice extends Model
     public function multifoxConfirmer()
     {
         return $this->belongsTo(User::class, 'multifox_confirmed_by');
+    }
+
+    public function accountingUser()
+    {
+        return $this->belongsTo(User::class, 'accounting_by');
     }
 
     public function uploader()

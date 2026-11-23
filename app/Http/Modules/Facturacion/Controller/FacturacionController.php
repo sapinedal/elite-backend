@@ -119,7 +119,10 @@ class FacturacionController extends Controller
 
     public function targets(Request $request): JsonResponse
     {
-        return response()->json(['status' => 'success', 'data' => $this->service->targets($request->user())]);
+        // ?invoice=<id>: solo los cortes que admiten ese tipo de documento
+        $invoice = $request->integer('invoice') ? FacturacionInvoice::find($request->integer('invoice')) : null;
+
+        return response()->json(['status' => 'success', 'data' => $this->service->targets($request->user(), $invoice)]);
     }
 
     public function associate(AssociateFacturacionInvoiceRequest $request, FacturacionInvoice $invoice): JsonResponse

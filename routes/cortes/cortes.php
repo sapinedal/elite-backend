@@ -15,6 +15,8 @@ Route::prefix('cortes')->middleware('auth:sanctum')->group(function () {
     Route::post('/upload-url', [CorteController::class, 'uploadUrl'])->middleware('permission:cortes.crear|cortes.ver');
     // Confirmación de carga en Multifox: por cargo (Paula) o permiso cortes.multifox, lo valida CorteInvoiceService
     Route::post('/invoices/{invoice}/multifox', [CorteController::class, 'confirmMultifox'])->middleware('permission:cortes.ver');
+    // Aprobación de Contabilidad de la factura cargada en Multifox: antes de pasar a cuentas por pagar
+    Route::post('/invoices/{invoice}/accounting', [CorteController::class, 'reviewAccounting'])->middleware('permission:cortes.aprobar_contabilidad');
     Route::get('/invoices/{invoice}/download', [CorteController::class, 'downloadInvoice'])->middleware('permission:cortes.ver|cortes.facturar');
 
     Route::get('/', [CorteController::class, 'index'])->middleware('permission:cortes.ver');

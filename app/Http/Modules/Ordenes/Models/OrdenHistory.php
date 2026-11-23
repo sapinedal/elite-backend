@@ -20,6 +20,8 @@ class OrdenHistory extends Model
     public const ACTION_DEVUELTO = 'devuelto';
     public const ACTION_REENVIADA = 'reenviada';
     public const ACTION_DOCUMENTO = 'documento';
+    public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Contabilidad aprueba: pasa a cuentas por pagar
+    public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Contabilidad devuelve a Almacén (entrada)
 
     protected $fillable = [
         'orden_id',

@@ -330,3 +330,141 @@ test('si la asociación falla, la copia en la carpeta del corte se elimina', fun
     expect($duplicated->fresh()->status)->toBe(FacturacionInvoice::STATUS_PENDIENTE)
         ->and($this->deleted)->toBe([$second->fresh()->storage_path . '/' . basename($duplicated->file_path)]);
 });
+
+function mockClaimUploads(): void
+{
+    test()->mock(DirectUploadService::class, function ($mock) {
+        $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
+        $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
+        $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
+            'file_name' => "{$token}.pdf",
+            'file_path' => "{$directory}/{$token}.pdf",
+            'file_size' => 2000,
+            'file_mime' => 'application/pdf',
+        ]);
+    });
+}
+
+function accountingMail(string $event, string $email): bool
+{
+    return Mail::sent(\App\Http\Modules\Pagos\Mail\AccountingApprovalMail::class, fn ($m) => $m->event === $event && $m->hasTo($email))->isNotEmpty();
+}
+
+test('la factura cargada en Multifox pasa a cuentas por pagar solo con la aprobación de Contabilidad; si la devuelve vuelve a Multifox', function () {
+    mockClaimUploads();
+    Permission::firstOrCreate(['name' => 'cortes.multifox', 'guard_name' => 'web']);
+    $paula = User::create(['name' => 'Paula', 'email' => 'paula@example.com', 'password' => 'secret']);
+    $paula->givePermissionTo(['cortes.ver', 'cortes.multifox', 'proyectos.ver_todos']);
+    $contador = User::create(['name' => 'Contador', 'email' => 'contador@example.com', 'password' => 'secret']);
+    $contador->givePermissionTo(['cortes.ver', 'cortes.aprobar_contabilidad', 'correos.cortes.aprobacion_contable', 'proyectos.ver_todos']);
+
+    $corte = makeCorte($this->residente);
+    $invoice = uploadInvoice();
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
+        ->assertOk();
+    $corteInvoice = CorteInvoice::first();
+
+    // Contabilidad no aprueba lo que aún no está en Multifox
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'aprobar'])->assertStatus(422);
+
+    $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertOk()
+        ->assertJsonPath('data.invoices.0.accounting_status', CorteInvoice::ACCOUNTING_PENDIENTE);
+    expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0)
+        ->and(accountingMail('pending', 'contador@example.com'))->toBeTrue();
+
+    // Pestaña de Contabilidad y permisos
+    $this->actingAs($contador)->getJson('/api/v1/cortes?scope=accounting')->assertOk()->assertJsonPath('counts.accounting', 1);
+    $this->actingAs($this->residente)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'aprobar'])->assertForbidden();
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'devolver'])->assertStatus(422);
+
+    // Devuelta: vuelve a Multifox (sin soporte) y se avisa a quien tiene cortes.multifox
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'devolver', 'comment' => 'Falta la captura de aprobación'])
+        ->assertOk()->assertJsonPath('data.invoices.0.can_review_accounting', false);
+    $corteInvoice->refresh();
+    expect($corteInvoice->accounting_status)->toBe(CorteInvoice::ACCOUNTING_DEVUELTA)
+        ->and($corteInvoice->multifox_confirmed_at)->toBeNull()
+        ->and($corteInvoice->multifox_file_path)->toBeNull()
+        ->and(accountingMail('returned', 'paula@example.com'))->toBeTrue()
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
+
+    // Paula la vuelve a cargar y Contabilidad la aprueba: pasa a cuentas por pagar y se avisa al residente
+    $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertOk();
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'aprobar'])
+        ->assertOk()->assertJsonPath('data.invoices.0.accounting_status', CorteInvoice::ACCOUNTING_APROBADA);
+
+    $pago = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
+    expect($pago->corte_id)->toBe($corte->id)
+        ->and((float) $pago->amount)->toBe(1500000.0)
+        ->and(accountingMail('approved', $this->residente->email))->toBeTrue()
+        ->and($corte->history()->pluck('action')->all())->toContain('contabilidad_devuelta', 'contabilidad_aprobada');
+});
+
+test('a la orden se asocia la factura sin pedir el proveedor y pasa a cuentas por pagar con la aprobación de Contabilidad', function () {
+    mockClaimUploads();
+    $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
+    $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+    $contador = User::create(['name' => 'Contador', 'email' => 'contador@example.com', 'password' => 'secret']);
+    $contador->givePermissionTo(['ordenes.ver', 'ordenes.aprobar_contabilidad', 'correos.ordenes.aprobacion_contable', 'proyectos.ver_todos']);
+
+    $orden = Orden::create([
+        'code' => 'ORD-0002', 'description' => 'Escrituras', 'project_id' => $this->project->id, 'chapter' => 'Legal', 'activity' => 'Notaría',
+        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
+        'storage_path' => 'tecnica/Ordenes/ORD-0002', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
+    ]);
+    // Factura de un proveedor que no está en el catálogo (solo nombre)
+    $invoice = uploadInvoice(['invoice_number' => '336', 'contractor_id' => null, 'supplier_name' => 'NOTARIA 1', 'amount' => 420000]);
+
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
+        ->assertOk();
+    expect($orden->fresh()->status)->toBe(OrdenWorkflow::STATUS_PENDIENTE_ENTRADA);
+
+    $entrada = fn () => $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-1', 'upload_token' => (string) Str::uuid()]);
+    $entrada()->assertCreated()->assertJsonPath('data.status', OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0)
+        ->and(accountingMail('pending', 'contador@example.com'))->toBeTrue();
+
+    // Devuelta: vuelve a la entrada de almacén
+    $this->actingAs($contador)->postJson("/api/v1/ordenes/{$orden->id}/accounting", ['decision' => 'devolver', 'comment' => 'Entrada incompleta'])
+        ->assertOk()->assertJsonPath('data.status', OrdenWorkflow::STATUS_PENDIENTE_ENTRADA);
+    expect($orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->count())->toBe(0)
+        ->and(accountingMail('returned', 'almacen@example.com'))->toBeTrue();
+
+    $entrada()->assertCreated();
+    $this->actingAs($contador)->postJson("/api/v1/ordenes/{$orden->id}/accounting", ['decision' => 'aprobar'])
+        ->assertOk()->assertJsonPath('data.status', OrdenWorkflow::STATUS_COMPLETADA);
+
+    $pago = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
+    expect($pago->orden_id)->toBe($orden->id)
+        ->and($pago->supplier_name)->toBe('NOTARIA 1')
+        ->and((float) $pago->amount)->toBe(420000.0);
+});
+
+test('al asociar solo se listan los cortes aprobados sin factura y las órdenes pendientes de factura', function () {
+    $pendiente = makeCorte($this->residente);
+    $facturado = makeCorte($this->residente, CorteWorkflow::STATUS_FACTURADO);
+    makeCorte($this->residente, CorteWorkflow::STATUS_PENDIENTE_GERENCIA);
+    $orden = fn (string $code, string $status, ?string $step) => Orden::create([
+        'code' => $code, 'description' => 'x', 'project_id' => $this->project->id, 'chapter' => 'c', 'activity' => 'a',
+        'status' => $status, 'current_step' => $step, 'created_by' => $this->residente->id,
+    ]);
+    $porFacturar = $orden('ORD-0010', OrdenWorkflow::STATUS_PENDIENTE_FACTURA, OrdenWorkflow::STEP_FACTURA);
+    $orden('ORD-0011', OrdenWorkflow::STATUS_PENDIENTE_ENTRADA, OrdenWorkflow::STEP_ENTRADA);
+
+    $factura = uploadInvoice();
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$factura->id}")->assertOk()->json('data');
+    expect(collect($targets['cortes'])->pluck('id')->all())->toBe([$pendiente->id])
+        ->and(collect($targets['ordenes'])->pluck('id')->all())->toBe([$porFacturar->id]);
+
+    // Una factura inicial no se asocia a un corte que ya tiene factura
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'corte', 'target_id' => $facturado->id])
+        ->assertStatus(422);
+
+    // La nota crédito solo se lista contra cortes ya facturados y nunca contra órdenes
+    $nota = uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '12', 'related_document' => 'FE 335']);
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$nota->id}")->assertOk()->json('data');
+    expect(collect($targets['cortes'])->pluck('id')->all())->toBe([$facturado->id])
+        ->and($targets['ordenes'])->toBe([]);
+});

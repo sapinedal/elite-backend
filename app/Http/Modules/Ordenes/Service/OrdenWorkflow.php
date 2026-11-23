@@ -7,8 +7,9 @@ use App\Http\Modules\Users\Models\User;
 /**
  * Definición del flujo de órdenes, en un solo lugar.
  *
- *   Registrada -> Director de Obra -> Gerencia -> Orden ERP -> Factura proveedor -> Entrada almacén -> Completada
- *                       \__________________\___ Devuelta (al residente)
+ *   Registrada -> Director de Obra -> Gerencia -> Orden ERP -> Factura proveedor -> Entrada almacén
+ *              -> Aprobación de Contabilidad -> Completada (cuentas por pagar)
+ *                       \__________________\___ Devuelta (al residente)   (Contabilidad devuelve -> Entrada almacén)
  *
  * Las aprobaciones (STAGES) y los documentos (STEPS) se habilitan con permisos Spatie
  * (Almacén: ordenes.gestionar_almacen).
@@ -21,6 +22,7 @@ class OrdenWorkflow
     public const STEP_ORDEN_ERP = 'orden_erp';
     public const STEP_FACTURA = 'factura';
     public const STEP_ENTRADA = 'entrada';
+    public const STEP_APROBACION_CONTABLE = 'aprobacion_contable';
 
     public const STATUS_PENDIENTE_DIRECTOR = 'pendiente_director';
     public const STATUS_PENDIENTE_GERENCIA = 'pendiente_gerencia';
@@ -28,10 +30,12 @@ class OrdenWorkflow
     public const STATUS_PENDIENTE_ERP = 'pendiente_erp';
     public const STATUS_PENDIENTE_FACTURA = 'pendiente_factura';
     public const STATUS_PENDIENTE_ENTRADA = 'pendiente_entrada';
+    public const STATUS_PENDIENTE_APROBACION_CONTABLE = 'pendiente_aprobacion_contable';
     public const STATUS_COMPLETADA = 'completada';
 
     public const PERMISSION_VIEW_ALL = 'ordenes.ver_todos';
     public const PERMISSION_ALMACEN = 'ordenes.gestionar_almacen';
+    public const PERMISSION_ACCOUNTING = 'ordenes.aprobar_contabilidad';
 
     /**
      * Aprobaciones en orden.
@@ -86,6 +90,7 @@ class OrdenWorkflow
         self::STATUS_PENDIENTE_ERP => 'Pendiente orden ERP',
         self::STATUS_PENDIENTE_FACTURA => 'Pendiente factura',
         self::STATUS_PENDIENTE_ENTRADA => 'Pendiente entrada',
+        self::STATUS_PENDIENTE_APROBACION_CONTABLE => 'Pendiente aprobación Contabilidad',
         self::STATUS_COMPLETADA => 'Completada',
     ];
 
@@ -139,6 +144,10 @@ class OrdenWorkflow
             return null;
         }
 
+        if ($key === self::STEP_APROBACION_CONTABLE) {
+            return 'Aprobación Contabilidad';
+        }
+
         return self::STAGES[$key]['label'] ?? self::STEPS[$key]['label'] ?? $key;
     }
 
@@ -171,6 +180,11 @@ class OrdenWorkflow
             array_keys(self::STEPS),
             fn (string $step) => $user->can(self::STEPS[$step]['permission'])
         ));
+    }
+
+    public static function canApproveAccounting(User $user): bool
+    {
+        return $user->can(self::PERMISSION_ACCOUNTING);
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Models\OrdenHistory;
+use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,12 +19,14 @@ class OrdenService
     public const SCOPE_MINE = 'mine';
     public const SCOPE_PENDING = 'pending'; // Órdenes que esperan una aprobación del usuario
     public const SCOPE_TASKS = 'tasks';     // Órdenes que esperan un documento que el usuario carga (Almacén / Facturación)
+    public const SCOPE_ACCOUNTING = 'accounting'; // Órdenes con entrada cargada por aprobar en Contabilidad
     public const SCOPE_ALL = 'all';
 
     public function __construct(
         protected OrdenStorageService $storage,
         protected OrdenNotificationService $notifications,
         protected PagoService $pagos,
+        protected AccountingApprovalNotifier $accounting,
     ) {
     }
 
@@ -63,6 +66,7 @@ class OrdenService
             'task_steps' => OrdenWorkflow::stepsFor($user),
             'can_view_all' => $user->can(OrdenWorkflow::PERMISSION_VIEW_ALL),
             'can_create' => $user->can('ordenes.crear'),
+            'can_approve_accounting' => OrdenWorkflow::canApproveAccounting($user),
             ...OrdenWorkflow::toArray(),
         ];
     }
@@ -101,6 +105,7 @@ class OrdenService
             self::SCOPE_MINE => $this->scopedQuery($user, self::SCOPE_MINE)->count(),
             self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
             self::SCOPE_TASKS => $this->scopedQuery($user, self::SCOPE_TASKS)->count(),
+            self::SCOPE_ACCOUNTING => OrdenWorkflow::canApproveAccounting($user) ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING)->count() : 0,
         ];
     }
 
@@ -116,7 +121,11 @@ class OrdenService
             return $query->accessibleBy($user)->whereIn('current_step', OrdenWorkflow::stepsFor($user) ?: ['__none__']);
         }
 
-        if ($scope === self::SCOPE_ALL && $user->can(OrdenWorkflow::PERMISSION_VIEW_ALL)) {
+        if ($scope === self::SCOPE_ACCOUNTING && OrdenWorkflow::canApproveAccounting($user)) {
+            return $query->accessibleBy($user)->where('status', OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+        }
+
+        if ($scope === self::SCOPE_ALL && ($user->can(OrdenWorkflow::PERMISSION_VIEW_ALL) || OrdenWorkflow::canApproveAccounting($user))) {
             return $query->accessibleBy($user);
         }
 
@@ -145,7 +154,15 @@ class OrdenService
 
         return $user->can(OrdenWorkflow::PERMISSION_VIEW_ALL)
             || OrdenWorkflow::stagesFor($user) !== []
-            || OrdenWorkflow::stepsFor($user) !== [];
+            || OrdenWorkflow::stepsFor($user) !== []
+            || OrdenWorkflow::canApproveAccounting($user);
+    }
+
+    public function canReviewAccounting(Orden $orden, User $user): bool
+    {
+        return $orden->status === OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE
+            && OrdenWorkflow::canApproveAccounting($user)
+            && $user->canAccessProject($orden->project_id);
     }
 
     public function canReview(Orden $orden, User $user): bool
@@ -278,8 +295,8 @@ class OrdenService
         }
 
         $step = $orden->current_step;
-        if ($step === OrdenWorkflow::STEP_FACTURA && (empty($data['amount']) || empty($data['contractor_id']))) {
-            throw new InvalidArgumentException('Indica el proveedor y el valor de la factura: con ellos pasa a cuentas por pagar.');
+        if ($step === OrdenWorkflow::STEP_FACTURA && empty($data['amount'])) {
+            throw new InvalidArgumentException('Indica el valor de la factura: con él pasa a cuentas por pagar.');
         }
 
         $file = $this->storage->claimStepFile($data['upload_token'], $user, $orden, $step);
@@ -310,16 +327,17 @@ class OrdenService
             'step' => $step,
             'number' => trim($data['number']),
             'amount' => $isInvoice ? $data['amount'] : null,
-            'contractor_id' => $isInvoice ? $data['contractor_id'] : null,
+            'contractor_id' => $isInvoice ? ($data['contractor_id'] ?? null) : null,
             'observation' => $observation ?: null,
             'uploaded_by' => $user->id,
             ...$file,
         ]);
 
+        // Con el último documento (entrada) pasa a la aprobación de Contabilidad antes de cuentas por pagar
         $nextStep = OrdenWorkflow::nextStep($step);
         $orden->update($nextStep
             ? ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
-            : ['status' => OrdenWorkflow::STATUS_COMPLETADA, 'current_step' => null, 'completed_at' => now()]);
+            : ['status' => OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null]);
 
         $summary = OrdenWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : '');
         $orden->history()->create([
@@ -330,20 +348,90 @@ class OrdenService
             'user_id' => $user->id,
         ]);
 
-        // Orden completada: la factura del proveedor pasa a cuentas por pagar
-        if ($orden->status === OrdenWorkflow::STATUS_COMPLETADA) {
-            $this->pagos->registerFromOrden($orden, $user);
-        }
-
         return $document;
     }
 
     /**
-     * Aviso a quien carga el siguiente documento (o al residente si la orden quedó completada).
+     * Aviso a quien carga el siguiente documento (o a Contabilidad si ya se cargó la entrada).
      */
     public function notifyStepDocument(OrdenDocument $document): void
     {
-        $this->notifications->documentUploaded($document->orden()->firstOrFail(), $document->step, $document->observation);
+        $orden = $document->orden()->firstOrFail();
+
+        $orden->status === OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE
+            ? $this->accounting->pending('ordenes', $orden->project_id, $this->accountingPayload($orden), $document->observation)
+            : $this->notifications->documentUploaded($orden, $document->step, $document->observation);
+    }
+
+    /**
+     * Contabilidad aprueba la orden con su entrada (queda completada y la factura pasa a cuentas por pagar) o la
+     * devuelve a Almacén, que debe cargar de nuevo la entrada.
+     */
+    public function reviewAccounting(Orden $orden, string $decision, ?string $comment, User $user): Orden
+    {
+        $comment = $comment !== null ? (trim($comment) ?: null) : null;
+        if (!$this->canReviewAccounting($orden, $user)) {
+            throw new InvalidArgumentException('Esta orden no está pendiente de la aprobación de Contabilidad o no puedes aprobarla.');
+        }
+        if ($decision === 'devolver' && !$comment) {
+            throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
+        }
+
+        $entradaEmail = $orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->with('uploader:id,email')->latest('id')->first()?->uploader?->email;
+
+        $orden = DB::transaction(function () use ($orden, $decision, $comment, $user) {
+            $orden = Orden::whereKey($orden->id)->lockForUpdate()->firstOrFail();
+            if ($orden->status !== OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE) {
+                throw new InvalidArgumentException('Otro usuario ya revisó esta orden.');
+            }
+
+            if ($decision === 'aprobar') {
+                $orden->update(['status' => OrdenWorkflow::STATUS_COMPLETADA, 'completed_at' => now()]);
+                $this->log($orden, OrdenHistory::ACTION_CONTABILIDAD_APROBADA, $user, OrdenWorkflow::STEP_APROBACION_CONTABLE,
+                    'Aprobada por Contabilidad. Pasa a cuentas por pagar.' . ($comment ? " {$comment}" : ''));
+                $this->pagos->registerFromOrden($orden, $user);
+            } else {
+                // Vuelve a la entrada de almacén: el documento anterior queda en el historial (y su archivo en S3)
+                $orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->delete();
+                $orden->update(['status' => OrdenWorkflow::STATUS_PENDIENTE_ENTRADA, 'current_step' => OrdenWorkflow::STEP_ENTRADA]);
+                $this->log($orden, OrdenHistory::ACTION_CONTABILIDAD_DEVUELTA, $user, OrdenWorkflow::STEP_APROBACION_CONTABLE,
+                    "Devuelta por Contabilidad a Almacén (entrada). {$comment}");
+            }
+
+            return $orden;
+        });
+
+        if ($decision === 'aprobar') {
+            // El flujo: el residente sabe que la orden quedó completada
+            $this->notifications->documentUploaded($orden, OrdenWorkflow::STEP_ENTRADA, $comment);
+        } else {
+            $almacen = $this->accounting->usersWith([OrdenWorkflow::PERMISSION_ALMACEN, 'correos.ordenes.almacen'], $orden->project_id)->push($entradaEmail);
+            $this->accounting->returned('ordenes', $orden->project_id, $almacen, [...$this->accountingPayload($orden), 'returned_to' => 'Almacén'], (string) $comment, $user->name);
+        }
+
+        return $orden;
+    }
+
+    protected function accountingPayload(Orden $orden): array
+    {
+        $orden->loadMissing(['project:id,name', 'tower:id,name', 'creator:id,name']);
+        $invoice = $orden->documents()->where('step', OrdenWorkflow::STEP_FACTURA)->latest('id')->first();
+        $entrada = $orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->latest('id')->first();
+
+        return [
+            'module' => 'Registro de Orden',
+            'reference' => "Orden {$orden->code}",
+            'pending_intro' => "La orden {$orden->code} ya tiene su entrada de almacén cargada.",
+            'details' => [
+                'Orden' => "{$orden->code} · {$orden->description}",
+                'Factura del proveedor' => $invoice?->number,
+                'Valor' => $invoice?->amount !== null ? '$' . number_format((float) $invoice->amount, 0, ',', '.') : null,
+                'Entrada de almacén' => $entrada?->number,
+                'Presupuesto' => trim(($orden->project?->name ?? '—') . ($orden->tower ? ' · ' . $orden->tower->name : '')),
+                'Registrada por' => $orden->creator?->name,
+            ],
+            'cta_url' => config('ordenes.frontend_url') . '/app/contratacion/ordenes?orden=' . $orden->id,
+        ];
     }
 
     public function documentDownloadUrl(OrdenDocument $document): string
@@ -417,6 +505,21 @@ class OrdenService
             ];
         }, array_keys(OrdenWorkflow::STEPS));
 
+        $accounting = $orden->history->whereIn('action', [OrdenHistory::ACTION_CONTABILIDAD_APROBADA, OrdenHistory::ACTION_CONTABILIDAD_DEVUELTA])->last();
+        $steps[] = [
+            'key' => OrdenWorkflow::STEP_APROBACION_CONTABLE,
+            'label' => 'Aprobación Contabilidad',
+            'kind' => 'approval',
+            'state' => match (true) {
+                $orden->status === OrdenWorkflow::STATUS_COMPLETADA => 'aprobado',
+                $orden->status === OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE => 'actual',
+                $orden->current_step === OrdenWorkflow::STEP_ENTRADA && $accounting?->action === OrdenHistory::ACTION_CONTABILIDAD_DEVUELTA => 'devuelto',
+                default => 'pendiente',
+            },
+            'user' => $accounting?->user?->name,
+            'at' => $accounting?->created_at?->toIso8601String(),
+        ];
+
         return [...$stages, ...$steps];
     }
 
@@ -450,6 +553,7 @@ class OrdenService
             'can_review' => $this->canReview($orden, $user),
             'can_resubmit' => $this->canResubmit($orden, $user),
             'can_upload_step' => $this->canUploadStep($orden, $user),
+            'can_review_accounting' => $this->canReviewAccounting($orden, $user),
         ];
 
         if ($withDetail) {

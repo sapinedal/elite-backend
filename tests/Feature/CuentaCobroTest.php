@@ -6,6 +6,7 @@ use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroTipo;
 use App\Http\Modules\CuentasCobro\Service\CuentaCobroWorkflow;
 use App\Http\Modules\Ftra\Models\FtraContractor;
+use App\Http\Modules\Pagos\Mail\AccountingApprovalMail;
 use App\Http\Modules\Pagos\Models\PagoCuenta;
 use App\Http\Modules\Users\Models\User;
 use App\Services\DirectUploadService;
@@ -50,7 +51,14 @@ beforeEach(function () {
     $this->gerencia = $user('gerencia@example.com', ['cuentas_cobro.aprobar_gerencia']);
     $this->paula = $user('paula@example.com', ['cortes.multifox']);
     $this->admin = $user('admin@example.com', ['cuentas_cobro.parametrizar']);
+    $this->contador = $user('contador@example.com', ['cuentas_cobro.aprobar_contabilidad', 'correos.cuentas_cobro.aprobacion_contable']);
 });
+
+function aprobarContabilidad(CuentaCobro $cuenta): void
+{
+    test()->actingAs(test()->contador)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/accounting", ['decision' => 'aprobar'])
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_EN_PAGOS);
+}
 
 function radicarCuenta(array $overrides = [])
 {
@@ -89,7 +97,7 @@ test('SST exige adjunto; un tipo sin adjunto obligatorio se radica sin él', fun
         ->and(cuentaMailTo(CuentaCobroNotificationMail::EVENT_SUBMITTED, 'director@example.com'))->toBeTrue();
 });
 
-test('aprobada, Paula decide que no requiere Multifox y pasa de una vez al cuadro de pagos', function () {
+test('aprobada, Paula decide que no requiere Multifox y con la aprobación de Contabilidad pasa al cuadro de pagos', function () {
     radicarCuenta()->assertCreated();
     $cuenta = CuentaCobro::first();
     aprobarCuenta($cuenta);
@@ -102,7 +110,11 @@ test('aprobada, Paula decide que no requiere Multifox y pasa de una vez al cuadr
     $this->actingAs($this->residente)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox-decision", ['requires_multifox' => false])->assertStatus(422);
 
     $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox-decision", ['requires_multifox' => false])
-        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_EN_PAGOS);
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    expect(PagoCuenta::count())->toBe(0)
+        ->and(Mail::sent(AccountingApprovalMail::class, fn ($m) => $m->event === AccountingApprovalMail::EVENT_PENDING && $m->hasTo('contador@example.com'))->isNotEmpty())->toBeTrue();
+
+    aprobarContabilidad($cuenta);
 
     $pago = PagoCuenta::first();
     expect($cuenta->fresh()->requires_multifox)->toBeFalse()
@@ -113,7 +125,7 @@ test('aprobada, Paula decide que no requiere Multifox y pasa de una vez al cuadr
         ->and(cuentaMailTo(CuentaCobroNotificationMail::EVENT_IN_PAYMENTS, 'residente@example.com'))->toBeTrue();
 });
 
-test('si requiere Multifox no pasa al cuadro de pagos hasta que se carga', function () {
+test('si requiere Multifox no pasa al cuadro de pagos hasta que se carga y Contabilidad lo aprueba', function () {
     radicarCuenta()->assertCreated();
     $cuenta = CuentaCobro::first();
     aprobarCuenta($cuenta);
@@ -123,7 +135,18 @@ test('si requiere Multifox no pasa al cuadro de pagos hasta que se carga', funct
     expect(PagoCuenta::count())->toBe(0);
 
     $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox", ['multifox_number' => 'MF-900', 'upload_token' => (string) Str::uuid()])
-        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_EN_PAGOS);
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    expect(PagoCuenta::count())->toBe(0);
+
+    // Contabilidad la devuelve: vuelve al cargue de Multifox y se avisa a Paula
+    $this->actingAs($this->contador)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/accounting", ['decision' => 'devolver', 'comment' => 'Revisar el valor'])
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_MULTIFOX);
+    expect($cuenta->fresh()->multifox_number)->toBeNull()
+        ->and(Mail::sent(AccountingApprovalMail::class, fn ($m) => $m->event === AccountingApprovalMail::EVENT_RETURNED && $m->hasTo('paula@example.com'))->isNotEmpty())->toBeTrue();
+
+    $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox", ['multifox_number' => 'MF-900', 'upload_token' => (string) Str::uuid()])
+        ->assertOk();
+    aprobarContabilidad($cuenta);
 
     $cuenta->refresh();
     expect($cuenta->multifox_number)->toBe('MF-900')
@@ -140,6 +163,7 @@ test('Paula puede cargar en Multifox directamente desde la revisión, sin soport
     aprobarCuenta($cuenta);
 
     $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox", ['multifox_number' => 'MF-1'])->assertOk();
+    aprobarContabilidad($cuenta);
 
     expect($cuenta->fresh()->requires_multifox)->toBeTrue()
         ->and($cuenta->fresh()->multifox_file_path)->toBeNull()

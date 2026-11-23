@@ -7,8 +7,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * El residente asocia la factura a su corte o a su orden. Los soportes son opcionales en ambos casos
- * (el del corte lo carga Paula en Multifox; a la orden se pueden adjuntar capturas y la entrada de Multifox).
+ * El residente asocia la factura a su corte o a su orden con los mismos datos en ambos casos: solo se pide el valor
+ * si Contabilidad no lo registró. Los soportes (opcionales) se siguen aceptando por compatibilidad.
  */
 class AssociateFacturacionInvoiceRequest extends FormRequest
 {

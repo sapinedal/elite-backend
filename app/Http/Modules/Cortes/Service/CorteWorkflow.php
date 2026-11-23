@@ -8,6 +8,7 @@ use App\Http\Modules\Users\Models\User;
  * Definición del flujo de aprobación de cortes, en un solo lugar.
  *
  *   Radicado -> Interventor -> Director de Obra -> Gerencia -> Aprobado -> Facturado
+ *   Cada factura: Multifox (Paula) -> Aprobación de Contabilidad -> Cuentas por pagar (si la devuelve, vuelve a Multifox)
  *                    \______________\_________________\___ Devuelto (al residente)
  *
  * Cada etapa se habilita con un permiso Spatie, así los revisores se configuran desde Roles
@@ -28,6 +29,7 @@ class CorteWorkflow
 
     public const PERMISSION_VIEW_ALL = 'cortes.ver_todos';
     public const PERMISSION_INVOICE = 'cortes.facturar';
+    public const PERMISSION_ACCOUNTING = 'cortes.aprobar_contabilidad';
 
     // Estados en los que el corte ya completó las aprobaciones y admite facturas
     public const INVOICEABLE_STATUSES = [self::STATUS_APROBADO, self::STATUS_FACTURADO];
@@ -124,6 +126,14 @@ class CorteWorkflow
     public static function canConfirmMultifox(User $user): bool
     {
         return $user->can('cortes.multifox');
+    }
+
+    /**
+     * Contabilidad aprueba la factura cargada en Multifox antes de que pase a cuentas por pagar.
+     */
+    public static function canApproveAccounting(User $user): bool
+    {
+        return $user->can(self::PERMISSION_ACCOUNTING);
     }
 
     /**
