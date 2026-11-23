@@ -173,7 +173,7 @@ class OrdenController extends Controller
     {
         try {
             $decision = $request->validated('decision');
-            $orden = $this->ordenService->reviewAccounting($orden, $decision, $request->validated('comment'), $request->user());
+            $orden = $this->ordenService->reviewAccounting($orden, $decision, $request->validated('comment'), $request->user(), $request->validated('amount') !== null ? (float) $request->validated('amount') : null);
 
             return response()->json([
                 'status' => 'success',

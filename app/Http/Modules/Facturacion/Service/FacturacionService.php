@@ -315,10 +315,9 @@ class FacturacionService
             throw new InvalidArgumentException('Esta factura ya fue procesada por obra.');
         }
 
+        // El valor no se pide al asociar: si Contabilidad no lo registró al cargar la factura, lo indica al aprobarla
+        // (después de Multifox) en el corte o la orden.
         $amount = $invoice->amount ?? ($data['amount'] ?? null);
-        if (!$amount) {
-            throw new InvalidArgumentException('Indica el valor de la factura: Contabilidad no lo registró.');
-        }
 
         $isCorte = $data['target_type'] === FacturacionInvoice::TARGET_CORTE;
         $target = $isCorte ? Corte::find($data['target_id']) : Orden::find($data['target_id']);

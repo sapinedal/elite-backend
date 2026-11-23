@@ -144,22 +144,22 @@ class RoleController extends Controller
             ],
             'cortes' => [
                 'title' => 'Registro de Corte',
-                'description' => 'Radicación de cortes y aprobación Interventor, Director de Obra y Gerencia',
+                'description' => 'Radicación de cortes, aprobación Interventor, Director de Obra y Gerencia, y aprobación de Contabilidad de la factura después de Multifox',
                 'permissions' => []
             ],
             'ordenes' => [
                 'title' => 'Registro de Orden',
-                'description' => 'Órdenes con aprobación Director de Obra y Gerencia, orden de compra ERP, factura y entrada',
+                'description' => 'Órdenes con aprobación Director de Obra y Gerencia, orden de compra ERP, factura, entrada y aprobación de Contabilidad',
                 'permissions' => []
             ],
             'anticipos' => [
                 'title' => 'Anticipos',
-                'description' => 'Anticipos con aprobación Director de Obra y Gerencia, y generación en Multifox por Contabilidad',
+                'description' => 'Anticipos con aprobación Director de Obra y Gerencia, generación en Multifox y aprobación de Contabilidad',
                 'permissions' => []
             ],
             'cuentas_cobro' => [
                 'title' => 'Cuentas de Cobro',
-                'description' => 'Cuentas de cobro con aprobación Director de Obra y Gerencia, decisión y carga de Multifox',
+                'description' => 'Cuentas de cobro con aprobación Director de Obra y Gerencia, decisión y carga de Multifox, y aprobación de Contabilidad',
                 'permissions' => []
             ],
             'pagos' => [

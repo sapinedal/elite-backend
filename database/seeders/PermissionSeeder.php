@@ -212,7 +212,12 @@ class PermissionSeeder extends Seeder
         $mercadeoRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));
 
         // CONTABLE: Tareas + Gestión Documental + Facturación de cortes y órdenes
-        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar', 'cortes.aprobar_contabilidad', 'ordenes.ver', 'ordenes.facturar', 'ordenes.aprobar_contabilidad', 'pagos.ver', 'pagos.pagar', 'pagos.registrar']));
+        $contableRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions, ['cortes.ver', 'cortes.facturar', 'cortes.aprobar_contabilidad', 'ordenes.ver', 'ordenes.facturar', 'ordenes.aprobar_contabilidad', 'pagos.ver', 'pagos.pagar', 'pagos.registrar'],
+            // Permisos que crean las migraciones de anticipos, cuentas de cobro y aprobación contable: sin ellos el sync los quitaría
+            array_values(array_filter(
+                ['anticipos.ver', 'anticipos.contabilizar', 'anticipos.aprobar_contabilidad', 'cuentas_cobro.ver', 'cuentas_cobro.aprobar_contabilidad'],
+                fn (string $name) => Permission::where('name', $name)->where('guard_name', 'web')->exists()
+            ))));
 
         // CARTERA Y TRÁMITES: Tareas + Gestión Documental
         $carteraTramitesRole->syncPermissions(array_merge($tareaPermissions, $documentalPermissions));

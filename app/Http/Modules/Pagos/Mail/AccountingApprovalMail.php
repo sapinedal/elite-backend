@@ -57,6 +57,18 @@ class AccountingApprovalMail extends Mailable
         );
     }
 
+    /**
+     * El botón abre el registro sobre la pestaña donde le toca actuar a quien recibe el correo
+     * (payload.tabs: Contabilidad al quedar pendiente, Multifox / Almacén al devolverse).
+     */
+    public function ctaUrl(): string
+    {
+        $url = $this->payload['cta_url'];
+        $tab = $this->payload['tabs'][$this->event] ?? null;
+
+        return $tab ? $url . (str_contains($url, '?') ? '&' : '?') . 'tab=' . urlencode($tab) : $url;
+    }
+
     public function content(): Content
     {
         [$tone, $toneSoft] = self::TONES[$this->event];
@@ -98,7 +110,7 @@ class AccountingApprovalMail extends Mailable
                 'commentLabel' => $this->event === self::EVENT_RETURNED ? 'Motivo de la devolución' : 'Comentario',
                 'isReturned' => $this->event === self::EVENT_RETURNED,
                 'details' => array_filter($this->payload['details'], fn ($value) => $value !== null && $value !== ''),
-                'ctaUrl' => $this->payload['cta_url'],
+                'ctaUrl' => $this->ctaUrl(),
                 'ctaLabel' => $cta,
             ],
         );

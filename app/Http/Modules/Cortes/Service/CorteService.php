@@ -469,7 +469,7 @@ class CorteService
                 'amount' => $invoice->amount !== null ? (float) $invoice->amount : null,
                 'multifox_confirmed_at' => $invoice->multifox_confirmed_at?->toIso8601String(),
                 'multifox_confirmed_by' => $invoice->multifoxConfirmer?->name,
-                'can_confirm_multifox' => !$invoice->multifox_confirmed_at && $invoice->amount !== null && CorteWorkflow::canConfirmMultifox($user),
+                'can_confirm_multifox' => !$invoice->multifox_confirmed_at && CorteWorkflow::canConfirmMultifox($user),
                 'multifox_file_name' => $invoice->multifox_file_name,
                 'multifox_file_size' => $invoice->multifox_file_size,
                 // Aprobación de Contabilidad: null (sin Multifox) · pendiente · aprobada · devuelta

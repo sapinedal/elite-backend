@@ -437,6 +437,8 @@ class AnticipoService
                 'Radicado por' => $anticipo->creator?->name,
             ],
             'cta_url' => config('anticipos.frontend_url') . '/app/contratacion/anticipos?anticipo=' . $anticipo->id,
+            // Pestaña que abre el botón del correo según a quién le llega
+            'tabs' => ['pending' => 'accounting_approval', 'returned' => 'accounting'],
         ];
     }
 

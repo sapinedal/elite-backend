@@ -3,6 +3,7 @@
 namespace App\Http\Modules\Ordenes\Service;
 
 use App\Http\Modules\Configuracion\Models\Project;
+use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
@@ -295,9 +296,6 @@ class OrdenService
         }
 
         $step = $orden->current_step;
-        if ($step === OrdenWorkflow::STEP_FACTURA && empty($data['amount'])) {
-            throw new InvalidArgumentException('Indica el valor de la factura: con él pasa a cuentas por pagar.');
-        }
 
         $file = $this->storage->claimStepFile($data['upload_token'], $user, $orden, $step);
         $document = DB::transaction(fn () => $this->recordStepDocument($orden, $step, $data, $file, $user));
@@ -326,7 +324,7 @@ class OrdenService
         $document = $orden->documents()->create([
             'step' => $step,
             'number' => trim($data['number']),
-            'amount' => $isInvoice ? $data['amount'] : null,
+            'amount' => $isInvoice ? ($data['amount'] ?? null) : null,
             'contractor_id' => $isInvoice ? ($data['contractor_id'] ?? null) : null,
             'observation' => $observation ?: null,
             'uploaded_by' => $user->id,
@@ -367,7 +365,7 @@ class OrdenService
      * Contabilidad aprueba la orden con su entrada (queda completada y la factura pasa a cuentas por pagar) o la
      * devuelve a Almacén, que debe cargar de nuevo la entrada.
      */
-    public function reviewAccounting(Orden $orden, string $decision, ?string $comment, User $user): Orden
+    public function reviewAccounting(Orden $orden, string $decision, ?string $comment, User $user, ?float $amount = null): Orden
     {
         $comment = $comment !== null ? (trim($comment) ?: null) : null;
         if (!$this->canReviewAccounting($orden, $user)) {
@@ -375,6 +373,17 @@ class OrdenService
         }
         if ($decision === 'devolver' && !$comment) {
             throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
+        }
+        // Contabilidad registra el valor de la factura del proveedor (obligatorio al aprobar si aún no lo tiene)
+        $invoiceDocument = $orden->documents()->where('step', OrdenWorkflow::STEP_FACTURA)->latest('id')->first();
+        if ($decision === 'aprobar' && !$amount && $invoiceDocument?->amount === null) {
+            throw new InvalidArgumentException('Indica el valor de la factura: con él pasa a cuentas por pagar.');
+        }
+        if ($amount && $invoiceDocument) {
+            DB::transaction(function () use ($invoiceDocument, $amount) {
+                $invoiceDocument->update(['amount' => $amount]);
+                FacturacionInvoice::where('orden_document_id', $invoiceDocument->id)->update(['amount' => $amount]);
+            });
         }
 
         $entradaEmail = $orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->with('uploader:id,email')->latest('id')->first()?->uploader?->email;
@@ -431,6 +440,8 @@ class OrdenService
                 'Registrada por' => $orden->creator?->name,
             ],
             'cta_url' => config('ordenes.frontend_url') . '/app/contratacion/ordenes?orden=' . $orden->id,
+            // Pestaña que abre el botón del correo según a quién le llega
+            'tabs' => ['pending' => 'accounting', 'returned' => 'tasks'],
         ];
     }
 

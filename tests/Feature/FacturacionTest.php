@@ -229,19 +229,34 @@ test('Paula confirma Multifox con el soporte y queda en la carpeta del corte', f
         ->assertForbidden();
 });
 
-test('si contabilidad no registró el valor, el residente lo indica al asociar', function () {
+test('si contabilidad no registró el valor, se asocia sin pedirlo y Contabilidad lo indica al aprobar', function () {
+    mockClaimUploads();
+    Permission::firstOrCreate(['name' => 'cortes.multifox', 'guard_name' => 'web']);
+    $paula = makeUser();
+    $paula->givePermissionTo(['cortes.ver', 'cortes.multifox', 'proyectos.ver_todos']);
+    $contador = makeUser();
+    $contador->givePermissionTo(['cortes.ver', 'cortes.aprobar_contabilidad', 'proyectos.ver_todos']);
+
     $corte = makeCorte($this->residente);
     $invoice = uploadInvoice(['amount' => null]);
 
+    // El residente asocia sin valor
     $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id, ...supports()])
-        ->assertStatus(422);
-
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id, 'amount' => 800000, ...supports()])
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
         ->assertOk();
+    $corteInvoice = CorteInvoice::first();
+    expect($corteInvoice->amount)->toBeNull();
 
-    expect((float) $invoice->fresh()->amount)->toBe(800000.0);
+    // Paula la carga en Multifox aunque no tenga valor
+    $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertOk();
+
+    // Contabilidad no puede aprobar sin indicar el valor
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'aprobar'])->assertStatus(422);
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/accounting", ['decision' => 'aprobar', 'amount' => 800000])->assertOk();
+
+    expect((float) $corteInvoice->fresh()->amount)->toBe(800000.0)
+        ->and((float) $invoice->fresh()->amount)->toBe(800000.0)
+        ->and((float) \App\Http\Modules\Pagos\Models\PagoCuenta::first()->amount)->toBe(800000.0);
 });
 
 test('el residente asocia la factura a su orden pendiente de factura y la orden avanza a la entrada', function () {
@@ -371,7 +386,10 @@ test('la factura cargada en Multifox pasa a cuentas por pagar solo con la aproba
     $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$corteInvoice->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertOk()
         ->assertJsonPath('data.invoices.0.accounting_status', CorteInvoice::ACCOUNTING_PENDIENTE);
     expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0)
-        ->and(accountingMail('pending', 'contador@example.com'))->toBeTrue();
+        ->and(accountingMail('pending', 'contador@example.com'))->toBeTrue()
+        // El botón del correo abre el corte sobre la pestaña de Contabilidad
+        ->and(Mail::sent(\App\Http\Modules\Pagos\Mail\AccountingApprovalMail::class, fn ($m) => $m->event === 'pending'
+            && str_ends_with($m->ctaUrl(), "/app/contratacion/cortes?corte={$corte->id}&tab=accounting"))->isNotEmpty())->toBeTrue();
 
     // Pestaña de Contabilidad y permisos
     $this->actingAs($contador)->getJson('/api/v1/cortes?scope=accounting')->assertOk()->assertJsonPath('counts.accounting', 1);
@@ -386,6 +404,8 @@ test('la factura cargada en Multifox pasa a cuentas por pagar solo con la aproba
         ->and($corteInvoice->multifox_confirmed_at)->toBeNull()
         ->and($corteInvoice->multifox_file_path)->toBeNull()
         ->and(accountingMail('returned', 'paula@example.com'))->toBeTrue()
+        ->and(Mail::sent(\App\Http\Modules\Pagos\Mail\AccountingApprovalMail::class, fn ($m) => $m->event === 'returned'
+            && str_ends_with($m->ctaUrl(), '&tab=multifox'))->isNotEmpty())->toBeTrue()
         ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
 
     // Paula la vuelve a cargar y Contabilidad la aprueba: pasa a cuentas por pagar y se avisa al residente

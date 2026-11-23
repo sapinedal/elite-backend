@@ -5,6 +5,7 @@ namespace App\Http\Modules\Cortes\Service;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteHistory;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
+use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
@@ -66,7 +67,8 @@ class CorteInvoiceService
             $corte->update(['status' => CorteWorkflow::STATUS_FACTURADO]);
         }
 
-        $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number} por $" . number_format((float) $invoice->amount, 0, ',', '.')
+        $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number}"
+            . ($invoice->amount !== null ? ' por $' . number_format((float) $invoice->amount, 0, ',', '.') : '')
             . ($invoice->related_document ? " (afecta a {$invoice->related_document})" : '')
             . ($invoice->observation ? ". {$invoice->observation}" : '');
 
@@ -102,10 +104,6 @@ class CorteInvoiceService
         if ($invoice->multifox_confirmed_at) {
             throw new InvalidArgumentException('Esta factura ya fue confirmada en Multifox.');
         }
-        if ($invoice->amount === null) {
-            throw new InvalidArgumentException('La factura no tiene valor registrado; no se puede pasar a cuentas por pagar.');
-        }
-
         // El soporte se mueve a la carpeta del corte antes de la transacción (igual que los demás cargues)
         $file = $this->storage->claimCorteFile($uploadToken, $user, $this->storage->folderOf($invoice->corte));
 
@@ -160,9 +158,10 @@ class CorteInvoiceService
     /**
      * Contabilidad aprueba la factura cargada en Multifox (pasa a cuentas por pagar: la nota crédito descuenta de la
      * factura que afecta y la de reemplazo sustituye a la anterior) o la devuelve a quien la carga en Multifox, que
-     * debe volver a confirmarla con el soporte corregido.
+     * debe volver a confirmarla con el soporte corregido. Contabilidad registra aquí el valor de la factura
+     * (obligatorio al aprobar si aún no lo tiene).
      */
-    public function reviewAccounting(CorteInvoice $invoice, string $decision, ?string $comment, User $user): CorteInvoice
+    public function reviewAccounting(CorteInvoice $invoice, string $decision, ?string $comment, User $user, ?float $amount = null): CorteInvoice
     {
         $comment = $comment !== null ? (trim($comment) ?: null) : null;
         if (!$this->canReviewAccounting($invoice, $user)) {
@@ -171,14 +170,21 @@ class CorteInvoiceService
         if ($decision === 'devolver' && !$comment) {
             throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
         }
+        if ($decision === 'aprobar' && !$amount && $invoice->amount === null) {
+            throw new InvalidArgumentException('Indica el valor de la factura: con él pasa a cuentas por pagar.');
+        }
 
         // Quien la cargó en Multifox: recibe la devolución (se limpia al devolver)
         $multifoxEmail = $invoice->multifoxConfirmer?->email;
 
-        $invoice = DB::transaction(function () use ($invoice, $decision, $comment, $user) {
+        $invoice = DB::transaction(function () use ($invoice, $decision, $comment, $user, $amount) {
             $invoice = CorteInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($invoice->accounting_status !== CorteInvoice::ACCOUNTING_PENDIENTE) {
                 throw new InvalidArgumentException('Otro usuario ya revisó esta factura.');
+            }
+            if ($amount) {
+                $invoice->update(['amount' => $amount]);
+                FacturacionInvoice::where('corte_invoice_id', $invoice->id)->update(['amount' => $amount]);
             }
 
             $label = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number}";
@@ -253,6 +259,8 @@ class CorteInvoiceService
                 'Radicado por' => $corte->creator?->name,
             ],
             'cta_url' => config('cortes.frontend_url') . '/app/contratacion/cortes?corte=' . $corte->id,
+            // Pestaña que abre el botón del correo según a quién le llega
+            'tabs' => ['pending' => 'accounting', 'returned' => 'multifox'],
         ];
     }
 }

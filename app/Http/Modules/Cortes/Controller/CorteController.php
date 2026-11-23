@@ -200,7 +200,7 @@ class CorteController extends Controller
     {
         try {
             $decision = $request->validated('decision');
-            $invoice = $this->invoiceService->reviewAccounting($invoice, $decision, $request->validated('comment'), $request->user());
+            $invoice = $this->invoiceService->reviewAccounting($invoice, $decision, $request->validated('comment'), $request->user(), $request->validated('amount') !== null ? (float) $request->validated('amount') : null);
 
             return response()->json([
                 'status' => 'success',

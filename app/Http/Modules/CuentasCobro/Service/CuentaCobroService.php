@@ -465,6 +465,8 @@ class CuentaCobroService
                 'Radicada por' => $cuenta->creator?->name,
             ],
             'cta_url' => config('cuentas_cobro.frontend_url') . '/app/contratacion/cuentas-cobro?cuenta=' . $cuenta->id,
+            // Pestaña que abre el botón del correo según a quién le llega
+            'tabs' => ['pending' => 'accounting_approval', 'returned' => 'multifox'],
         ];
     }
 
