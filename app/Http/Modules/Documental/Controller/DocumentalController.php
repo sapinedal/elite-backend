@@ -142,12 +142,13 @@ class DocumentalController extends Controller
      */
     public function download(Request $request): JsonResponse
     {
-        $request->validate(['path' => 'required|string']);
+        $request->validate(['path' => 'required|string', 'inline' => 'nullable|boolean']);
 
         return $this->respond(fn () => $this->documentalService->getDownloadUrl(
             $request->query('path'),
             $request->user(),
-            $request->ip()
+            $request->ip(),
+            $request->boolean('inline')
         ));
     }
 

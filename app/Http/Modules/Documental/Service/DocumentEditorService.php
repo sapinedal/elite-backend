@@ -30,12 +30,14 @@ class DocumentEditorService
         'pptx' => 'slide',
     ];
 
-    /** Formatos que solo se visualizan en el editor (se descargan o se guardan como copia .xlsx/.docx/.pptx) */
+    /**
+     * Formatos que solo se visualizan en el editor (se descargan o se guardan como copia .xlsx/.docx/.pptx).
+     * Los PDF no van aquí: se abren con el visor del navegador (DocumentalService::getDownloadUrl con $inline).
+     */
     public const VIEWABLE = [
         'xls' => 'cell', 'xlsm' => 'cell', 'ods' => 'cell', 'csv' => 'cell',
         'doc' => 'word', 'docm' => 'word', 'odt' => 'word', 'rtf' => 'word', 'txt' => 'word',
         'ppt' => 'slide', 'pptm' => 'slide', 'odp' => 'slide',
-        'pdf' => 'pdf',
     ];
 
     /** Plantillas en blanco para "Nuevo" (resources/templates) */

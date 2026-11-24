@@ -197,3 +197,30 @@ it('informa si el editor está deshabilitado', function () {
     $this->actingAs($this->editor)->getJson('/api/v1/documental/editor/info')->assertJsonPath('data.enabled', false);
     editorConfig($this->editor, 'tecnica/Presupuesto.xlsx')->assertStatus(422);
 });
+
+it('los PDF no se abren en ONLYOFFICE sino en el visor del navegador', function () {
+    Storage::disk('s3')->put('tecnica/Plano.pdf', 'pdf');
+    $options = null;
+    Storage::disk('s3')->buildTemporaryUrlsUsing(function ($path, $expiration, $opts) use (&$options) {
+        $options = $opts;
+
+        return "https://spaces.example.com/{$path}?signed=1";
+    });
+
+    $this->actingAs($this->lector)->getJson('/api/v1/documental/editor/info')->assertOk()
+        ->assertJsonMissing(['pdf']);
+    $this->actingAs($this->lector)->getJson('/api/v1/documental/editor/config?path=' . urlencode('tecnica/Plano.pdf'))
+        ->assertStatus(422);
+
+    $this->actingAs($this->lector)->getJson('/api/v1/documental/download?inline=1&path=' . urlencode('tecnica/Plano.pdf'))
+        ->assertOk()
+        ->assertJsonPath('data.download_url', 'https://spaces.example.com/tecnica/Plano.pdf?signed=1');
+    expect($options['ResponseContentDisposition'])->toStartWith('inline;')
+        ->and($options['ResponseContentType'])->toBe('application/pdf')
+        ->and(App\Http\Modules\Documental\Models\DocumentActivityLog::where('action', 'download')->latest('id')->value('details'))
+        ->toMatchArray(['filename' => 'Plano.pdf', 'inline' => true]);
+
+    // La descarga normal sigue siendo descarga
+    $this->actingAs($this->lector)->getJson('/api/v1/documental/download?path=' . urlencode('tecnica/Plano.pdf'))->assertOk();
+    expect($options['ResponseContentDisposition'])->toStartWith('attachment;');
+});

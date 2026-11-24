@@ -1018,7 +1018,11 @@ class DocumentalService
     /**
      * Genera una URL temporal firmada que fuerza la descarga del archivo.
      */
-    public function getDownloadUrl(string $filePath, User $user, ?string $ip = null): array
+    /**
+     * URL firmada (60 min) del archivo. Con $inline el navegador lo muestra en su visor (PDF, imágenes)
+     * en lugar de descargarlo.
+     */
+    public function getDownloadUrl(string $filePath, User $user, ?string $ip = null, bool $inline = false): array
     {
         $path = $this->normalizePath($filePath);
         $permissions = $this->getUserPermissionsForPath($user, $path);
@@ -1030,11 +1034,14 @@ class DocumentalService
         }
 
         $filename = basename($path);
-        $url = $disk->temporaryUrl($path, now()->addMinutes(60), [
-            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($filename),
-        ]);
+        $options = ['ResponseContentDisposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($filename)];
+        if ($inline) {
+            // Archivos antiguos pueden tener Content-Type genérico en el bucket: se fuerza el real para que el navegador los muestre
+            $options['ResponseContentType'] = $this->guessMimeType(strtolower(pathinfo($filename, PATHINFO_EXTENSION)));
+        }
+        $url = $disk->temporaryUrl($path, now()->addMinutes(60), $options);
 
-        $this->log($user, 'download', $path, ['filename' => $filename], $ip);
+        $this->log($user, 'download', $path, ['filename' => $filename] + ($inline ? ['inline' => true] : []), $ip);
 
         return [
             'download_url' => $url,
