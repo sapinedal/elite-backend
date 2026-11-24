@@ -30,6 +30,10 @@ Route::prefix('contratacion')->middleware(['auth:sanctum', 'project'])->group(fu
 
     // Adjuntos del contrato (01 DOCUMENTACIÓN LEGAL ... 07 OTROS)
     Route::post('/contracts/{contract}/documents', [ContractDocumentController::class, 'store'])->middleware('permission:contratacion.crear|contratacion.editar');
+    // Carpetas existentes del gestor documental: elegir la carpeta del contrato o una por tipo de documento
+    Route::get('/folders', [ContractDocumentController::class, 'browse'])->middleware('permission:contratacion.crear|contratacion.editar');
+    Route::put('/contracts/{contract}/folder', [ContractDocumentController::class, 'setFolder'])->middleware('permission:contratacion.editar');
+    Route::put('/contracts/{contract}/folders/{folder}', [ContractDocumentController::class, 'setFolderLink'])->middleware('permission:contratacion.editar');
     Route::get('/documents/{document}/download', [ContractDocumentController::class, 'download'])->middleware('permission:contratacion.ver');
     Route::delete('/documents/{document}', [ContractDocumentController::class, 'destroy'])->middleware('permission:contratacion.editar');
 });

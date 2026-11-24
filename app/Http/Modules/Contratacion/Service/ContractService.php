@@ -125,6 +125,7 @@ class ContractService
             'contractor:id,name,nit',
             'policies',
             'documents.uploader:id,name',
+            'folderLinks',
             'creator:id,name',
         ]);
 
@@ -183,6 +184,8 @@ class ContractService
             $this->syncPolicies($contract, $policies);
 
             $contract->update(['s3_path' => $this->storage->createContractFolder($contract)]);
+            // Si ya existía la carpeta del contrato en S3, sus archivos quedan registrados de una vez
+            $this->storage->syncDocuments($contract);
 
             return $contract;
         });
@@ -307,6 +310,8 @@ class ContractService
                 'created_at' => $doc->created_at?->toIso8601String(),
             ])->values();
             $data['created_by'] = $contract->creator?->name;
+            // Carpetas vinculadas por tipo de documento: {legal: "tecnica/..."}
+            $data['folder_links'] = (object) $contract->folderLinks->pluck('path', 'folder')->all();
         }
 
         return $data;

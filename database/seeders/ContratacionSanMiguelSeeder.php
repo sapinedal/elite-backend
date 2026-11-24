@@ -5,13 +5,11 @@ namespace Database\Seeders;
 use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Configuracion\Models\Tower;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
-use App\Http\Modules\Contratacion\Models\ContratacionDocument;
-use App\Http\Modules\Contratacion\Service\ContractDocumentCatalog;
+use App\Http\Modules\Contratacion\Service\ContractStorageService;
 use App\Http\Modules\Juridica\Models\ContractType;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -53,6 +51,7 @@ class ContratacionSanMiguelSeeder extends Seeder
 
     // Abreviatura del frente para el ID del contrato
     protected const TOWER_CODES = [
+        'TORRE 1' => 'T1',
         'TORRE 2' => 'T2',
         'URBANISMO' => 'URB',
     ];
@@ -90,6 +89,7 @@ class ContratacionSanMiguelSeeder extends Seeder
         ['URBANISMO', 'Órdenes de Servicio', '03', 'Trans-Excava SAS', 'Retiro De Material', null, 'Activo', null],
         ['TORRE 2', 'Mano de Obra', '01', 'IHC', 'INSTALACIÓN (M.O)', null, 'Activo', null],
         ['TORRE 2', 'Suministro e Instalación', '01', 'Aplitekpro', 'Impermeabilización Cubierta', null, 'En legalización', null],
+        ['TORRE 1', 'Mano de Obra', '06', 'Yancely Astrid Monsalve Yepes Y&M SAS', 'M.O Resanes de estructura', '01/04/2025', 'Finalizado-Pendiente por liquidación', 'TORRE 1/7.CONTRATOS MANO DE OBRA/06 - YANCELLY MONSALVE - Resanes'],
     ];
 
     public function run(): void
@@ -219,90 +219,16 @@ class ContratacionSanMiguelSeeder extends Seeder
     }
 
     /**
-     * Registra en contratacion_documents los archivos que hay en la carpeta del contrato y quita los
-     * registros de archivos que ya no están (solo en la BD: nunca borra nada del bucket).
-     * Devuelve cuántos archivos quedaron registrados.
+     * Registra los archivos de la carpeta del contrato (misma lógica que usa la aplicación al crear contratos).
      */
     protected function syncDocuments(ContratacionContract $contract): int
     {
-        $disk = Storage::disk('s3');
-
-        // Se lista en lugar de usar directoryExists(): en DigitalOcean Spaces devuelve false para
-        // carpetas sin objeto marcador aunque tengan archivos
-        $files = [];
-        foreach ($disk->listContents($contract->s3_path, true) as $item) {
-            if ($item->isFile() && basename($item->path()) !== '.keep') {
-                $files[$item->path()] = $item;
-            }
-        }
-
-        if (!$files) {
+        $count = app(ContractStorageService::class)->syncDocuments($contract);
+        if ($count === 0) {
             $this->command?->warn("  {$contract->contract_code}: la carpeta {$contract->s3_path} no existe o está vacía.");
         }
 
-        $contract->documents()->whereNotIn('path', array_keys($files) ?: [''])->delete();
-        $existing = $contract->documents()->pluck('path')->flip();
-
-        foreach ($files as $path => $item) {
-            if ($existing->has($path)) {
-                continue;
-            }
-
-            $relative = ltrim(Str::after($path, $contract->s3_path), '/');
-            $folder = $this->folderFor($relative);
-
-            ContratacionDocument::create([
-                'contract_id' => $contract->id,
-                'folder' => $folder,
-                'document_type' => $folder === ContractDocumentCatalog::FOLDER_LEGAL ? $this->legalTypeFor(basename($path)) : null,
-                'name' => basename($path),
-                'path' => $path,
-                'size' => (int) ($item->fileSize() ?? 0),
-                'mime_type' => $item->mimeType(),
-                'uploaded_by' => null,
-            ]);
-        }
-
-        return count($files);
-    }
-
-    /**
-     * Carpeta del catálogo según la subcarpeta del archivo (ej. "05 CORTES/..." o "CORTE 01/..." -> cortes).
-     * Lo que no encaja (anexos, archivos sueltos, ODS 09...) va a "otros".
-     */
-    protected function folderFor(string $relativePath): string
-    {
-        if (!str_contains($relativePath, '/')) {
-            return 'otros';
-        }
-
-        $first = $this->comparable(Str::before($relativePath, '/'));
-
-        return match (true) {
-            str_contains($first, 'legal') => 'legal',
-            str_contains($first, 'pliego') => 'pliego',
-            str_contains($first, 'acta') => 'acta_inicio',
-            str_contains($first, 'corte') => 'cortes',
-            str_contains($first, 'liquidacion') => 'liquidacion',
-            str_contains($first, 'contrato') => 'contrato',
-            default => 'otros',
-        };
-    }
-
-    /**
-     * Tipo de documento legal según el nombre (ej. "1.2 RUT EMELECT.pdf"). null si no se reconoce
-     * (certificación bancaria, etc.): el contrato seguirá mostrando la alerta de ese documento.
-     */
-    protected function legalTypeFor(string $filename): ?string
-    {
-        $name = ' ' . preg_replace('/[^a-z0-9]+/', ' ', $this->comparable($filename)) . ' ';
-
-        return match (true) {
-            str_contains($name, ' rut ') => 'rut',
-            str_contains($name, ' camara ') => 'camara_comercio',
-            str_contains($name, ' cedula ') || str_contains($name, ' cc ') => 'cc',
-            default => null,
-        };
+        return $count;
     }
 
     protected function comparable(string $value): string

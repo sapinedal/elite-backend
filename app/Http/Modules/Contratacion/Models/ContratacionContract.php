@@ -87,6 +87,14 @@ class ContratacionContract extends Model
         return $this->hasMany(ContratacionPolicy::class, 'contract_id')->orderBy('expires_at');
     }
 
+    /**
+     * Carpetas de S3 vinculadas por tipo de documento (una por tipo)
+     */
+    public function folderLinks()
+    {
+        return $this->hasMany(ContratacionContractFolder::class, 'contract_id');
+    }
+
     public function documents()
     {
         return $this->hasMany(ContratacionDocument::class, 'contract_id')->orderBy('folder')->orderBy('name');
