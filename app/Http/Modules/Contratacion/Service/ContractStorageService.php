@@ -147,16 +147,18 @@ class ContractStorageService
         return $created;
     }
 
-    public function downloadUrl(ContratacionDocument $document): string
+    /**
+     * URL temporal del adjunto; con $inline (o ?inline=1 en la petición) se ve en el navegador en vez de descargarse.
+     */
+    public function downloadUrl(ContratacionDocument $document, ?bool $inline = null): string
     {
         $disk = $this->disk();
         if (!$disk->exists($document->path)) {
             throw new InvalidArgumentException('El archivo ya no existe en el repositorio documental.');
         }
 
-        return $disk->temporaryUrl($document->path, now()->addMinutes(60), [
-            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($document->name),
-        ]);
+        return $disk->temporaryUrl($document->path, now()->addMinutes(60),
+            \App\Services\DirectUploadService::responseOptions($document->name, $inline ?? request()->boolean('inline')));
     }
 
     public function deleteDocument(ContratacionDocument $document): void

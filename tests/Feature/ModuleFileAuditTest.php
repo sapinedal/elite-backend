@@ -114,3 +114,26 @@ test('un fallo al auditar no interrumpe la operación del módulo', function () 
     expect(Storage::disk('s3')->exists($file['file_path']))->toBeTrue()
         ->and(DocumentActivityLog::count())->toBe(0);
 });
+
+test('las descargas de los módulos se pueden ver en el navegador con inline=1', function () {
+    $options = [];
+    Storage::disk('s3')->buildTemporaryUrlsUsing(function ($path, $expiration, $opts) use (&$options) {
+        $options[] = $opts;
+
+        return "https://spaces.example.com/{$path}";
+    });
+    Storage::disk('s3')->put('tecnica/factura.pdf', 'pdf');
+    Storage::disk('s3')->put('tecnica/soporte.xlsx', 'xlsx');
+
+    $this->uploads->downloadUrl('tecnica/factura.pdf', 'Factura 12.pdf');
+    $this->uploads->downloadUrl('tecnica/factura.pdf', 'Factura 12.pdf', true);
+    $this->uploads->downloadUrl('tecnica/soporte.xlsx', 'soporte.xlsx', true);
+    // Sin indicarlo, se toma ?inline=1 de la petición (así sirven todos los endpoints de descarga)
+    request()->merge(['inline' => '1']);
+    $this->uploads->downloadUrl('tecnica/factura.pdf', 'Factura 12.pdf');
+
+    expect($options[0])->toBe(['ResponseContentDisposition' => "attachment; filename*=UTF-8''Factura%2012.pdf"])
+        ->and($options[1])->toBe(['ResponseContentDisposition' => "inline; filename*=UTF-8''Factura%2012.pdf", 'ResponseContentType' => 'application/pdf'])
+        ->and($options[2])->toBe(['ResponseContentDisposition' => "inline; filename*=UTF-8''soporte.xlsx"])
+        ->and($options[3]['ResponseContentDisposition'])->toStartWith('inline;');
+});

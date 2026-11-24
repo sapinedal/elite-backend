@@ -188,18 +188,33 @@ class DirectUploadService
     }
 
     /**
-     * URL temporal (60 min) para descargar un archivo con su nombre original.
+     * URL temporal (60 min) de un archivo con su nombre original.
+     * Con $inline el navegador lo muestra en su visor (ej. un PDF en una pestaña) en lugar de descargarlo.
+     * Sin indicarlo se toma ?inline=1 de la petición: así todos los endpoints de descarga de los módulos
+     * (cortes, anticipos, facturas...) sirven también para "Ver" sin cambiar cada controlador.
      */
-    public function downloadUrl(string $path, string $name): string
+    public function downloadUrl(string $path, string $name, ?bool $inline = null): string
     {
         $disk = $this->disk();
         if (!$disk->exists($path)) {
             throw new InvalidArgumentException('El archivo ya no existe en el repositorio.');
         }
 
-        return $disk->temporaryUrl($path, now()->addMinutes(60), [
-            'ResponseContentDisposition' => "attachment; filename*=UTF-8''" . rawurlencode($name),
-        ]);
+        return $disk->temporaryUrl($path, now()->addMinutes(60), self::responseOptions($name, $inline ?? request()->boolean('inline')));
+    }
+
+    /**
+     * Cabeceras de la respuesta de S3: descarga (attachment) o visualización en el navegador (inline).
+     * Para ver un PDF se fuerza su Content-Type: archivos antiguos pueden tener uno genérico en el bucket.
+     */
+    public static function responseOptions(string $name, bool $inline): array
+    {
+        $options = ['ResponseContentDisposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name)];
+        if ($inline && strtolower(pathinfo($name, PATHINFO_EXTENSION)) === 'pdf') {
+            $options['ResponseContentType'] = 'application/pdf';
+        }
+
+        return $options;
     }
 
     /**
