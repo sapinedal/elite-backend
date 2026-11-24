@@ -132,9 +132,11 @@ class FacturacionController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => $invoice->target_type === FacturacionInvoice::TARGET_CORTE
-                    ? 'Factura asociada al corte. Se notificó para su registro en Multifox.'
-                    : 'Factura asociada a la orden. Pasa a la entrada de almacén.',
+                'message' => match ($invoice->target_type) {
+                    FacturacionInvoice::TARGET_CORTE => 'Factura asociada al corte. Se notificó para su registro en Multifox.',
+                    FacturacionInvoice::TARGET_ANTICIPO => 'Cotización radicada como anticipo ' . ($invoice->anticipo?->code ?? '') . '. Se notificó al Director de Obra.',
+                    default => 'Factura asociada a la orden. Pasa a la entrada de almacén.',
+                },
                 'data' => $this->service->get($invoice, $request->user()),
             ]);
         });

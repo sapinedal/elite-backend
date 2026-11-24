@@ -26,6 +26,7 @@ class PagoCuenta extends Model
     public const SOURCE_ANTICIPO = 'anticipo';
     public const SOURCE_CUENTA_COBRO = 'cuenta_cobro';
     public const SOURCE_MANUAL = 'manual';
+    public const SOURCE_INDIRECTO = 'indirecto'; // Factura del mes de tipo indirecto (source_id = facturacion_invoices.id)
 
     protected $fillable = [
         'source_type',

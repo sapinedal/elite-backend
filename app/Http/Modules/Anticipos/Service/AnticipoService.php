@@ -204,31 +204,67 @@ class AnticipoService
      */
     public function createAnticipo(array $data, User $user): Anticipo
     {
+        $anticipo = DB::transaction(fn () => $this->register(
+            $data,
+            fn (string $folder) => $this->storage->claimFile($data['upload_token'], $user, $folder),
+            $user,
+        ));
+
+        // Los correos se envían después del commit para no avisar de un anticipo que no quedó guardado
+        $this->notifySubmitted($anticipo, $data['comment'] ?? null);
+
+        return $anticipo;
+    }
+
+    /**
+     * Radica el anticipo con un archivo que ya está en S3 ($source: file_path, file_size, file_mime; la cotización de
+     * las facturas del mes), copiándolo a la
+     * carpeta del anticipo. Se llama dentro de la transacción de quien lo usa, que avisa con notifySubmitted()
+     * después del commit. $copied recibe la ruta de la copia para borrarla si la transacción falla.
+     */
+    public function createFromFile(array $data, array $source, User $user, ?string &$copied = null): Anticipo
+    {
+        return $this->register($data, function (string $folder) use ($source, &$copied) {
+            $copied = $this->storage->copyTo($source['file_path'], $folder);
+
+            return [
+                'file_name' => basename($copied),
+                'file_path' => $copied,
+                'file_size' => $source['file_size'] ?? 0,
+                'file_mime' => $source['file_mime'] ?? null,
+            ];
+        }, $user);
+    }
+
+    public function notifySubmitted(Anticipo $anticipo, ?string $comment = null): void
+    {
+        $this->notifications->submitted($anticipo, false, $comment);
+    }
+
+    /**
+     * Crea el anticipo pendiente del Director de Obra. $file recibe la carpeta del anticipo y devuelve los datos
+     * del archivo ya guardado en ella. Debe correr dentro de una transacción.
+     */
+    protected function register(array $data, callable $file, User $user): Anticipo
+    {
         $contract = $this->accessibleContract($data['contract_id'], $user);
         $firstStage = AnticipoWorkflow::firstStage();
 
         // El código se reserva antes de mover el archivo: la carpeta del anticipo lleva su código
-        $anticipo = DB::transaction(function () use ($data, $user, $contract, $firstStage) {
-            $anticipo = Anticipo::create([
-                ...$this->fields($data, $contract),
-                'status' => AnticipoWorkflow::STAGES[$firstStage]['status'],
-                'current_stage' => $firstStage,
-                'created_by' => $user->id,
-                'file_name' => '',
-                'file_path' => '',
-            ]);
-            $anticipo->update(['code' => 'ANT-' . str_pad((string) $anticipo->id, 4, '0', STR_PAD_LEFT)]);
+        $anticipo = Anticipo::create([
+            ...$this->fields($data, $contract),
+            'status' => AnticipoWorkflow::STAGES[$firstStage]['status'],
+            'current_stage' => $firstStage,
+            'created_by' => $user->id,
+            'file_name' => '',
+            'file_path' => '',
+        ]);
+        $anticipo->update(['code' => 'ANT-' . str_pad((string) $anticipo->id, 4, '0', STR_PAD_LEFT)]);
 
-            $folder = $this->storage->folderFor($contract, $anticipo->code);
-            $anticipo->update(['storage_path' => $folder, ...$this->storage->claimFile($data['upload_token'], $user, $folder)]);
+        $folder = $this->storage->folderFor($contract, $anticipo->code);
+        $anticipo->update(['storage_path' => $folder, ...$file($folder)]);
 
-            $this->log($anticipo, AnticipoHistory::ACTION_RADICADO, $user, null, $data['comment'] ?? null, $anticipo);
-
-            return $anticipo;
-        });
-
-        // Los correos se envían después del commit para no avisar de un anticipo que no quedó guardado
-        $this->notifications->submitted($anticipo, false, $data['comment'] ?? null);
+        $this->log($anticipo, AnticipoHistory::ACTION_RADICADO, $user, null, $data['comment'] ?? null, $anticipo);
 
         return $anticipo;
     }

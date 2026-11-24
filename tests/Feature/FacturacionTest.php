@@ -488,3 +488,96 @@ test('al asociar solo se listan los cortes aprobados sin factura y las órdenes 
     expect(collect($targets['cortes'])->pluck('id')->all())->toBe([$facturado->id])
         ->and($targets['ordenes'])->toBe([]);
 });
+
+test('el reembolso se asocia como la factura: a un corte aprobado o a una orden', function () {
+    $invoice = uploadInvoice(['document_type' => 'reembolso', 'invoice_number' => '12']);
+    expect($invoice->documentNumber())->toBe('RE 12');
+
+    $corte = makeCorte($this->residente);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
+        ->assertOk();
+
+    expect(CorteInvoice::first()->document_type)->toBe(CorteInvoice::TYPE_FACTURA_INICIAL)
+        ->and($corte->fresh()->status)->toBe(CorteWorkflow::STATUS_FACTURADO);
+});
+
+test('la cotización se radica como anticipo del contrato y no va a cortes ni órdenes', function () {
+    config(['anticipos.stage_emails' => ['director_obra' => ['director@example.com']], 'anticipos.monitor' => []]);
+    $this->residente->givePermissionTo(['anticipos.ver', 'anticipos.crear']);
+    $contract = \App\Http\Modules\Contratacion\Models\ContratacionContract::create([
+        'project_id' => $this->project->id, 'contract_code' => '2759', 'consecutive' => '8', 'contractor_id' => $this->contractor->id,
+        'contractor_name' => 'INVALGO - M.O', 'object' => 'Fundación', 'status' => 'En ejecución', 's3_path' => 'tecnica/Contratos/INVALGO',
+    ]);
+    $otroProveedor = FtraContractor::create(['name' => 'OTRO SAS', 'nit' => '901']);
+    \App\Http\Modules\Contratacion\Models\ContratacionContract::create([
+        'project_id' => $this->project->id, 'contract_code' => '2760', 'consecutive' => '9', 'contractor_id' => $otroProveedor->id,
+        'contractor_name' => 'OTRO', 'object' => 'X', 'status' => 'En ejecución', 's3_path' => 'tecnica/Contratos/OTRO',
+    ]);
+    makeCorte($this->residente);
+
+    $invoice = uploadInvoice(['document_type' => 'cotizacion', 'invoice_number' => '88', 'amount' => null]);
+    expect($invoice->documentNumber())->toBe('COT 88');
+
+    // Solo contratos del proveedor (o sin proveedor); ni cortes ni órdenes
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$invoice->id}")->assertOk()->json('data');
+    expect($targets['cortes'])->toBe([])->and($targets['ordenes'])->toBe([])
+        ->and(collect($targets['contratos'])->pluck('id')->all())->toBe([$contract->id]);
+
+    // No va a un corte
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => Corte::first()->id])
+        ->assertStatus(422);
+
+    // El anticipo necesita el valor
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'anticipo', 'target_id' => $contract->id])
+        ->assertStatus(422);
+
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'anticipo', 'target_id' => $contract->id, 'amount' => 5000000, 'comment' => 'Anticipo 30%'])
+        ->assertOk()
+        ->assertJsonPath('data.status', FacturacionInvoice::STATUS_PROCESADA)
+        ->assertJsonPath('data.target.type', 'anticipo');
+
+    $anticipo = \App\Http\Modules\Anticipos\Models\Anticipo::first();
+    expect($anticipo->contract_id)->toBe($contract->id)
+        ->and($anticipo->contractor_id)->toBe($this->contractor->id)
+        ->and($anticipo->document_number)->toBe('COT 88')
+        ->and((float) $anticipo->amount)->toBe(5000000.0)
+        ->and($anticipo->status)->toBe(\App\Http\Modules\Anticipos\Service\AnticipoWorkflow::STATUS_PENDIENTE_DIRECTOR)
+        ->and($anticipo->file_path)->toStartWith('tecnica/Contratos/INVALGO/')
+        ->and($invoice->fresh()->anticipo_id)->toBe($anticipo->id);
+});
+
+test('el indirecto no se asocia a obra: al cargarlo pasa directo a cuentas por pagar', function () {
+    // Necesita el valor
+    $this->actingAs($this->contabilidad)->postJson('/api/v1/facturacion', [
+        'period' => '2026-10', 'document_type' => 'indirecto', 'invoice_number' => '901',
+        'contractor_id' => $this->contractor->id, 'upload_token' => (string) Str::uuid(),
+    ])->assertStatus(422)->assertJsonValidationErrors('amount');
+
+    $invoice = uploadInvoice(['document_type' => 'indirecto', 'invoice_number' => '901', 'amount' => 800000, 'observation' => 'Papelería oficina']);
+
+    $cuenta = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
+    expect($invoice->status)->toBe(FacturacionInvoice::STATUS_PROCESADA)
+        ->and($invoice->target_type)->toBe(FacturacionInvoice::TARGET_PAGOS)
+        ->and($invoice->pago_cuenta_id)->toBe($cuenta->id)
+        ->and($cuenta->source_type)->toBe(\App\Http\Modules\Pagos\Models\PagoCuenta::SOURCE_INDIRECTO)
+        ->and($cuenta->source_id)->toBe($invoice->id)
+        ->and($cuenta->frente)->toBe('INDIRECTOS')
+        ->and($cuenta->document_number)->toBe('IND 901')
+        ->and((float) $cuenta->amount)->toBe(800000.0)
+        ->and($cuenta->supplier_name)->toBe('INVALGO SAS')
+        ->and($cuenta->status)->toBe('pendiente');
+
+    // No aparece en las pendientes de obra ni se puede asociar a un corte
+    $corte = makeCorte($this->residente);
+    $this->actingAs($this->residente)->getJson('/api/v1/facturacion?scope=pending')->assertOk()->assertJsonPath('counts.pending', 0);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
+        ->assertStatus(422);
+
+    // Ya no se elimina desde facturas del mes
+    $this->actingAs($this->contabilidad)->deleteJson("/api/v1/facturacion/{$invoice->id}")->assertStatus(422);
+});

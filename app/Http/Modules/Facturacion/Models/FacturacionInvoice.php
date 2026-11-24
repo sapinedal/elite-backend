@@ -2,10 +2,12 @@
 
 namespace App\Http\Modules\Facturacion\Models;
 
+use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
+use App\Http\Modules\Pagos\Models\PagoCuenta;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
@@ -22,21 +24,30 @@ class FacturacionInvoice extends Model
 
     public const TARGET_CORTE = 'corte';
     public const TARGET_ORDEN = 'orden';
+    public const TARGET_ANTICIPO = 'anticipo';
+    public const TARGET_PAGOS = 'pagos'; // Indirecto: pasa directo a cuentas por pagar
 
     public const TYPE_FACTURA = 'factura';
     public const TYPE_CUENTA_COBRO = 'cuenta_cobro';
     public const TYPE_NOTA_CREDITO = 'nota_credito';
     public const TYPE_FACTURA_REEMPLAZO = 'factura_reemplazo';
+    public const TYPE_REEMBOLSO = 'reembolso';
+    public const TYPE_COTIZACION = 'cotizacion';
+    public const TYPE_INDIRECTO = 'indirecto';
 
     /**
      * Tipos con su etiqueta, el prefijo con el que se nombran en la carpeta (FE 335, C-C 49) y el tipo
-     * equivalente en las facturas del corte.
+     * equivalente en las facturas del corte. La cotización no va a cortes: se radica como anticipo (corte_type null).
+     * El indirecto no se asocia a nada en obra: al cargarlo pasa directo a cuentas por pagar.
      */
     public const DOCUMENT_TYPES = [
         self::TYPE_FACTURA => ['label' => 'Factura electrónica', 'prefix' => 'FE', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
         self::TYPE_CUENTA_COBRO => ['label' => 'Cuenta de cobro', 'prefix' => 'C-C', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
         self::TYPE_NOTA_CREDITO => ['label' => 'Nota crédito', 'prefix' => 'NC', 'corte_type' => CorteInvoice::TYPE_NOTA_CREDITO],
         self::TYPE_FACTURA_REEMPLAZO => ['label' => 'Factura de reemplazo', 'prefix' => 'FE', 'corte_type' => CorteInvoice::TYPE_FACTURA_REEMPLAZO],
+        self::TYPE_REEMBOLSO => ['label' => 'Reembolso', 'prefix' => 'RE', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
+        self::TYPE_COTIZACION => ['label' => 'Cotización', 'prefix' => 'COT', 'corte_type' => null],
+        self::TYPE_INDIRECTO => ['label' => 'Indirecto', 'prefix' => 'IND', 'corte_type' => null],
     ];
 
     public const STATUS_LABELS = [
@@ -64,6 +75,8 @@ class FacturacionInvoice extends Model
         'orden_id',
         'corte_invoice_id',
         'orden_document_id',
+        'anticipo_id',
+        'pago_cuenta_id',
         'processed_comment',
         'processed_by',
         'processed_at',
@@ -101,6 +114,16 @@ class FacturacionInvoice extends Model
         return $this->belongsTo(Orden::class, 'orden_id');
     }
 
+    public function anticipo()
+    {
+        return $this->belongsTo(Anticipo::class, 'anticipo_id');
+    }
+
+    public function pagoCuenta()
+    {
+        return $this->belongsTo(PagoCuenta::class, 'pago_cuenta_id');
+    }
+
     public function supports()
     {
         return $this->hasMany(FacturacionInvoiceSupport::class, 'invoice_id');
@@ -124,5 +147,29 @@ class FacturacionInvoice extends Model
     public static function requiresRelatedDocument(?string $type): bool
     {
         return in_array($type, [self::TYPE_NOTA_CREDITO, self::TYPE_FACTURA_REEMPLAZO], true);
+    }
+
+    /**
+     * La cotización entra como anticipo de un contrato, no a un corte ni a una orden.
+     */
+    public static function isAnticipo(?string $type): bool
+    {
+        return $type === self::TYPE_COTIZACION;
+    }
+
+    /**
+     * El indirecto no pide asociarse a corte, orden ni entrada: al cargarlo pasa a cuentas por pagar.
+     */
+    public static function isIndirecto(?string $type): bool
+    {
+        return $type === self::TYPE_INDIRECTO;
+    }
+
+    /**
+     * Documentos del proveedor que se asocian a una orden de compra (pendiente de factura).
+     */
+    public static function fitsOrden(?string $type): bool
+    {
+        return in_array($type, [self::TYPE_FACTURA, self::TYPE_CUENTA_COBRO, self::TYPE_REEMBOLSO], true);
     }
 }

@@ -58,6 +58,14 @@ class AnticipoStorageService
         return $this->uploads->moveTo($path, $folder);
     }
 
+    /**
+     * Copia un archivo ya guardado (ej. la cotización de las facturas del mes) a la carpeta del anticipo.
+     */
+    public function copyTo(string $path, string $folder): string
+    {
+        return $this->uploads->copyTo($path, $folder);
+    }
+
     public function downloadUrl(string $path, string $name): string
     {
         return $this->uploads->downloadUrl($path, $name);

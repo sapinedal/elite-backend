@@ -2,6 +2,9 @@
 
 namespace App\Http\Modules\Facturacion\Service;
 
+use App\Http\Modules\Anticipos\Models\Anticipo;
+use App\Http\Modules\Anticipos\Service\AnticipoService;
+use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteInvoiceService;
@@ -15,6 +18,7 @@ use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Service\OrdenService;
 use App\Http\Modules\Ordenes\Service\OrdenStorageService;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
+use App\Http\Modules\Pagos\Service\PagoService;
 use App\Http\Modules\Users\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,6 +34,11 @@ use InvalidArgumentException;
  *
  * Al asociarla se registra en el corte (pasa a Facturado y se avisa para Multifox) o en la orden (avanza a
  * Entrada de almacén). Contabilidad ve en el panel qué residente tiene cortes u órdenes esperando factura.
+ *
+ * La cotización no va a un corte ni a una orden: el residente la radica como anticipo de un contrato (queda
+ * pendiente del Director de Obra en el flujo de anticipos).
+ *
+ * El indirecto no pasa por obra: al cargarlo queda procesado y pasa de una vez a cuentas por pagar.
  */
 class FacturacionService
 {
@@ -46,6 +55,8 @@ class FacturacionService
         protected OrdenService $ordenes,
         protected CorteStorageService $corteStorage,
         protected OrdenStorageService $ordenStorage,
+        protected AnticipoService $anticipos,
+        protected PagoService $pagos,
     ) {
     }
 
@@ -55,11 +66,11 @@ class FacturacionService
     }
 
     /**
-     * Residentes: quienes radican cortes u órdenes asocian las facturas a los suyos.
+     * Residentes: quienes radican cortes, órdenes o anticipos asocian las facturas a los suyos.
      */
     public function canAssociate(User $user): bool
     {
-        return $user->can('cortes.crear') || $user->can('ordenes.crear');
+        return $user->can('cortes.crear') || $user->can('ordenes.crear') || $user->can('anticipos.crear');
     }
 
     /**
@@ -107,7 +118,7 @@ class FacturacionService
     public function list(User $user, string $scope, array $filters = []): array
     {
         $query = $this->scopedQuery($user, $scope)
-            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'supports']);
+            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'pagoCuenta:id,status', 'supports']);
 
         if (!empty($filters['period'])) {
             $query->whereDate('period', $this->parsePeriod($filters['period']));
@@ -157,13 +168,14 @@ class FacturacionService
 
     public function get(FacturacionInvoice $invoice, User $user): array
     {
-        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'supports.uploader:id,name']);
+        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'pagoCuenta:id,status', 'supports.uploader:id,name']);
 
         return $this->present($invoice, $user, $this->suggestedContractorIds($user));
     }
 
     /**
      * Contabilidad carga una factura ya subida a S3: queda en la carpeta del mes, pendiente de obra.
+     * El indirecto no espera a obra: queda procesado y pasa de una vez a cuentas por pagar.
      */
     public function create(array $data, User $user): FacturacionInvoice
     {
@@ -173,7 +185,7 @@ class FacturacionService
 
         $file = $this->storage->claimInvoiceFile($data['upload_token'], $user, $period);
 
-        return FacturacionInvoice::create([
+        $fields = [
             'period' => $period,
             'contractor_id' => $contractor?->id,
             'supplier_name' => trim($data['supplier_name'] ?? '') ?: ($contractor?->name ?? 'Sin proveedor'),
@@ -185,7 +197,31 @@ class FacturacionService
             'uploaded_by' => $user->id,
             'status' => FacturacionInvoice::STATUS_PENDIENTE,
             ...$file,
-        ]);
+        ];
+
+        if (!FacturacionInvoice::isIndirecto($data['document_type'])) {
+            return FacturacionInvoice::create($fields);
+        }
+
+        try {
+            return DB::transaction(function () use ($fields, $user) {
+                $invoice = FacturacionInvoice::create($fields);
+                $cuenta = $this->pagos->registerFromIndirecto($invoice, $user);
+                $invoice->update([
+                    'status' => FacturacionInvoice::STATUS_PROCESADA,
+                    'target_type' => FacturacionInvoice::TARGET_PAGOS,
+                    'pago_cuenta_id' => $cuenta->id,
+                    'processed_by' => $user->id,
+                    'processed_at' => now(),
+                ]);
+
+                return $invoice;
+            });
+        } catch (\Throwable $e) {
+            // Sin registro no debe quedar el archivo en la carpeta del mes
+            $this->storage->delete($file['file_path']);
+            throw $e;
+        }
     }
 
     /**
@@ -195,6 +231,10 @@ class FacturacionService
     public function update(FacturacionInvoice $invoice, array $data, User $user): FacturacionInvoice
     {
         $this->assertPendingForManager($invoice, $user);
+        // Cambiar a indirecto la mandaría a cuentas por pagar sin pasar por el cargue: se elimina y se vuelve a cargar
+        if (FacturacionInvoice::isIndirecto($data['document_type'])) {
+            throw new InvalidArgumentException('Para registrar un indirecto, elimina esta factura y cárgala de nuevo como Indirecto.');
+        }
         $contractor = !empty($data['contractor_id']) ? FtraContractor::find($data['contractor_id']) : null;
         $affectsAnother = FacturacionInvoice::requiresRelatedDocument($data['document_type']);
 
@@ -234,14 +274,14 @@ class FacturacionService
         if (!$this->canManage($user)) {
             throw new InvalidArgumentException('Solo Contabilidad puede modificar las facturas cargadas.');
         }
+        if ($invoice->target_type === FacturacionInvoice::TARGET_PAGOS) {
+            throw new InvalidArgumentException('Este indirecto ya está en cuentas por pagar; anúlalo desde allí si se cargó por error.');
+        }
         if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE) {
             throw new InvalidArgumentException('Obra ya procesó esta factura; no se puede modificar.');
         }
     }
 
-    /**
-     * A qué puede asociar el residente: sus cortes con las tres aprobaciones y sus órdenes pendientes de factura.
-     */
     /**
      * Cortes del residente que admiten la factura: con las tres aprobaciones y aún sin factura (Aprobado).
      * Las notas crédito y facturas de reemplazo afectan una factura anterior, así que van a cortes ya Facturados.
@@ -253,10 +293,17 @@ class FacturacionService
             : [CorteWorkflow::STATUS_APROBADO];
     }
 
+    /**
+     * A qué puede asociar el residente: sus cortes con las tres aprobaciones y sus órdenes pendientes de factura;
+     * la cotización, a los contratos de sus proyectos (se radica como anticipo).
+     */
     public function targets(User $user, ?FacturacionInvoice $invoice = null): array
     {
+        $isAnticipo = $invoice && FacturacionInvoice::isAnticipo($invoice->document_type);
+
         $cortes = Corte::query()
             ->where('created_by', $user->id)
+            ->when($isAnticipo, fn ($q) => $q->whereRaw('1 = 0'))
             ->whereIn('status', self::corteStatusesFor($invoice?->document_type))
             ->with(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code'])
             ->withCount('invoices')
@@ -264,9 +311,9 @@ class FacturacionService
             ->orderByDesc('approved_at')
             ->get();
 
-        // Órdenes esperando la factura del proveedor (sin factura cargada). A una orden solo se asocia la factura o
-        // cuenta de cobro del proveedor, nunca notas crédito ni facturas de reemplazo.
-        $ordenCompatible = !$invoice || in_array($invoice->document_type, [FacturacionInvoice::TYPE_FACTURA, FacturacionInvoice::TYPE_CUENTA_COBRO], true);
+        // Órdenes esperando la factura del proveedor (sin factura cargada). A una orden solo se asocia la factura,
+        // cuenta de cobro o reembolso del proveedor, nunca notas crédito, facturas de reemplazo ni cotizaciones.
+        $ordenCompatible = !$invoice || FacturacionInvoice::fitsOrden($invoice->document_type);
         $ordenes = Orden::query()
             ->where('created_by', $user->id)
             ->where('status', OrdenWorkflow::STATUS_PENDIENTE_FACTURA)
@@ -276,6 +323,17 @@ class FacturacionService
             ->with(['project:id,name', 'tower:id,name'])
             ->orderByDesc('approved_at')
             ->get();
+
+        // Contratos de los proyectos del residente para radicar la cotización como anticipo: los del proveedor de la
+        // cotización primero. Los que tienen otro proveedor asignado no se ofrecen.
+        $contractorId = $invoice?->contractor_id;
+        $contracts = !$isAnticipo || !$user->can('anticipos.crear') ? collect() : ContratacionContract::query()
+            ->accessibleBy($user)
+            ->when($contractorId, fn ($q) => $q->where(fn ($sub) => $sub->whereNull('contractor_id')->orWhere('contractor_id', $contractorId)))
+            ->with(['project:id,name', 'tower:id,name'])
+            ->when($contractorId, fn ($q) => $q->orderByRaw('CASE WHEN contractor_id = ? THEN 0 ELSE 1 END', [$contractorId]))
+            ->orderBy('contract_code')
+            ->get(['id', 'project_id', 'tower_id', 'contractor_id', 'contract_code', 'contractor_name', 'object']);
 
         return [
             'cortes' => $cortes->map(fn (Corte $corte) => [
@@ -300,6 +358,15 @@ class FacturacionService
                 'tower' => $orden->tower?->name,
                 'approved_at' => $orden->approved_at?->toIso8601String(),
             ])->values(),
+            'contratos' => $contracts->map(fn (ContratacionContract $contract) => [
+                'id' => $contract->id,
+                'contract_code' => $contract->contract_code,
+                'contractor_id' => $contract->contractor_id,
+                'contractor_name' => $contract->contractor_name,
+                'object' => $contract->object,
+                'project' => $contract->project?->name,
+                'tower' => $contract->tower?->name,
+            ])->values(),
         ];
     }
 
@@ -308,6 +375,9 @@ class FacturacionService
      * el flujo del corte (Facturado, aviso de Multifox) o de la orden (pasa a Entrada de almacén).
      * La factura queda en la carpeta del mes y se copia a la carpeta del corte (o de la orden), que es la que
      * queda registrada en el corte.
+     *
+     * La cotización se radica como anticipo del contrato elegido (target_id es el contrato): se copia a la carpeta
+     * del anticipo y queda pendiente del Director de Obra.
      */
     public function associate(FacturacionInvoice $invoice, array $data, User $user): FacturacionInvoice
     {
@@ -316,81 +386,104 @@ class FacturacionService
         }
 
         // El valor no se pide al asociar: si Contabilidad no lo registró al cargar la factura, lo indica al aprobarla
-        // (después de Multifox) en el corte o la orden.
+        // (después de Multifox) en el corte o la orden. El anticipo sí necesita el valor al radicarse.
         $amount = $invoice->amount ?? ($data['amount'] ?? null);
-
-        $isCorte = $data['target_type'] === FacturacionInvoice::TARGET_CORTE;
-        $target = $isCorte ? Corte::find($data['target_id']) : Orden::find($data['target_id']);
-        $this->assertCanAssociate($invoice, $target, $isCorte, $user);
 
         // Igual que en el corte, no se pide el proveedor al asociar: cuentas por pagar usa el de la factura del mes
         $contractorId = $invoice->contractor_id ?: ($data['contractor_id'] ?? null);
+
+        $targetType = $data['target_type'];
+        $target = match ($targetType) {
+            FacturacionInvoice::TARGET_CORTE => Corte::find($data['target_id']),
+            FacturacionInvoice::TARGET_ORDEN => Orden::find($data['target_id']),
+            FacturacionInvoice::TARGET_ANTICIPO => ContratacionContract::query()->accessibleBy($user)->find($data['target_id']),
+            default => null,
+        };
+        $this->assertCanAssociate($invoice, $target, $targetType, $amount, $contractorId, $user);
 
         // Los soportes se mueven a la carpeta del mes antes de la transacción (igual que los demás cargues)
         $supports = collect($data['support_tokens'] ?? [])
             ->map(fn (string $token) => $this->storage->claimSupportFile($token, $user, $invoice));
 
-        $copyPath = $isCorte
-            ? $this->corteStorage->copyInvoiceFile($target, $invoice->file_path)
-            : $this->ordenStorage->copyStepFile($target, OrdenWorkflow::STEP_FACTURA, $invoice->file_path);
-        $file = [...$invoice->only(['file_size', 'file_mime']), 'file_name' => basename($copyPath), 'file_path' => $copyPath];
+        // La copia del anticipo se hace dentro de la transacción (su carpeta lleva el código del anticipo)
+        $copyPath = match ($targetType) {
+            FacturacionInvoice::TARGET_CORTE => $this->corteStorage->copyInvoiceFile($target, $invoice->file_path),
+            FacturacionInvoice::TARGET_ORDEN => $this->ordenStorage->copyStepFile($target, OrdenWorkflow::STEP_FACTURA, $invoice->file_path),
+            default => null,
+        };
+        $file = $copyPath ? [...$invoice->only(['file_size', 'file_mime']), 'file_name' => basename($copyPath), 'file_path' => $copyPath] : [];
         $comment = isset($data['comment']) ? (trim($data['comment']) ?: null) : null;
 
         try {
-            [$invoice, $record] = $this->associateRecords($invoice, $target, $isCorte, $amount, $contractorId, $file, $comment, $supports, $user);
+            [$invoice, $record] = $this->associateRecords($invoice, $target, $targetType, $amount, $contractorId, $file, $comment, $supports, $user, $copyPath);
         } catch (\Throwable $e) {
-            // Sin asociación no debe quedar la copia en la carpeta del corte / orden
-            $this->storage->delete($copyPath);
+            // Sin asociación no debe quedar la copia en la carpeta del corte / orden / anticipo
+            if ($copyPath) {
+                $this->storage->delete($copyPath);
+            }
             throw $e;
         }
 
         // Después del commit, igual que en el cargue normal de cada módulo
-        $record instanceof CorteInvoice
-            ? $this->corteInvoices->notifyUploaded($record)
-            : $this->ordenes->notifyStepDocument($record);
+        match (true) {
+            $record instanceof CorteInvoice => $this->corteInvoices->notifyUploaded($record),
+            $record instanceof Anticipo => $this->anticipos->notifySubmitted($record, $comment),
+            default => $this->ordenes->notifyStepDocument($record),
+        };
 
         return $invoice;
     }
 
     /**
-     * Registra la factura en el corte o en la orden (con la copia $file) y la marca como procesada por obra.
+     * Registra la factura en el corte o en la orden (con la copia $file), o radica el anticipo con la cotización,
+     * y la marca como procesada por obra.
      *
-     * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument}
+     * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument|Anticipo}
      */
     protected function associateRecords(
-        FacturacionInvoice $invoice, Corte|Orden $target, bool $isCorte, $amount, ?int $contractorId,
-        array $file, ?string $comment, Collection $supports, User $user,
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract $target, string $targetType, $amount, ?int $contractorId,
+        array $file, ?string $comment, Collection $supports, User $user, ?string &$copyPath,
     ): array {
-        return DB::transaction(function () use ($invoice, $target, $isCorte, $amount, $contractorId, $file, $comment, $supports, $user) {
+        return DB::transaction(function () use ($invoice, $target, $targetType, $amount, $contractorId, $file, $comment, $supports, $user, &$copyPath) {
             $invoice = FacturacionInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE) {
                 throw new InvalidArgumentException('Otro usuario ya procesó esta factura.');
             }
 
-            $record = $isCorte
-                ? $this->corteInvoices->register($target, [
+            $record = match ($targetType) {
+                FacturacionInvoice::TARGET_CORTE => $this->corteInvoices->register($target, [
                     'document_type' => FacturacionInvoice::DOCUMENT_TYPES[$invoice->document_type]['corte_type'],
                     'invoice_number' => $invoice->documentNumber(),
                     'related_document' => $invoice->related_document,
                     'amount' => $amount,
                     'observation' => $comment ?? $invoice->observation,
-                ], $file, $user)
-                : $this->ordenes->recordStepDocument($target, OrdenWorkflow::STEP_FACTURA, [
+                ], $file, $user),
+                FacturacionInvoice::TARGET_ORDEN => $this->ordenes->recordStepDocument($target, OrdenWorkflow::STEP_FACTURA, [
                     'number' => $invoice->documentNumber(),
                     'amount' => $amount,
                     'contractor_id' => $contractorId,
                     'observation' => $comment,
-                ], $file, $user);
+                ], $file, $user),
+                FacturacionInvoice::TARGET_ANTICIPO => $this->anticipos->createFromFile([
+                    'contract_id' => $target->id,
+                    'contractor_id' => $contractorId,
+                    'document_number' => $invoice->documentNumber(),
+                    'amount' => $amount,
+                    'description' => $invoice->observation,
+                    'comment' => $comment,
+                ], $invoice->only(['file_path', 'file_size', 'file_mime']), $user, $copyPath),
+            };
 
             $invoice->update([
                 'status' => FacturacionInvoice::STATUS_PROCESADA,
                 'amount' => $amount,
                 'contractor_id' => $contractorId,
-                'target_type' => $isCorte ? FacturacionInvoice::TARGET_CORTE : FacturacionInvoice::TARGET_ORDEN,
-                'corte_id' => $isCorte ? $target->id : null,
-                'orden_id' => $isCorte ? null : $target->id,
-                'corte_invoice_id' => $isCorte ? $record->id : null,
-                'orden_document_id' => $isCorte ? null : $record->id,
+                'target_type' => $targetType,
+                'corte_id' => $targetType === FacturacionInvoice::TARGET_CORTE ? $target->id : null,
+                'orden_id' => $targetType === FacturacionInvoice::TARGET_ORDEN ? $target->id : null,
+                'corte_invoice_id' => $targetType === FacturacionInvoice::TARGET_CORTE ? $record->id : null,
+                'orden_document_id' => $targetType === FacturacionInvoice::TARGET_ORDEN ? $record->id : null,
+                'anticipo_id' => $targetType === FacturacionInvoice::TARGET_ANTICIPO ? $record->id : null,
                 'processed_comment' => $comment,
                 'processed_by' => $user->id,
                 'processed_at' => now(),
@@ -404,8 +497,41 @@ class FacturacionService
         });
     }
 
-    protected function assertCanAssociate(FacturacionInvoice $invoice, Corte|Orden|null $target, bool $isCorte, User $user): void
-    {
+    protected function assertCanAssociate(
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|null $target, string $targetType, $amount, ?int $contractorId, User $user,
+    ): void {
+        $isAnticipo = FacturacionInvoice::isAnticipo($invoice->document_type);
+
+        if (FacturacionInvoice::isIndirecto($invoice->document_type)) {
+            throw new InvalidArgumentException('Los indirectos no se asocian a obra: pasan directo a cuentas por pagar.');
+        }
+        if ($isAnticipo !== ($targetType === FacturacionInvoice::TARGET_ANTICIPO)) {
+            throw new InvalidArgumentException($isAnticipo
+                ? 'La cotización se radica como anticipo de un contrato, no se asocia a cortes ni órdenes.'
+                : 'Solo las cotizaciones se radican como anticipo.');
+        }
+
+        if ($targetType === FacturacionInvoice::TARGET_ANTICIPO) {
+            if (!$user->can('anticipos.crear')) {
+                throw new InvalidArgumentException('No tienes permiso para radicar anticipos.');
+            }
+            if (!$target) {
+                throw new InvalidArgumentException('No tienes acceso al contrato seleccionado.');
+            }
+            if (!$contractorId) {
+                throw new InvalidArgumentException('Indica el proveedor de la cotización.');
+            }
+            if ($target->contractor_id !== null && (int) $target->contractor_id !== (int) $contractorId) {
+                throw new InvalidArgumentException('El contrato no pertenece al proveedor de la cotización.');
+            }
+            if ($amount === null) {
+                throw new InvalidArgumentException('Indica el valor del anticipo.');
+            }
+
+            return;
+        }
+
+        $isCorte = $targetType === FacturacionInvoice::TARGET_CORTE;
         if (!$target || $target->created_by !== $user->id) {
             throw new InvalidArgumentException('Solo el residente responsable puede asociar facturas a su ' . ($isCorte ? 'corte.' : 'orden.'));
         }
@@ -423,8 +549,8 @@ class FacturacionService
             if ($target->current_step !== OrdenWorkflow::STEP_FACTURA) {
                 throw new InvalidArgumentException("La orden {$target->code} no está esperando la factura del proveedor.");
             }
-            if (!in_array($invoice->document_type, [FacturacionInvoice::TYPE_FACTURA, FacturacionInvoice::TYPE_CUENTA_COBRO], true)) {
-                throw new InvalidArgumentException('A una orden de compra solo se asocia la factura o cuenta de cobro del proveedor.');
+            if (!FacturacionInvoice::fitsOrden($invoice->document_type)) {
+                throw new InvalidArgumentException('A una orden de compra solo se asocia la factura, cuenta de cobro o reembolso del proveedor.');
             }
         }
     }
@@ -567,6 +693,8 @@ class FacturacionService
         $target = match ($invoice->target_type) {
             FacturacionInvoice::TARGET_CORTE => ['type' => 'corte', 'id' => $invoice->corte_id, 'code' => $invoice->corte?->code, 'label' => $invoice->corte?->reference() ?? 'Corte eliminado'],
             FacturacionInvoice::TARGET_ORDEN => ['type' => 'orden', 'id' => $invoice->orden_id, 'code' => $invoice->orden?->code, 'label' => 'Orden ' . ($invoice->orden?->code ?? '—')],
+            FacturacionInvoice::TARGET_PAGOS => ['type' => 'pagos', 'id' => $invoice->pago_cuenta_id, 'code' => null, 'label' => 'Cuentas por pagar · Indirectos'],
+            FacturacionInvoice::TARGET_ANTICIPO => ['type' => 'anticipo', 'id' => $invoice->anticipo_id, 'code' => $invoice->anticipo?->code, 'label' => $invoice->anticipo?->reference() ?? 'Anticipo eliminado'],
             default => null,
         };
 

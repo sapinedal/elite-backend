@@ -65,6 +65,7 @@ class PagoService
         PagoCuenta::SOURCE_ANTICIPO => 'Anticipo',
         PagoCuenta::SOURCE_CUENTA_COBRO => 'Cuenta de cobro',
         PagoCuenta::SOURCE_MANUAL => 'Manual',
+        PagoCuenta::SOURCE_INDIRECTO => 'Indirecto',
     ];
 
     public function __construct(
@@ -367,6 +368,34 @@ class PagoService
     }
 
     /**
+     * Factura del mes de tipo indirecto: no pasa por obra, Contabilidad la carga y queda de una en cuentas por pagar,
+     * en el frente de indirectos. Debe correr dentro de la transacción del cargue.
+     */
+    public function registerFromIndirecto(FacturacionInvoice $invoice, User $user): PagoCuenta
+    {
+        $invoice->loadMissing('contractor:id,name,nit');
+        $amount = (float) $invoice->amount;
+
+        $cuenta = PagoCuenta::create([
+            'source_type' => PagoCuenta::SOURCE_INDIRECTO,
+            'source_id' => $invoice->id,
+            'project_id' => null,
+            'frente' => $this->frenteFor(null),
+            'contractor_id' => $invoice->contractor_id,
+            'supplier_nit' => $invoice->contractor?->nit,
+            'supplier_name' => $invoice->contractor?->name ?? $invoice->supplier_name,
+            'document_number' => $invoice->documentNumber(),
+            'concept' => 'Indirecto' . ($invoice->observation ? ". {$invoice->observation}" : ''),
+            'amount' => $amount,
+            'status' => self::STATUS_PENDIENTE,
+            'created_by' => $user->id,
+        ]);
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Factura indirecta {$invoice->documentNumber()} cargada por Contabilidad en las facturas del mes.");
+
+        return $cuenta;
+    }
+
+    /**
      * Cuenta registrada a mano por Contabilidad (nómina, aportes, fiduciaria, cuentas de cobro...).
      */
     public function createManual(array $data, User $user): PagoCuenta
@@ -499,12 +528,12 @@ class PagoService
     }
 
     /**
-     * Anula una cuenta manual sin pagos (ej. registrada por error).
+     * Anula una cuenta manual o indirecta sin pagos (ej. registrada por error).
      */
     public function annul(PagoCuenta $cuenta, string $comment, User $user): PagoCuenta
     {
-        if (!$this->canRegister($user) || $cuenta->source_type !== PagoCuenta::SOURCE_MANUAL || (float) $cuenta->paid_amount > 0) {
-            throw new InvalidArgumentException('Solo se pueden anular cuentas manuales sin pagos.');
+        if (!$this->canRegister($user) || !self::isAnnullable($cuenta) || (float) $cuenta->paid_amount > 0) {
+            throw new InvalidArgumentException('Solo se pueden anular cuentas manuales o indirectas sin pagos.');
         }
 
         $cuenta->update(['status' => self::STATUS_ANULADA, 'priority' => null, 'scheduled_for' => null]);
@@ -556,6 +585,14 @@ class PagoService
         }
     }
 
+    /**
+     * Las que registra Contabilidad sin flujo de obra detrás: manuales e indirectas.
+     */
+    protected static function isAnnullable(PagoCuenta $cuenta): bool
+    {
+        return in_array($cuenta->source_type, [PagoCuenta::SOURCE_MANUAL, PagoCuenta::SOURCE_INDIRECTO], true);
+    }
+
     protected function frenteFor(?string $towerName): string
     {
         return mb_strtoupper(trim($towerName ?: config('pagos.frente_indirectos')));
@@ -603,7 +640,7 @@ class PagoService
             'created_at' => $c->created_at?->toIso8601String(),
             'can_prioritize' => in_array($c->status, [self::STATUS_PENDIENTE, self::STATUS_PARCIAL, self::STATUS_PRIORIZADA], true) && $this->canPrioritize($user),
             'can_pay' => $c->status === self::STATUS_PRIORIZADA && $this->canPay($user),
-            'can_annul' => $c->source_type === PagoCuenta::SOURCE_MANUAL && (float) $c->paid_amount <= 0
+            'can_annul' => self::isAnnullable($c) && (float) $c->paid_amount <= 0
                 && $c->status !== self::STATUS_ANULADA && $this->canRegister($user),
         ];
 
