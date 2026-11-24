@@ -30,10 +30,32 @@ class DirectUploadService
     // Carpeta del bucket donde quedan los archivos mientras se guarda el registro
     public const TMP_ROOT = 'tmp/cargas-directas';
 
+    // Módulo que usa el servicio (ej. "Cortes"), para la Auditoría de Actividad del gestor documental
+    protected ?string $module = null;
+
     public function __construct(
         protected DocumentalService $documental,
         protected DocumentalSettingsService $settings,
     ) {
+    }
+
+    /**
+     * Copia del servicio que registra en la Auditoría de Actividad con el nombre del módulo indicado.
+     */
+    public function forModule(string $module): static
+    {
+        $clone = clone $this;
+        $clone->module = $module;
+
+        return $clone;
+    }
+
+    /**
+     * Registra en la Auditoría de Actividad del gestor documental (si el módulo se identificó con forModule()).
+     */
+    protected function audit(string $action, string $path, array $details = [], ?User $user = null): void
+    {
+        $this->documental->recordActivity($action, $path, $this->module ?? 'Otros módulos', $details, $user);
     }
 
     protected function disk(): Filesystem
@@ -116,6 +138,7 @@ class DirectUploadService
 
         Cache::forget(self::CACHE_PREFIX . $token);
         $this->documental->clearPathCache($directory);
+        $this->audit('upload', $finalPath, ['size' => $size, 'mime_type' => $upload['mime']], $user);
 
         return [
             'file_name' => $name,
@@ -134,6 +157,7 @@ class DirectUploadService
         $finalPath = $directory . '/' . $this->uniqueFilename($directory, basename($path));
         $this->disk()->move($path, $finalPath);
         $this->documental->clearPathCache($directory);
+        $this->audit('move', $finalPath, ['from' => $path, 'to' => $finalPath, 'type' => 'file']);
 
         return $finalPath;
     }
@@ -148,6 +172,7 @@ class DirectUploadService
         $finalPath = $directory . '/' . $this->uniqueFilename($directory, basename($path));
         $this->disk()->copy($path, $finalPath);
         $this->documental->clearPathCache($directory);
+        $this->audit('copy', $finalPath, ['from' => $path, 'to' => $finalPath]);
 
         return $finalPath;
     }
@@ -159,6 +184,7 @@ class DirectUploadService
     {
         $this->disk()->delete($path);
         $this->documental->clearPathCache(dirname($path));
+        $this->audit('delete', $path, ['type' => 'file']);
     }
 
     /**

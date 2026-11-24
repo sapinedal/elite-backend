@@ -500,7 +500,7 @@ class PagoService
         if (empty($data['upload_token'])) {
             throw new InvalidArgumentException('Adjunta el soporte de pago para registrar el pago.');
         }
-        $file = $this->uploads->claimUpload($data['upload_token'], $user, $this->supportFolder($cuenta));
+        $file = $this->uploads->forModule('Pagos')->claimUpload($data['upload_token'], $user, $this->supportFolder($cuenta));
 
         return DB::transaction(function () use ($cuenta, $data, $amount, $file, $user) {
             $cuenta = PagoCuenta::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();

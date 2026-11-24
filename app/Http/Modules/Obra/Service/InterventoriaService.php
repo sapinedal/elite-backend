@@ -173,12 +173,23 @@ class InterventoriaService
         $disk = Storage::disk(config('interventoria.photos_disk'));
         $target = config('interventoria.photos_folder') . '/' . $numero;
         $disk->deleteDirectory($target);
+        $stored = 0;
         foreach ($photos as $photo) {
             $name = $photo['archivo'] ?? '';
             $source = $folder . '/' . $name;
             if (preg_match(self::PHOTO_PATTERN, $name) && is_file($source)) {
                 $disk->put($target . '/' . $name, file_get_contents($source));
+                $stored++;
             }
+        }
+
+        // Solo se audita cuando las fotos van al bucket del gestor documental (por defecto quedan en disco local)
+        if (config('interventoria.photos_disk') === 's3') {
+            app(\App\Http\Modules\Documental\Service\DocumentalService::class)->recordActivity('upload', $target, 'Interventoría', [
+                'type' => 'folder',
+                'files' => $stored,
+                'replaced' => true,
+            ]);
         }
     }
 

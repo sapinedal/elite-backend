@@ -51,7 +51,7 @@ class FacturacionStorageService
      */
     public function claimInvoiceFile(string $token, User $user, CarbonInterface $period): array
     {
-        return $this->uploads->claimUpload($token, $user, $this->monthFolder($period));
+        return $this->uploads->forModule('Facturación')->claimUpload($token, $user, $this->monthFolder($period));
     }
 
     /**
@@ -61,12 +61,12 @@ class FacturacionStorageService
     {
         $folder = $this->uploads->cleanSegment($invoice->documentNumber() . ' ' . $invoice->supplier_name, 100);
 
-        return $this->uploads->claimUpload($token, $user, $this->monthFolder($invoice->period) . '/' . self::FOLDER_SUPPORTS . '/' . $folder);
+        return $this->uploads->forModule('Facturación')->claimUpload($token, $user, $this->monthFolder($invoice->period) . '/' . self::FOLDER_SUPPORTS . '/' . $folder);
     }
 
     public function delete(string $path): void
     {
-        $this->uploads->delete($path);
+        $this->uploads->forModule('Facturación')->delete($path);
     }
 
     public function downloadUrl(string $path, string $name): string

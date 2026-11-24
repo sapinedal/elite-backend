@@ -50,7 +50,7 @@ class ReorganizeCorteFiles extends Command
                         continue;
                     }
 
-                    $new = $dry ? "{$target}/" . basename($old) : $uploads->moveTo($old, $target);
+                    $new = $dry ? "{$target}/" . basename($old) : $uploads->forModule('Cortes (reorganización)')->moveTo($old, $target);
                     $rows[] = [$corte->code, $label, $old, $new];
 
                     if (!$dry) {

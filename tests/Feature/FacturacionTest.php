@@ -44,6 +44,8 @@ beforeEach(function () {
 
     // Copia de la factura a la carpeta del corte / orden al asociarla
     $this->mock(DirectUploadService::class, function ($mock) {
+        // Los servicios de cada módulo se identifican para la auditoría documental
+        $mock->shouldReceive('forModule')->andReturnSelf();
         $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
         $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
     });
@@ -179,6 +181,8 @@ test('Paula confirma Multifox con el soporte y queda en la carpeta del corte', f
     $paula->givePermissionTo(['cortes.ver', 'cortes.multifox', 'proyectos.ver_todos']);
 
     $this->mock(DirectUploadService::class, function ($mock) {
+        // Los servicios de cada módulo se identifican para la auditoría documental
+        $mock->shouldReceive('forModule')->andReturnSelf();
         $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
         $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
         $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
@@ -349,6 +353,8 @@ test('si la asociación falla, la copia en la carpeta del corte se elimina', fun
 function mockClaimUploads(): void
 {
     test()->mock(DirectUploadService::class, function ($mock) {
+        // Los servicios de cada módulo se identifican para la auditoría documental
+        $mock->shouldReceive('forModule')->andReturnSelf();
         $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
         $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
         $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [

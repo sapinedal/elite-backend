@@ -96,7 +96,7 @@ class CorteStorageService
      */
     public function claimCorteFile(string $token, User $user, string $folder): array
     {
-        return $this->uploads->claimUpload($token, $user, $folder);
+        return $this->uploads->forModule('Cortes')->claimUpload($token, $user, $folder);
     }
 
     /**
@@ -105,7 +105,7 @@ class CorteStorageService
      */
     public function copyInvoiceFile(Corte $corte, string $path): string
     {
-        return $this->uploads->copyTo($path, $this->folderOf($corte));
+        return $this->uploads->forModule('Cortes')->copyTo($path, $this->folderOf($corte));
     }
 
     /**
@@ -113,7 +113,7 @@ class CorteStorageService
      */
     public function moveCorteFile(Corte $corte, string $folder): string
     {
-        return $this->uploads->moveTo($corte->file_path, $folder);
+        return $this->uploads->forModule('Cortes')->moveTo($corte->file_path, $folder);
     }
 
     public function downloadUrl(Corte $corte): string

@@ -265,12 +265,14 @@ class DocumentalController extends Controller
 
     /**
      * Historial de actividad del repositorio documental, con filtros.
-     * GET /api/v1/documental/logs?action=&user=&path=&date_from=&date_to=&page=&per_page=
+     * GET /api/v1/documental/logs?action=&module=&user=&path=&date_from=&date_to=&page=&per_page=
+     * module: módulo de origen (Cortes, Anticipos...) o "documental" para lo hecho desde el propio gestor.
      */
     public function logs(Request $request): JsonResponse
     {
         $request->validate([
             'action' => 'nullable|string|max:50',
+            'module' => 'nullable|string|max:60',
             'user' => 'nullable|string|max:100',
             'path' => 'nullable|string|max:255',
             'date_from' => 'nullable|date',
@@ -282,6 +284,9 @@ class DocumentalController extends Controller
         $logs = DocumentActivityLog::with(['user:id,name,email', 'project:id,code,name'])
             ->when($request->query('project_id'), fn ($q, $projectId) => $q->where('project_id', (int) $projectId))
             ->when($request->query('action'), fn ($q, $action) => $q->where('action', $action))
+            ->when($request->query('module'), fn ($q, $module) => $module === 'documental'
+                ? $q->whereNull('details->module')
+                : $q->where('details->module', $module))
             ->when($request->query('user'), fn ($q, $term) => $q->whereHas(
                 'user',
                 fn ($u) => $u->where('name', 'ilike', "%{$term}%")->orWhere('email', 'ilike', "%{$term}%")

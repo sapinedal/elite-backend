@@ -19,6 +19,8 @@ beforeEach(function () {
 
     // S3 simulado: el archivo queda en la carpeta que se pide
     $this->mock(DirectUploadService::class, function ($mock) {
+        // Los servicios de cada módulo se identifican para la auditoría documental
+        $mock->shouldReceive('forModule')->andReturnSelf();
         $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
             'file_name' => 'corte.pdf',
             'file_path' => "{$directory}/corte.pdf",

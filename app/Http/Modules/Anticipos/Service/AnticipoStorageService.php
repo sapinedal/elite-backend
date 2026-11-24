@@ -47,7 +47,7 @@ class AnticipoStorageService
      */
     public function claimFile(string $token, User $user, string $folder): array
     {
-        return $this->uploads->claimUpload($token, $user, $folder);
+        return $this->uploads->forModule('Anticipos')->claimUpload($token, $user, $folder);
     }
 
     /**
@@ -55,7 +55,7 @@ class AnticipoStorageService
      */
     public function moveTo(string $path, string $folder): string
     {
-        return $this->uploads->moveTo($path, $folder);
+        return $this->uploads->forModule('Anticipos')->moveTo($path, $folder);
     }
 
     /**
@@ -63,7 +63,7 @@ class AnticipoStorageService
      */
     public function copyTo(string $path, string $folder): string
     {
-        return $this->uploads->copyTo($path, $folder);
+        return $this->uploads->forModule('Anticipos')->copyTo($path, $folder);
     }
 
     public function downloadUrl(string $path, string $name): string

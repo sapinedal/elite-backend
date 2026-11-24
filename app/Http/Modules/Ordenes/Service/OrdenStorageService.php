@@ -51,7 +51,7 @@ class OrdenStorageService
      */
     public function claimStepFile(string $token, User $user, Orden $orden, string $step): array
     {
-        return $this->uploads->claimUpload($token, $user, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
+        return $this->uploads->forModule('Órdenes')->claimUpload($token, $user, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
     }
 
     /**
@@ -60,7 +60,7 @@ class OrdenStorageService
      */
     public function copyStepFile(Orden $orden, string $step, string $path): string
     {
-        return $this->uploads->copyTo($path, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
+        return $this->uploads->forModule('Órdenes')->copyTo($path, $this->folderOf($orden) . '/' . OrdenWorkflow::STEPS[$step]['folder']);
     }
 
     public function downloadUrl(string $path, string $name): string

@@ -34,6 +34,9 @@ class ContractStorageService
      * de Contratos San Miguel. Se usa solo cuando el frente aún no tiene carpeta para ese tipo.
      * Clave: nombre comparable del tipo (ver comparable()).
      */
+    // Módulo de origen en la Auditoría de Actividad del gestor documental
+    public const AUDIT_MODULE = 'Contratación';
+
     protected const TYPE_FOLDERS = [
         'estudios y disenos' => '1. CONTRATOS DE ESTUDIOS Y DISEÑOS',
         'urbanismo' => '2. CONTRATOS DE URBANISMO',
@@ -83,6 +86,11 @@ class ContractStorageService
 
         $this->documental->clearPathCache($contractPath);
         $this->documental->clearPathCache($typePath);
+        $this->documental->recordActivity('create_folder', $contractPath, self::AUDIT_MODULE, [
+            'parent' => $typePath,
+            'folder_name' => basename($contractPath),
+            'contract_code' => $contract->contract_code,
+        ]);
 
         return $contractPath;
     }
@@ -116,6 +124,11 @@ class ContractStorageService
         foreach ($files as $file) {
             $filename = $this->uniqueFilename($directory, $this->cleanSegment($file->getClientOriginalName()));
             $disk->putFileAs($directory, $file, $filename);
+            $this->documental->recordActivity('upload', $this->joinPath($directory, $filename), self::AUDIT_MODULE, [
+                'size' => (int) $file->getSize(),
+                'mime_type' => $file->getMimeType(),
+                'contract_code' => $contract->contract_code,
+            ], $user);
 
             $created[] = ContratacionDocument::create([
                 'contract_id' => $contract->id,
@@ -157,6 +170,10 @@ class ContractStorageService
         $disk = $this->disk();
         if ($disk->exists($document->path)) {
             $disk->delete($document->path);
+            $this->documental->recordActivity('delete', $document->path, self::AUDIT_MODULE, [
+                'type' => 'file',
+                'contract_code' => $document->contract?->contract_code,
+            ]);
         }
         $document->delete();
 

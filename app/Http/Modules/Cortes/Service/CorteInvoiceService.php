@@ -138,7 +138,7 @@ class CorteInvoiceService
             });
         } catch (\Throwable $e) {
             // Sin confirmación no debe quedar el soporte suelto en la carpeta del corte
-            $this->uploads->delete($file['file_path']);
+            $this->uploads->forModule('Cortes')->delete($file['file_path']);
             throw $e;
         }
 

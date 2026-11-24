@@ -1210,6 +1210,34 @@ class DocumentalService
         ]);
     }
 
+    /**
+     * Auditoría de los archivos que otros módulos (Cortes, Anticipos, Contratación...) escriben en el bucket.
+     * Queda en la misma Auditoría de Actividad del gestor documental, con el módulo de origen en details.module.
+     * Usuario e IP salen de la petición en curso si no se indican; el proyecto, del proyecto activo o de la
+     * carpeta. Un fallo al auditar nunca interrumpe la operación del módulo.
+     */
+    public function recordActivity(string $action, string $path, string $module, array $details = [], ?User $user = null): void
+    {
+        try {
+            $user ??= auth()->user();
+            $request = app()->runningInConsole() && !app()->runningUnitTests() ? null : request();
+            $projectId = $this->activeProjectId
+                ?? $request?->attributes->get(\App\Http\Middleware\ResolveActiveProject::ATTRIBUTE)
+                ?? $this->projectOwnerOf($this->normalizePath($path));
+
+            DocumentActivityLog::create([
+                'user_id' => $user?->id,
+                'project_id' => $projectId,
+                'action' => $action,
+                'path' => $path,
+                'details' => ['module' => $module] + $details,
+                'ip_address' => $request?->ip(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     protected function cleanItemName(string $name): string
     {
         $clean = trim(str_replace(['/', '\\'], '', $name));

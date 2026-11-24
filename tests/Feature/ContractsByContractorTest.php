@@ -14,6 +14,8 @@ beforeEach(function () {
     Mail::fake();
 
     $this->mock(DirectUploadService::class, function ($mock) {
+        // Los servicios de cada módulo se identifican para la auditoría documental
+        $mock->shouldReceive('forModule')->andReturnSelf();
         $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
             'file_name' => 'corte.pdf', 'file_path' => "{$directory}/corte.pdf", 'file_size' => 1000, 'file_mime' => 'application/pdf',
         ]);

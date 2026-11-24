@@ -38,7 +38,7 @@ class CuentaCobroStorageService
      */
     public function claimFile(string $token, User $user, string $folder): array
     {
-        return $this->uploads->claimUpload($token, $user, $folder);
+        return $this->uploads->forModule('Cuentas de cobro')->claimUpload($token, $user, $folder);
     }
 
     public function downloadUrl(string $path, string $name): string
