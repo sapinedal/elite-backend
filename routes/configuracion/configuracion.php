@@ -2,6 +2,7 @@
 
 use App\Http\Modules\Configuracion\Controller\ConfiguracionController;
 use App\Http\Modules\Configuracion\Controller\ProjectController;
+use App\Http\Modules\Configuracion\Controller\ProveedorController;
 use App\Http\Modules\Configuracion\Controller\TowerController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,4 +34,9 @@ Route::prefix('configuracion')->middleware('auth:sanctum')->group(function () {
     Route::post('positions', [ConfiguracionController::class, 'storePosition'])->middleware('permission:configuracion.editar');
     Route::put('positions/{position}', [ConfiguracionController::class, 'updatePosition'])->middleware('permission:configuracion.editar');
     Route::delete('positions/{position}', [ConfiguracionController::class, 'destroyPosition'])->middleware('permission:configuracion.editar');
+
+    // Proveedores (se crean desde Contratación)
+    Route::get('proveedores', [ProveedorController::class, 'index'])->middleware('permission:configuracion.ver');
+    Route::put('proveedores/{proveedor}', [ProveedorController::class, 'update'])->middleware('permission:configuracion.editar');
+    Route::delete('proveedores/{proveedor}', [ProveedorController::class, 'destroy'])->middleware('permission:configuracion.editar');
 });
