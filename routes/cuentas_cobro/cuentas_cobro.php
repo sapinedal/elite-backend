@@ -13,7 +13,8 @@ Route::prefix('cuentas-cobro')->middleware('auth:sanctum')->group(function () {
     Route::post('/upload-url', [CuentaCobroController::class, 'uploadUrl'])->middleware('permission:cuentas_cobro.ver');
 
     Route::get('/tipos', [CuentaCobroController::class, 'tipos'])->middleware('permission:cuentas_cobro.parametrizar');
-    Route::post('/tipos', [CuentaCobroController::class, 'storeTipo'])->middleware('permission:cuentas_cobro.parametrizar');
+    // Crear tipos también desde el formulario de radicación (cuentas_cobro.crear); editar y eliminar solo parametrizar
+    Route::post('/tipos', [CuentaCobroController::class, 'storeTipo'])->middleware('permission:cuentas_cobro.parametrizar|cuentas_cobro.crear');
     Route::put('/tipos/{tipo}', [CuentaCobroController::class, 'updateTipo'])->middleware('permission:cuentas_cobro.parametrizar');
     Route::delete('/tipos/{tipo}', [CuentaCobroController::class, 'destroyTipo'])->middleware('permission:cuentas_cobro.parametrizar');
 

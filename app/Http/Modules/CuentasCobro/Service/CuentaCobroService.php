@@ -82,6 +82,8 @@ class CuentaCobroService
             'can_handle_multifox' => CuentaCobroWorkflow::canHandleMultifox($user),
             'can_approve_accounting' => CuentaCobroWorkflow::canApproveAccounting($user),
             'can_parametrize' => $user->can(CuentaCobroWorkflow::PERMISSION_PARAMETRIZAR),
+            // Crear un tipo nuevo desde el formulario de radicación
+            'can_create_tipo' => $user->can(CuentaCobroWorkflow::PERMISSION_PARAMETRIZAR) || $user->can('cuentas_cobro.crear'),
             ...CuentaCobroWorkflow::toArray(),
         ];
     }

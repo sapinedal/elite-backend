@@ -190,3 +190,18 @@ it('elimina una cuenta de cobro en pagos y anula su cuenta por pagar', function 
     expect(CuentaCobro::find($cuentaCobro->id))->toBeNull()
         ->and($cuenta->fresh()->status)->toBe(PagoService::STATUS_ANULADA);
 });
+
+it('quien radica cuentas de cobro puede crear tipos, pero no editarlos', function () {
+    Permission::firstOrCreate(['name' => 'cuentas_cobro.crear', 'guard_name' => 'web']);
+    $residente = User::create(['name' => 'Radica', 'email' => 'radica-del@test.com', 'password' => 'secret']);
+    $residente->givePermissionTo('cuentas_cobro.crear');
+
+    $id = $this->actingAs($residente)->postJson('/api/v1/cuentas-cobro/tipos', ['name' => 'Tipo de prueba rápida', 'requires_attachment' => false])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->actingAs($residente)->putJson("/api/v1/cuentas-cobro/tipos/{$id}", ['name' => 'Otro', 'requires_attachment' => false])
+        ->assertForbidden();
+    $this->actingAs($this->sinPermiso)->postJson('/api/v1/cuentas-cobro/tipos', ['name' => 'Otro tipo de prueba', 'requires_attachment' => true])
+        ->assertForbidden();
+});
