@@ -23,6 +23,8 @@ class CorteHistory extends Model
     public const ACTION_MULTIFOX = 'multifox'; // Factura confirmada en Multifox: pasa a la aprobación de Contabilidad
     public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Contabilidad aprueba: pasa a cuentas por pagar
     public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Contabilidad devuelve a quien carga en Multifox
+    public const ACTION_FACTURA_ELIMINADA = 'factura_eliminada'; // Factura eliminada por error (se reversa en cuentas por pagar)
+    public const ACTION_ELIMINADO = 'eliminado'; // Corte eliminado por error
 
     protected $fillable = [
         'corte_id',

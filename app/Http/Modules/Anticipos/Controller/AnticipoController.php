@@ -11,6 +11,7 @@ use App\Http\Modules\Anticipos\Request\ReviewAnticipoRequest;
 use App\Http\Modules\Anticipos\Request\StoreAnticipoRequest;
 use App\Http\Modules\Anticipos\Service\AnticipoService;
 use App\Http\Modules\Cortes\Request\RequestUploadUrlRequest;
+use App\Services\RegistroDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -172,5 +173,19 @@ class AnticipoController extends Controller
                 'name' => $multifox ? $anticipo->multifox_file_name : $anticipo->file_name,
             ],
         ]));
+    }
+
+    /**
+     * Elimina un anticipo cargado por error (en cualquier estado). Exige anticipos.eliminar y motivo.
+     */
+    public function destroy(Request $request, Anticipo $anticipo, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        return $this->attempt('eliminar el anticipo', function () use ($request, $anticipo, $deletion) {
+            $deletion->deleteAnticipo($anticipo, (string) $request->input('reason'), $request->user());
+
+            return response()->json(['status' => 'success', 'message' => 'Anticipo eliminado. Se reversaron su cuenta por pagar y su factura del mes.']);
+        });
     }
 }

@@ -565,6 +565,7 @@ class OrdenService
             'can_resubmit' => $this->canResubmit($orden, $user),
             'can_upload_step' => $this->canUploadStep($orden, $user),
             'can_review_accounting' => $this->canReviewAccounting($orden, $user),
+            'can_delete' => $user->can('ordenes.eliminar'),
         ];
 
         if ($withDetail) {
@@ -579,7 +580,12 @@ class OrdenService
                 'user' => $h->user?->name,
                 'created_at' => $h->created_at?->toIso8601String(),
             ])->values();
+            // Solo el último documento se puede eliminar (los pasos son secuenciales)
+            $steps = array_keys(OrdenWorkflow::STEPS);
+            $lastDocumentId = $orden->documents->sortBy(fn (OrdenDocument $d) => array_search($d->step, $steps, true))->last()?->id;
+            $canDelete = $user->can('ordenes.eliminar');
             $data['documents'] = $orden->documents->map(fn (OrdenDocument $d) => [
+                'can_delete' => $canDelete && $d->id === $lastDocumentId,
                 'id' => $d->id,
                 'step' => $d->step,
                 'step_label' => $d->stepLabel(),

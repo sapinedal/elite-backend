@@ -444,6 +444,7 @@ class CorteService
             'can_review' => $this->canReview($corte, $user),
             'can_resubmit' => $this->canResubmit($corte, $user),
             'can_invoice' => $this->canInvoice($corte, $user),
+            'can_delete' => $user->can('cortes.eliminar'),
             'invoices_count' => $corte->invoices_count ?? ($corte->relationLoaded('invoices') ? $corte->invoices->count() : 0),
         ];
 
@@ -465,6 +466,7 @@ class CorteService
                 'document_type' => $invoice->document_type,
                 'document_type_label' => $invoice->documentTypeLabel(),
                 'related_document' => $invoice->related_document,
+                'can_delete' => $user->can('cortes.eliminar'),
                 'observation' => $invoice->observation,
                 'amount' => $invoice->amount !== null ? (float) $invoice->amount : null,
                 'multifox_confirmed_at' => $invoice->multifox_confirmed_at?->toIso8601String(),

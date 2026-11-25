@@ -172,4 +172,34 @@ class FacturacionInvoice extends Model
     {
         return in_array($type, [self::TYPE_FACTURA, self::TYPE_CUENTA_COBRO, self::TYPE_REEMBOLSO], true);
     }
+
+    /**
+     * Se eliminó el registro de obra al que se asociaron estas facturas (corte, factura del corte, orden, documento
+     * de la orden o anticipo): vuelven a quedar pendientes para asociarlas de nuevo o eliminarlas. Sus soportes
+     * se desvinculan (el residente adjunta los nuevos al asociarla otra vez).
+     *
+     * @param string $column corte_id | corte_invoice_id | orden_id | orden_document_id | anticipo_id
+     */
+    public static function releaseWhere(string $column, int $id, string $reason): int
+    {
+        $invoices = self::where($column, $id)->where('status', self::STATUS_PROCESADA)->lockForUpdate()->get();
+
+        foreach ($invoices as $invoice) {
+            $invoice->supports()->delete();
+            $invoice->update([
+                'status' => self::STATUS_PENDIENTE,
+                'target_type' => null,
+                'corte_id' => null,
+                'orden_id' => null,
+                'corte_invoice_id' => null,
+                'orden_document_id' => null,
+                'anticipo_id' => null,
+                'processed_comment' => "Liberada: se eliminó el registro al que estaba asociada. Motivo: {$reason}",
+                'processed_by' => null,
+                'processed_at' => null,
+            ]);
+        }
+
+        return $invoices->count();
+    }
 }

@@ -96,6 +96,7 @@ class PermissionSeeder extends Seeder
             'cortes.facturar', // Cargar facturas a cortes aprobados (aviso a Multifox)
             'cortes.multifox', // Confirmar la carga en Multifox (también por cargo, ver config/cortes.php)
             'cortes.aprobar_contabilidad', // Aprobar en Contabilidad la factura cargada en Multifox (pasa a cuentas por pagar)
+            'cortes.eliminar', // Eliminar cortes o facturas de corte cargados por error (reversa cuentas por pagar sin pagos)
 
             // Registro de Orden (aprobación Director de Obra -> Gerencia y documentos ERP / factura / entrada)
             'ordenes.ver',
@@ -106,6 +107,10 @@ class PermissionSeeder extends Seeder
             'ordenes.gestionar_almacen', // Orden de compra ERP y entrada (también por cargo, ver config/ordenes.php)
             'ordenes.facturar',          // Factura del proveedor
             'ordenes.aprobar_contabilidad', // Aprobar en Contabilidad la orden completada (pasa a cuentas por pagar)
+            'ordenes.eliminar', // Eliminar órdenes o sus documentos (orden ERP, factura, entrada) cargados por error
+
+            // Facturas del mes: eliminar las ya procesadas por obra (reversa lo que generaron)
+            'facturacion.eliminar',
 
             // Cuentas por pagar (cuadro de pagos)
             'pagos.ver',

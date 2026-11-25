@@ -21,4 +21,5 @@ Route::prefix('anticipos')->middleware('auth:sanctum')->group(function () {
     Route::post('/{anticipo}/resubmit', [AnticipoController::class, 'resubmit'])->middleware('permission:anticipos.crear');
     Route::post('/{anticipo}/multifox', [AnticipoController::class, 'registerMultifox'])->middleware('permission:anticipos.contabilizar');
     Route::post('/{anticipo}/accounting', [AnticipoController::class, 'reviewAccounting'])->middleware('permission:anticipos.aprobar_contabilidad');
+    Route::delete('/{anticipo}', [AnticipoController::class, 'destroy'])->middleware('permission:anticipos.eliminar');
 });

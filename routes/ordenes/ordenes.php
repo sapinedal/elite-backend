@@ -13,6 +13,8 @@ Route::prefix('ordenes')->middleware('auth:sanctum')->group(function () {
     Route::get('/catalogs', [OrdenController::class, 'catalogs'])->middleware('permission:ordenes.ver');
     Route::post('/upload-url', [OrdenController::class, 'uploadUrl'])->middleware('permission:ordenes.ver');
     Route::get('/documents/{document}/download', [OrdenController::class, 'downloadDocument'])->middleware('permission:ordenes.ver');
+    // Eliminar órdenes o su último documento cargados por error: reversa cuentas por pagar y facturas del mes
+    Route::delete('/documents/{document}', [OrdenController::class, 'destroyDocument'])->middleware('permission:ordenes.eliminar');
 
     Route::get('/', [OrdenController::class, 'index'])->middleware('permission:ordenes.ver');
     Route::post('/', [OrdenController::class, 'store'])->middleware('permission:ordenes.crear');
@@ -22,4 +24,5 @@ Route::prefix('ordenes')->middleware('auth:sanctum')->group(function () {
     Route::post('/{orden}/resubmit', [OrdenController::class, 'resubmit'])->middleware('permission:ordenes.crear');
     Route::post('/{orden}/documents', [OrdenController::class, 'storeDocument'])->middleware('permission:ordenes.ver');
     Route::post('/{orden}/accounting', [OrdenController::class, 'reviewAccounting'])->middleware('permission:ordenes.aprobar_contabilidad');
+    Route::delete('/{orden}', [OrdenController::class, 'destroy'])->middleware('permission:ordenes.eliminar');
 });

@@ -13,6 +13,7 @@ use App\Http\Modules\Ordenes\Request\StoreOrdenRequest;
 use App\Http\Modules\Ordenes\Service\OrdenService;
 use App\Http\Modules\Ordenes\Service\OrdenStorageService;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
+use App\Services\RegistroDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -200,6 +201,46 @@ class OrdenController extends Controller
             ]);
         } catch (InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 404);
+        }
+    }
+
+    /**
+     * Elimina una orden cargada por error (en cualquier estado). Exige ordenes.eliminar y motivo.
+     */
+    public function destroy(Request $request, Orden $orden, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        try {
+            $deletion->deleteOrden($orden, (string) $request->input('reason'), $request->user());
+
+            return response()->json(['status' => 'success', 'message' => 'Orden eliminada. Se reversaron su cuenta por pagar y facturas del mes.']);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('eliminar la orden', $e);
+        }
+    }
+
+    /**
+     * Elimina el último documento de la orden (entrada, factura u orden ERP): la orden vuelve a ese paso.
+     */
+    public function destroyDocument(Request $request, OrdenDocument $document, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        try {
+            $orden = $deletion->deleteOrdenDocument($document, (string) $request->input('reason'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Documento eliminado. La orden volvió a ese paso.',
+                'data' => $this->ordenService->getOrden($orden->fresh(), $request->user()),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('eliminar el documento', $e);
         }
     }
 }

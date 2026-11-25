@@ -18,6 +18,7 @@ class AnticipoHistory extends Model
     public const ACTION_MULTIFOX = 'multifox'; // Contabilidad generó el anticipo en Multifox: pasa a la aprobación de Contabilidad
     public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Aprobado por Contabilidad: pasa al cuadro de pagos
     public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Devuelto a quien lo genera en Multifox
+    public const ACTION_ELIMINADO = 'eliminado'; // Anticipo eliminado por error
 
     protected $fillable = [
         'anticipo_id',

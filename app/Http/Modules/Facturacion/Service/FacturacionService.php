@@ -729,6 +729,11 @@ class FacturacionService
             ])->values(),
             'suggested' => $isPending && $invoice->contractor_id && $suggested->contains($invoice->contractor_id),
             'can_edit' => $isPending && $this->canManage($user),
+            // Pendiente: Contabilidad; procesada (o indirecto en cuentas por pagar): facturacion.eliminar, con motivo
+            'can_delete' => $isPending && $invoice->target_type !== FacturacionInvoice::TARGET_PAGOS
+                ? $this->canManage($user)
+                : $user->can('facturacion.eliminar'),
+            'delete_requires_reason' => !$isPending || $invoice->target_type === FacturacionInvoice::TARGET_PAGOS,
             'can_associate' => $isPending && $this->canAssociate($user),
         ];
     }

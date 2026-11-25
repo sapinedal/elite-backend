@@ -542,6 +542,114 @@ class PagoService
         return $cuenta;
     }
 
+    /**
+     * Anula las cuentas por pagar vigentes que generó un registro que se elimina por error (corte, orden, anticipo,
+     * cuenta de cobro o factura indirecta). Si alguna ya tiene pagos no se anula nada: primero hay que revertir el
+     * pago en tesorería. Debe correr dentro de la transacción de la eliminación.
+     *
+     * @param string $column corte_id | orden_id | anticipo_id | cuenta_cobro_id | id
+     */
+    public function annulForDeletedSource(string $column, int $id, string $reason, User $user): int
+    {
+        $cuentas = PagoCuenta::where($column, $id)->where('status', '!=', self::STATUS_ANULADA)->lockForUpdate()->get();
+        $this->assertWithoutPayments($cuentas);
+
+        foreach ($cuentas as $cuenta) {
+            $this->annulDeleted($cuenta, $reason, $user);
+        }
+
+        return $cuentas->count();
+    }
+
+    /**
+     * Reversa en cuentas por pagar una factura de corte aprobada por Contabilidad que se elimina:
+     *  - Factura inicial: anula su cuenta (sin pagos).
+     *  - Nota crédito: devuelve el valor descontado a la factura que afectaba.
+     *  - Factura de reemplazo: anula la nueva y reactiva la anterior (si la nueva no recibió pagos propios).
+     * Debe correr dentro de la transacción de la eliminación.
+     */
+    public function reverseCorteInvoice(CorteInvoice $invoice, string $reason, User $user): void
+    {
+        if ($invoice->accounting_status !== CorteInvoice::ACCOUNTING_APROBADA) {
+            return; // Aún no llegó a cuentas por pagar
+        }
+
+        $related = $invoice->related_document
+            ? PagoCuenta::where('corte_id', $invoice->corte_id)->where('document_number', $invoice->related_document)
+                ->orderByDesc('id')->lockForUpdate()->first()
+            : null;
+
+        if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO) {
+            if ($related) {
+                $related->adjustments = max(0, (float) $related->adjustments - (float) $invoice->amount);
+                $this->recomputeStatus($related);
+                $related->save();
+                $this->log($related, PagoMovimiento::ACTION_NOTA_CREDITO, $user, -1 * (float) $invoice->amount,
+                    "Se eliminó la nota crédito N.º {$invoice->invoice_number}; se reversa su descuento. Motivo: {$reason}");
+            }
+
+            return;
+        }
+
+        $cuenta = PagoCuenta::where('source_type', PagoCuenta::SOURCE_CORTE)->where('source_id', $invoice->id)
+            ->where('status', '!=', self::STATUS_ANULADA)->lockForUpdate()->first();
+        if (!$cuenta) {
+            return;
+        }
+
+        $isReplacement = $invoice->document_type === CorteInvoice::TYPE_FACTURA_REEMPLAZO && $related && $related->status === self::STATUS_ANULADA;
+        // En el reemplazo la nueva hereda los pagos de la anterior: solo bloquean los pagos hechos a la nueva
+        $ownPayments = (float) $cuenta->paid_amount - ($isReplacement ? (float) $related->paid_amount : 0);
+        if ($ownPayments > 0) {
+            throw new InvalidArgumentException("La cuenta por pagar {$cuenta->document_number} ya tiene pagos registrados; revierte primero el pago en Cuentas por pagar.");
+        }
+
+        $this->annulDeleted($cuenta, $reason, $user);
+
+        if ($isReplacement) {
+            $related->status = self::STATUS_PENDIENTE;
+            $this->recomputeStatus($related);
+            $related->save();
+            $this->log($related, PagoMovimiento::ACTION_REEMPLAZO, $user, null,
+                "Se eliminó la factura de reemplazo {$invoice->invoice_number}; esta factura vuelve a estar vigente. Motivo: {$reason}");
+        }
+    }
+
+    /**
+     * @param iterable<PagoCuenta> $cuentas
+     */
+    public function assertWithoutPayments(iterable $cuentas): void
+    {
+        foreach ($cuentas as $cuenta) {
+            if ($cuenta->status !== self::STATUS_ANULADA && (float) $cuenta->paid_amount > 0) {
+                throw new InvalidArgumentException("La cuenta por pagar {$cuenta->document_number} ya tiene pagos registrados; revierte primero el pago en Cuentas por pagar.");
+            }
+        }
+    }
+
+    protected function annulDeleted(PagoCuenta $cuenta, string $reason, User $user): void
+    {
+        // source_id se libera (único por origen): si el registro se vuelve a cargar, genera su nueva cuenta.
+        // corte_id / orden_id / anticipo_id / cuenta_cobro_id se conservan para la trazabilidad.
+        $cuenta->update(['status' => self::STATUS_ANULADA, 'priority' => null, 'scheduled_for' => null, 'source_id' => null]);
+        $this->log($cuenta, PagoMovimiento::ACTION_ANULADA, $user, null, "Anulada porque se eliminó el registro de origen. Motivo: {$reason}");
+    }
+
+    /**
+     * Estado de una cuenta vigente según su saldo (también para reactivar una que estaba pagada o anulada).
+     */
+    protected function recomputeStatus(PagoCuenta $cuenta): void
+    {
+        if ($cuenta->status === self::STATUS_ANULADA) {
+            return;
+        }
+        if ($cuenta->balance() <= 0) {
+            $cuenta->fill(['status' => self::STATUS_PAGADA, 'paid_at' => $cuenta->paid_at ?? now()]);
+        } elseif (in_array($cuenta->status, [self::STATUS_PAGADA, self::STATUS_PENDIENTE, self::STATUS_PARCIAL], true)) {
+            $cuenta->fill(['status' => (float) $cuenta->paid_amount > 0 ? self::STATUS_PARCIAL : self::STATUS_PENDIENTE, 'paid_at' => null]);
+        }
+    }
+
     public function supportDownloadUrl(PagoMovimiento $movimiento): string
     {
         return $this->uploads->downloadUrl($movimiento->file_path, $movimiento->file_name);

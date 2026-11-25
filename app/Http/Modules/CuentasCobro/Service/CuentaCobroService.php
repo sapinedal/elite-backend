@@ -640,6 +640,7 @@ class CuentaCobroService
             'can_resubmit' => $this->canResubmit($cuenta, $user),
             'can_handle_multifox' => $this->canHandleMultifox($cuenta, $user),
             'can_review_accounting' => $this->canReviewAccounting($cuenta, $user),
+            'can_delete' => $user->can('cuentas_cobro.eliminar'),
         ];
 
         if ($withDetail) {

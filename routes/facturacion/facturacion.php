@@ -23,7 +23,8 @@ Route::prefix('facturacion')->middleware('auth:sanctum')->group(function () {
     Route::post('/', [FacturacionController::class, 'store'])->middleware($manage);
     Route::get('/{invoice}', [FacturacionController::class, 'show'])->middleware($all);
     Route::put('/{invoice}', [FacturacionController::class, 'update'])->middleware($manage);
-    Route::delete('/{invoice}', [FacturacionController::class, 'destroy'])->middleware($manage);
+    // Pendientes: Contabilidad (cortes.facturar); procesadas: facturacion.eliminar (lo valida RegistroDeletionService)
+    Route::delete('/{invoice}', [FacturacionController::class, 'destroy'])->middleware('permission:cortes.facturar|facturacion.eliminar');
     Route::get('/{invoice}/download', [FacturacionController::class, 'download'])->middleware($all);
     Route::post('/{invoice}/associate', [FacturacionController::class, 'associate'])->middleware($associate);
 });

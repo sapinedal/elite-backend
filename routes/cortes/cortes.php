@@ -18,6 +18,8 @@ Route::prefix('cortes')->middleware('auth:sanctum')->group(function () {
     // Aprobación de Contabilidad de la factura cargada en Multifox: antes de pasar a cuentas por pagar
     Route::post('/invoices/{invoice}/accounting', [CorteController::class, 'reviewAccounting'])->middleware('permission:cortes.aprobar_contabilidad');
     Route::get('/invoices/{invoice}/download', [CorteController::class, 'downloadInvoice'])->middleware('permission:cortes.ver|cortes.facturar');
+    // Eliminar facturas o cortes cargados por error (en cualquier estado): reversa cuentas por pagar y facturas del mes
+    Route::delete('/invoices/{invoice}', [CorteController::class, 'destroyInvoice'])->middleware('permission:cortes.eliminar');
 
     Route::get('/', [CorteController::class, 'index'])->middleware('permission:cortes.ver');
     Route::post('/', [CorteController::class, 'store'])->middleware('permission:cortes.crear');
@@ -26,4 +28,5 @@ Route::prefix('cortes')->middleware('auth:sanctum')->group(function () {
     Route::post('/{corte}/review', [CorteController::class, 'review'])
         ->middleware('permission:cortes.aprobar_interventor|cortes.aprobar_director|cortes.aprobar_gerencia');
     Route::post('/{corte}/resubmit', [CorteController::class, 'resubmit'])->middleware('permission:cortes.crear');
+    Route::delete('/{corte}', [CorteController::class, 'destroy'])->middleware('permission:cortes.eliminar');
 });

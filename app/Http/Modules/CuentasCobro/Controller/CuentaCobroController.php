@@ -15,6 +15,7 @@ use App\Http\Modules\CuentasCobro\Request\SaveCuentaCobroTipoRequest;
 use App\Http\Modules\CuentasCobro\Request\StoreCuentaCobroRequest;
 use App\Http\Modules\CuentasCobro\Service\CuentaCobroService;
 use App\Http\Modules\CuentasCobro\Service\CuentaCobroTipoService;
+use App\Services\RegistroDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -205,5 +206,19 @@ class CuentaCobroController extends Controller
             'message' => $deleted ? 'Tipo eliminado.' : 'El tipo tiene cuentas de cobro registradas: se desactivó en lugar de eliminarse.',
             'deleted' => $deleted,
         ]);
+    }
+
+    /**
+     * Elimina una cuenta de cobro cargada por error (en cualquier estado). Exige cuentas_cobro.eliminar y motivo.
+     */
+    public function destroy(Request $request, CuentaCobro $cuenta, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        return $this->attempt('eliminar la cuenta de cobro', function () use ($request, $cuenta, $deletion) {
+            $deletion->deleteCuentaCobro($cuenta, (string) $request->input('reason'), $request->user());
+
+            return response()->json(['status' => 'success', 'message' => 'Cuenta de cobro eliminada. Se anuló su cuenta por pagar.']);
+        });
     }
 }

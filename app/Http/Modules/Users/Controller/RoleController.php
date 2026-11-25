@@ -162,6 +162,11 @@ class RoleController extends Controller
                 'description' => 'Cuentas de cobro con aprobación Director de Obra y Gerencia, decisión y carga de Multifox, y aprobación de Contabilidad',
                 'permissions' => []
             ],
+            'facturacion' => [
+                'title' => 'Facturas del Mes',
+                'description' => 'Eliminación de facturas del mes ya procesadas por obra (reversa el corte, la orden o el anticipo asociado)',
+                'permissions' => []
+            ],
             'pagos' => [
                 'title' => 'Cuentas por Pagar',
                 'description' => 'Cuadro de pagos: priorización, registro de pagos y abonos con trazabilidad',

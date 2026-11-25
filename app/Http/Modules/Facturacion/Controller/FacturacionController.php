@@ -9,6 +9,7 @@ use App\Http\Modules\Facturacion\Models\FacturacionInvoiceSupport;
 use App\Http\Modules\Facturacion\Request\AssociateFacturacionInvoiceRequest;
 use App\Http\Modules\Facturacion\Request\SaveFacturacionInvoiceRequest;
 use App\Http\Modules\Facturacion\Service\FacturacionService;
+use App\Services\RegistroDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -108,9 +109,24 @@ class FacturacionController extends Controller
         });
     }
 
-    public function destroy(Request $request, FacturacionInvoice $invoice): JsonResponse
+    /**
+     * Pendiente: la elimina Contabilidad (cortes.facturar). Procesada por obra o indirecto en cuentas por pagar:
+     * exige facturacion.eliminar y motivo, y reversa lo que generó (factura del corte, documento de la orden,
+     * anticipo o cuenta por pagar).
+     */
+    public function destroy(Request $request, FacturacionInvoice $invoice, RegistroDeletionService $deletion): JsonResponse
     {
-        return $this->attempt('eliminar la factura', function () use ($request, $invoice) {
+        $processed = $invoice->status !== FacturacionInvoice::STATUS_PENDIENTE || $invoice->target_type === FacturacionInvoice::TARGET_PAGOS;
+        if ($processed) {
+            $request->validate(['reason' => 'required|string|min:5|max:500']);
+        }
+
+        return $this->attempt('eliminar la factura', function () use ($request, $invoice, $processed, $deletion) {
+            if ($processed) {
+                $deletion->deleteFacturaProcesada($invoice, (string) $request->input('reason'), $request->user());
+
+                return response()->json(['status' => 'success', 'message' => 'Factura eliminada. Se reversó lo que había generado en obra y en cuentas por pagar.']);
+            }
             $this->service->delete($invoice, $request->user());
 
             return response()->json(['status' => 'success', 'message' => 'Factura eliminada.']);

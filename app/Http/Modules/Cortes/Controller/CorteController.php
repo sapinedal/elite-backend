@@ -15,6 +15,7 @@ use App\Http\Modules\Cortes\Service\CorteInvoiceService;
 use App\Http\Modules\Cortes\Service\CorteService;
 use App\Http\Modules\Cortes\Service\CorteStorageService;
 use App\Http\Modules\Cortes\Service\CorteWorkflow;
+use App\Services\RegistroDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -240,6 +241,47 @@ class CorteController extends Controller
             ]);
         } catch (InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 404);
+        }
+    }
+
+    /**
+     * Elimina un corte cargado por error (en cualquier estado): anula sus cuentas por pagar sin pagos y libera
+     * sus facturas del mes. Exige cortes.eliminar y motivo.
+     */
+    public function destroy(Request $request, Corte $corte, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        try {
+            $deletion->deleteCorte($corte, (string) $request->input('reason'), $request->user());
+
+            return response()->json(['status' => 'success', 'message' => 'Corte eliminado. Se reversaron sus cuentas por pagar y facturas del mes.']);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('eliminar el corte', $e);
+        }
+    }
+
+    /**
+     * Elimina una factura de un corte (y reversa su cuenta por pagar). Exige cortes.eliminar y motivo.
+     */
+    public function destroyInvoice(Request $request, CorteInvoice $invoice, RegistroDeletionService $deletion): JsonResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:500']);
+
+        try {
+            $corte = $deletion->deleteCorteInvoice($invoice, (string) $request->input('reason'), $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Factura eliminada del corte. La factura del mes volvió a quedar pendiente.',
+                'data' => $this->corteService->getCorte($corte->fresh(), $request->user()),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            return $this->serverError('eliminar la factura', $e);
         }
     }
 }

@@ -619,6 +619,7 @@ class AnticipoService
             'can_resubmit' => $this->canResubmit($anticipo, $user),
             'can_register_multifox' => $this->canRegisterMultifox($anticipo, $user),
             'can_review_accounting' => $this->canReviewAccounting($anticipo, $user),
+            'can_delete' => $user->can('anticipos.eliminar'),
         ];
 
         if ($withDetail) {
