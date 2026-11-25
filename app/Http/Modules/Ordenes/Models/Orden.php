@@ -62,6 +62,11 @@ class Orden extends Model
         return $this->hasMany(OrdenDocument::class, 'orden_id')->orderBy('id');
     }
 
+    public function adjuntos()
+    {
+        return $this->hasMany(OrdenAdjunto::class, 'orden_id')->orderBy('id');
+    }
+
     /**
      * Limita a los proyectos a los que el usuario tiene acceso (todos si tiene proyectos.ver_todos).
      */

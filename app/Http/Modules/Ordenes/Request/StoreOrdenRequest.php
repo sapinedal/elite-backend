@@ -22,6 +22,9 @@ class StoreOrdenRequest extends FormRequest
             'chapter' => ['required', 'string', 'max:255'],
             'activity' => ['required', 'string', 'max:255'],
             'comment' => ['nullable', 'string', 'max:2000'],
+            // Adjuntos opcionales ya subidos a S3 con /ordenes/upload-url
+            'attachment_tokens' => ['nullable', 'array', 'max:20'],
+            'attachment_tokens.*' => ['required', 'uuid', 'distinct'],
         ];
     }
 
@@ -51,6 +54,7 @@ class StoreOrdenRequest extends FormRequest
             'chapter' => 'capítulo',
             'activity' => 'actividad',
             'comment' => 'observaciones',
+            'attachment_tokens' => 'adjuntos',
         ];
     }
 }

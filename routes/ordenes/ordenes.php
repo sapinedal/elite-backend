@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('ordenes')->middleware('auth:sanctum')->group(function () {
     Route::get('/catalogs', [OrdenController::class, 'catalogs'])->middleware('permission:ordenes.ver');
     Route::post('/upload-url', [OrdenController::class, 'uploadUrl'])->middleware('permission:ordenes.ver');
+    Route::get('/adjuntos/{adjunto}/download', [OrdenController::class, 'downloadAttachment'])->middleware('permission:ordenes.ver');
     Route::get('/documents/{document}/download', [OrdenController::class, 'downloadDocument'])->middleware('permission:ordenes.ver');
     // Eliminar órdenes o su último documento cargados por error: reversa cuentas por pagar y facturas del mes
     Route::delete('/documents/{document}', [OrdenController::class, 'destroyDocument'])->middleware('permission:ordenes.eliminar');

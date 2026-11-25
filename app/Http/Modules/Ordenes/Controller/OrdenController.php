@@ -5,6 +5,7 @@ namespace App\Http\Modules\Ordenes\Controller;
 use App\Http\Modules\Pagos\Request\AccountingDecisionRequest;
 use App\Http\Controllers\Controller;
 use App\Http\Modules\Ordenes\Models\Orden;
+use App\Http\Modules\Ordenes\Models\OrdenAdjunto;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Request\RequestOrdenUploadUrlRequest;
 use App\Http\Modules\Ordenes\Request\ReviewOrdenRequest;
@@ -70,7 +71,8 @@ class OrdenController extends Controller
      */
     public function uploadUrl(RequestOrdenUploadUrlRequest $request): JsonResponse
     {
-        if (OrdenWorkflow::stepsFor($request->user()) === []) {
+        // Suben archivos los responsables de documentos y quien registra órdenes (adjuntos opcionales)
+        if (OrdenWorkflow::stepsFor($request->user()) === [] && !$request->user()->can('ordenes.crear')) {
             return response()->json(['status' => 'error', 'message' => 'No tienes documentos de órdenes por cargar.'], 403);
         }
 
@@ -185,6 +187,22 @@ class OrdenController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             return $this->serverError('registrar la aprobación de Contabilidad', $e);
+        }
+    }
+
+    public function downloadAttachment(Request $request, OrdenAdjunto $adjunto): JsonResponse
+    {
+        if (!$this->ordenService->canView($adjunto->orden, $request->user())) {
+            return $this->forbidden();
+        }
+
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => ['download_url' => $this->ordenService->attachmentDownloadUrl($adjunto), 'name' => $adjunto->file_name],
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 404);
         }
     }
 

@@ -55,6 +55,16 @@ class OrdenStorageService
     }
 
     /**
+     * Valida un adjunto de la orden ya subido y lo deja en su subcarpeta (00 Adjuntos).
+     *
+     * @return array{file_name: string, file_path: string, file_size: int, file_mime: string}
+     */
+    public function claimAttachment(string $token, User $user, Orden $orden): array
+    {
+        return $this->uploads->forModule('Órdenes')->claimUpload($token, $user, $this->folderOf($orden) . '/00 Adjuntos');
+    }
+
+    /**
      * Copia a la subcarpeta del paso un archivo que ya está en S3 (la factura de la carpeta del mes de
      * Contabilidad que el residente asocia a la orden). Devuelve la ruta de la copia.
      */

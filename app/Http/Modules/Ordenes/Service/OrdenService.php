@@ -6,6 +6,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
+use App\Http\Modules\Ordenes\Models\OrdenAdjunto;
 use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Models\OrdenHistory;
 use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
@@ -135,7 +136,7 @@ class OrdenService
 
     public function getOrden(Orden $orden, User $user): array
     {
-        $orden->load([...$this->listRelations(), 'history.user:id,name', 'documents.uploader:id,name', 'documents.contractor:id,name,nit']);
+        $orden->load([...$this->listRelations(), 'history.user:id,name', 'documents.uploader:id,name', 'documents.contractor:id,name,nit', 'adjuntos.uploader:id,name']);
 
         return $this->present($orden, $user, true);
     }
@@ -200,6 +201,8 @@ class OrdenService
                 'created_by' => $user->id,
             ]);
             $orden->update(['code' => 'ORD-' . str_pad((string) $orden->id, 4, '0', STR_PAD_LEFT)]);
+            // La carpeta lleva el código: los adjuntos se mueven cuando ya está asignado
+            $this->attach($orden, $data['attachment_tokens'] ?? [], $user);
 
             $this->log($orden, OrdenHistory::ACTION_REGISTRADA, $user, null, $data['comment'] ?? null);
 
@@ -275,6 +278,7 @@ class OrdenService
                 'status' => OrdenWorkflow::STAGES[$firstStage]['status'],
                 'current_stage' => $firstStage,
             ]);
+            $this->attach($orden, $data['attachment_tokens'] ?? [], $user);
 
             $this->log($orden, OrdenHistory::ACTION_REENVIADA, $user, null, $data['comment'] ?? null);
 
@@ -450,6 +454,21 @@ class OrdenService
         return $this->storage->downloadUrl($document->file_path, $document->file_name);
     }
 
+    /**
+     * Adjuntos opcionales de la orden (ya subidos a S3): se mueven a la carpeta de la orden.
+     */
+    protected function attach(Orden $orden, array $tokens, User $user): void
+    {
+        foreach ($tokens as $token) {
+            $orden->adjuntos()->create([...$this->storage->claimAttachment($token, $user, $orden), 'uploaded_by' => $user->id]);
+        }
+    }
+
+    public function attachmentDownloadUrl(OrdenAdjunto $adjunto): string
+    {
+        return $this->storage->downloadUrl($adjunto->file_path, $adjunto->file_name);
+    }
+
     protected function fields(array $data): array
     {
         return [
@@ -584,6 +603,13 @@ class OrdenService
             $steps = array_keys(OrdenWorkflow::STEPS);
             $lastDocumentId = $orden->documents->sortBy(fn (OrdenDocument $d) => array_search($d->step, $steps, true))->last()?->id;
             $canDelete = $user->can('ordenes.eliminar');
+            $data['adjuntos'] = $orden->adjuntos->map(fn (OrdenAdjunto $a) => [
+                'id' => $a->id,
+                'file_name' => $a->file_name,
+                'file_size' => $a->file_size,
+                'uploaded_by' => $a->uploader?->name,
+                'created_at' => $a->created_at?->toIso8601String(),
+            ])->values();
             $data['documents'] = $orden->documents->map(fn (OrdenDocument $d) => [
                 'can_delete' => $canDelete && $d->id === $lastDocumentId,
                 'id' => $d->id,
