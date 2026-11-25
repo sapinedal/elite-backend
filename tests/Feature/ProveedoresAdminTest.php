@@ -10,12 +10,12 @@ use Spatie\Permission\Models\Permission;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    foreach (['configuracion.ver', 'configuracion.editar'] as $permission) {
+    foreach (['proveedores.ver', 'proveedores.editar', 'proveedores.eliminar'] as $permission) {
         Permission::findOrCreate($permission, 'web');
     }
 
     $this->admin = User::create(['name' => 'Admin', 'email' => 'admin@example.com', 'password' => 'secret']);
-    $this->admin->givePermissionTo(['configuracion.ver', 'configuracion.editar']);
+    $this->admin->givePermissionTo(['proveedores.ver', 'proveedores.editar', 'proveedores.eliminar']);
 
     $this->libre = FtraContractor::create(['name' => 'Proveedor Libre', 'nit' => '900']);
     $this->enUso = FtraContractor::create(['name' => 'Emelect Group', 'nit' => '901']);
@@ -27,13 +27,29 @@ beforeEach(function () {
     ]);
 });
 
-test('lista los proveedores con su uso', function () {
+test('lista los proveedores paginados con su uso', function () {
     $this->actingAs($this->admin)
         ->getJson('/api/v1/configuracion/proveedores')
         ->assertOk()
+        ->assertJsonPath('total', 2)
+        ->assertJsonPath('active_count', 2)
         ->assertJsonPath('data.0.name', 'Emelect Group')
         ->assertJsonPath('data.0.usage_count', 1)
         ->assertJsonPath('data.1.usage_count', 0);
+});
+
+test('respeta per_page, page y la búsqueda', function () {
+    $this->actingAs($this->admin)
+        ->getJson('/api/v1/configuracion/proveedores?per_page=1&page=2')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('last_page', 2)
+        ->assertJsonPath('data.0.name', 'Proveedor Libre');
+
+    $this->actingAs($this->admin)
+        ->getJson('/api/v1/configuracion/proveedores?search=emelect')
+        ->assertOk()
+        ->assertJsonPath('total', 1);
 });
 
 test('elimina un proveedor sin registros asociados', function () {
@@ -64,9 +80,9 @@ test('desactiva un proveedor y evita nombres duplicados', function () {
         ->assertStatus(422);
 });
 
-test('requiere permiso de configuración para eliminar', function () {
+test('requiere el permiso proveedores.eliminar para eliminar', function () {
     $user = User::create(['name' => 'Otro', 'email' => 'otro@example.com', 'password' => 'secret']);
-    $user->givePermissionTo('configuracion.ver');
+    $user->givePermissionTo(['proveedores.ver', 'proveedores.editar']);
 
     $this->actingAs($user)
         ->deleteJson("/api/v1/configuracion/proveedores/{$this->libre->id}")

@@ -116,6 +116,11 @@ class PermissionSeeder extends Seeder
             'configuracion.ver',
             'configuracion.editar',
 
+            // Proveedores (Configuración → Proveedores; se crean desde Contratación)
+            'proveedores.ver',
+            'proveedores.editar',
+            'proveedores.eliminar',
+
             'roles.ver',
             'roles.editar',
 

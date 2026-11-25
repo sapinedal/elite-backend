@@ -19,10 +19,13 @@ class ProveedorController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json([
-            'status' => 'success',
-            'data' => $this->proveedorService->list($request->only(['search'])),
+        $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        return response()->json($this->proveedorService->list($request->only(['search', 'per_page'])));
     }
 
     public function update(Request $request, FtraContractor $proveedor): JsonResponse

@@ -29,9 +29,12 @@ class ProveedorService
         'ftra_records' => 'Registros FTRA',
     ];
 
+    /**
+     * Listado paginado. Incluye active_count (sobre todo el filtro, no solo la página) para las tarjetas.
+     */
     public function list(array $filters = []): array
     {
-        $query = FtraContractor::query()->orderBy('name');
+        $query = FtraContractor::query();
 
         if (!empty($filters['search'])) {
             $search = mb_strtolower(trim($filters['search']));
@@ -41,13 +44,18 @@ class ProveedorService
             });
         }
 
-        $proveedores = $query->get();
-        $counts = $this->usageCountsFor($proveedores->pluck('id')->all());
+        $activeCount = (clone $query)->where('is_active', true)->count();
+        $perPage = min(max((int) ($filters['per_page'] ?? 15), 1), 100);
 
-        return $proveedores->map(fn (FtraContractor $p) => [
+        $page = $query->orderBy('name')->orderBy('id')->paginate($perPage);
+        $counts = $this->usageCountsFor($page->getCollection()->pluck('id')->all());
+
+        $page->setCollection($page->getCollection()->map(fn (FtraContractor $p) => [
             ...$p->only(['id', 'name', 'nit', 'email', 'phone', 'is_active', 'created_at']),
             'usage_count' => array_sum($counts[$p->id] ?? []),
-        ])->all();
+        ]));
+
+        return [...$page->toArray(), 'active_count' => $activeCount];
     }
 
     public function update(FtraContractor $proveedor, array $data): FtraContractor

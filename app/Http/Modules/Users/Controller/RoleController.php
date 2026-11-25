@@ -192,6 +192,11 @@ class RoleController extends Controller
                 'description' => 'Parametrización contractual y plantillas',
                 'permissions' => []
             ],
+            'proveedores' => [
+                'title' => 'Proveedores',
+                'description' => 'Edición, activación y eliminación de proveedores',
+                'permissions' => []
+            ],
             'configuracion' => [
                 'title' => 'Áreas & Cargos',
                 'description' => 'Organigrama y estructura organizacional',
