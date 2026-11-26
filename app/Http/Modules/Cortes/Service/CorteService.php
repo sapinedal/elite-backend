@@ -163,7 +163,10 @@ class CorteService
         }
 
         if ($scope === self::SCOPE_MULTIFOX && CorteWorkflow::canConfirmMultifox($user)) {
-            return $query->accessibleBy($user)->whereHas('invoices', fn ($q) => $q->whereNull('multifox_confirmed_at'));
+            // Facturas por cargar en Multifox: no las notas crédito ni las anuladas con nota crédito
+            return $query->accessibleBy($user)->whereHas('invoices', fn ($q) => $q->whereNull('multifox_confirmed_at')
+                ->where('document_type', '!=', CorteInvoice::TYPE_NOTA_CREDITO)
+                ->where(fn ($sub) => $sub->whereNull('accounting_status')->orWhere('accounting_status', '!=', CorteInvoice::ACCOUNTING_ANULADA)));
         }
 
         if ($scope === self::SCOPE_ACCOUNTING && CorteWorkflow::canApproveAccounting($user)) {
@@ -486,10 +489,11 @@ class CorteService
                 'amount' => $invoice->amount !== null ? (float) $invoice->amount : null,
                 'multifox_confirmed_at' => $invoice->multifox_confirmed_at?->toIso8601String(),
                 'multifox_confirmed_by' => $invoice->multifoxConfirmer?->name,
-                'can_confirm_multifox' => !$invoice->multifox_confirmed_at && CorteWorkflow::canConfirmMultifox($user),
+                'requires_multifox' => $invoice->requiresMultifox(),
+                'can_confirm_multifox' => !$invoice->multifox_confirmed_at && $invoice->requiresMultifox() && CorteWorkflow::canConfirmMultifox($user),
                 'multifox_file_name' => $invoice->multifox_file_name,
                 'multifox_file_size' => $invoice->multifox_file_size,
-                // Aprobación de Contabilidad: null (sin Multifox) · pendiente · aprobada · devuelta
+                // Aprobación de Contabilidad: null (sin Multifox) · pendiente · aprobada · devuelta · anulada (por nota crédito)
                 'accounting_status' => $invoice->accounting_status,
                 'accounting_by' => $invoice->accountingUser?->name,
                 'accounting_at' => $invoice->accounting_at?->toIso8601String(),

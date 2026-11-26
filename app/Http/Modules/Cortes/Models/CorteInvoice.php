@@ -20,6 +20,8 @@ class CorteInvoice extends Model
     public const ACCOUNTING_PENDIENTE = 'pendiente';
     public const ACCOUNTING_APROBADA = 'aprobada';
     public const ACCOUNTING_DEVUELTA = 'devuelta';
+    // Factura anulada con una nota crédito antes de llegar a cuentas por pagar: ya no se carga en Multifox
+    public const ACCOUNTING_ANULADA = 'anulada';
 
     public const DOCUMENT_TYPES = [
         self::TYPE_FACTURA_INICIAL => 'Factura inicial',
@@ -87,6 +89,15 @@ class CorteInvoice extends Model
     /**
      * Las notas crédito y facturas de reemplazo siempre afectan a una factura anterior.
      */
+    /**
+     * La nota crédito no se carga en Multifox: pasa directo a la aprobación de Contabilidad. La factura anulada por
+     * una nota crédito tampoco. Las demás facturas (inicial, de reemplazo) sí.
+     */
+    public function requiresMultifox(): bool
+    {
+        return $this->document_type !== self::TYPE_NOTA_CREDITO && $this->accounting_status !== self::ACCOUNTING_ANULADA;
+    }
+
     public static function requiresRelatedDocument(?string $type): bool
     {
         return in_array($type, [self::TYPE_NOTA_CREDITO, self::TYPE_FACTURA_REEMPLAZO], true);

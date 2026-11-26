@@ -58,6 +58,8 @@ class CorteInvoiceService
             // En la factura inicial no aplica documento relacionado aunque llegue
             'related_document' => $affectsAnother ? trim($data['related_document']) : null,
             'amount' => $data['amount'],
+            // La nota crédito no se carga en Multifox: queda de una vez pendiente de Contabilidad
+            'accounting_status' => $data['document_type'] === CorteInvoice::TYPE_NOTA_CREDITO ? CorteInvoice::ACCOUNTING_PENDIENTE : null,
             'observation' => isset($data['observation']) ? trim($data['observation']) : null,
             'uploaded_by' => $user->id,
             ...$file,
@@ -67,10 +69,24 @@ class CorteInvoiceService
             $corte->update(['status' => CorteWorkflow::STATUS_FACTURADO]);
         }
 
+        // La factura que anula la nota crédito, si aún no llegó a cuentas por pagar, ya no se carga en Multifox
+        $voided = $invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO
+            ? $corte->invoices()->where('id', '!=', $invoice->id)
+                ->where('document_type', '!=', CorteInvoice::TYPE_NOTA_CREDITO)
+                ->whereRaw('UPPER(TRIM(invoice_number)) = ?', [mb_strtoupper(trim((string) $invoice->related_document))])
+                ->where(fn ($q) => $q->whereNull('accounting_status')->orWhere('accounting_status', '!=', CorteInvoice::ACCOUNTING_APROBADA))
+                ->get()
+            : collect();
+        foreach ($voided as $anulada) {
+            $anulada->update(['accounting_status' => CorteInvoice::ACCOUNTING_ANULADA]);
+        }
+
         $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number}"
             . ($invoice->amount !== null ? ' por $' . number_format((float) $invoice->amount, 0, ',', '.') : '')
             . ($invoice->related_document ? " (afecta a {$invoice->related_document})" : '')
-            . ($invoice->observation ? ". {$invoice->observation}" : '');
+            . ($invoice->observation ? ". {$invoice->observation}" : '')
+            . ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO ? '. No se carga en Multifox: pasa a la aprobación de Contabilidad' : '')
+            . ($voided->isNotEmpty() ? '. Anula ' . $voided->pluck('invoice_number')->implode(', ') . ', que ya no se carga en Multifox' : '');
 
         $corte->history()->create([
             'action' => CorteHistory::ACTION_FACTURA,
@@ -88,7 +104,12 @@ class CorteInvoiceService
      */
     public function notifyUploaded(CorteInvoice $invoice): void
     {
-        $this->notifications->invoiceUploaded($invoice->fresh(['corte', 'uploader']));
+        $invoice = $invoice->fresh(['corte', 'uploader']);
+
+        // La nota crédito va directo a Contabilidad; las facturas, a quien las carga en Multifox
+        $invoice->requiresMultifox()
+            ? $this->notifications->invoiceUploaded($invoice)
+            : $this->accounting->pending('cortes', $invoice->corte->project_id, $this->accountingPayload($invoice));
     }
 
     /**
@@ -103,6 +124,9 @@ class CorteInvoiceService
         }
         if ($invoice->multifox_confirmed_at) {
             throw new InvalidArgumentException('Esta factura ya fue confirmada en Multifox.');
+        }
+        if (!$invoice->requiresMultifox()) {
+            throw new InvalidArgumentException('Las notas crédito y las facturas anuladas con nota crédito no se cargan en Multifox.');
         }
         // El soporte se mueve a la carpeta del corte antes de la transacción (igual que los demás cargues)
         $file = $this->storage->claimCorteFile($uploadToken, $user, $this->storage->folderOf($invoice->corte));
@@ -198,6 +222,15 @@ class CorteInvoiceService
                 ]);
                 $this->pagos->registerFromCorteInvoice($invoice, $user);
                 $history = "{$label} aprobada por Contabilidad. Pasa a cuentas por pagar." . ($comment ? " {$comment}" : '');
+            } elseif (!$invoice->requiresMultifox()) {
+                // La nota crédito no pasa por Multifox: queda devuelta hasta que se corrija (eliminar y asociar de nuevo)
+                $invoice->update([
+                    'accounting_status' => CorteInvoice::ACCOUNTING_DEVUELTA,
+                    'accounting_by' => $user->id,
+                    'accounting_at' => now(),
+                    'accounting_comment' => $comment,
+                ]);
+                $history = "{$label} devuelta por Contabilidad. {$comment}";
             } else {
                 // Vuelve a Multifox: el soporte anterior queda en el historial y se debe cargar de nuevo
                 $invoice->update([

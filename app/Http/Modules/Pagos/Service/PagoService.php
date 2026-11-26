@@ -235,6 +235,12 @@ class PagoService
             : null;
 
         if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO) {
+            // La factura que anula nunca llegó a cuentas por pagar (quedó anulada): no hay nada que descontar
+            $voided = CorteInvoice::where('corte_id', $corte->id)->where('accounting_status', CorteInvoice::ACCOUNTING_ANULADA)
+                ->whereRaw('UPPER(TRIM(invoice_number)) = ?', [mb_strtoupper(trim((string) $invoice->related_document))])->exists();
+            if (!$related && $voided) {
+                return;
+            }
             if (!$related) {
                 throw new InvalidArgumentException("La factura {$invoice->related_document} que afecta esta nota crédito aún no está en cuentas por pagar. Confirma primero esa factura en Multifox.");
             }

@@ -96,6 +96,13 @@ class RegistroDeletionService
             $this->pagos->reverseCorteInvoice($invoice, $reason, $user);
             FacturacionInvoice::releaseWhere('corte_invoice_id', $invoice->id, $reason);
 
+            // Sin la nota crédito, la factura que había anulado vuelve a esperar su cargue en Multifox
+            if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO && $invoice->related_document) {
+                CorteInvoice::where('corte_id', $corte->id)->where('accounting_status', CorteInvoice::ACCOUNTING_ANULADA)
+                    ->whereRaw('UPPER(TRIM(invoice_number)) = ?', [mb_strtoupper(trim($invoice->related_document))])
+                    ->update(['accounting_status' => null]);
+            }
+
             $corte->history()->create([
                 'action' => CorteHistory::ACTION_FACTURA_ELIMINADA,
                 'comment' => "{$invoice->documentTypeLabel()} N.º {$invoice->invoice_number} eliminada. Motivo: {$reason}",
