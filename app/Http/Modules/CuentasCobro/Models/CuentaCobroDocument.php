@@ -5,6 +5,7 @@ namespace App\Http\Modules\CuentasCobro\Models;
 use App\Http\Modules\CuentasCobro\Service\CuentaCobroWorkflow;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Documento de una cuenta de cobro directa (con frente): cargue ERP, factura (asociada desde Facturas del mes)
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CuentaCobroDocument extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'cuentas_cobro_documents';
 
     protected $fillable = [

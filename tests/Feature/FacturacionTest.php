@@ -713,15 +713,16 @@ test('la nota crédito y la factura que anula no piden Multifox; la factura nuev
     // NC 3131 anula la FE 131 antes de Multifox: ninguna de las dos se carga en Multifox
     $associate(uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '3131', 'related_document' => 'FE 131', 'amount' => 1500000]));
     $nc = CorteInvoice::where('document_type', CorteInvoice::TYPE_NOTA_CREDITO)->first();
-    expect($nc->accounting_status)->toBe(CorteInvoice::ACCOUNTING_PENDIENTE)
+    // Se aplica de una vez: sin Multifox ni aprobación de Contabilidad
+    expect($nc->accounting_status)->toBe(CorteInvoice::ACCOUNTING_APROBADA)
         ->and($fe->fresh()->accounting_status)->toBe(CorteInvoice::ACCOUNTING_ANULADA)
-        ->and(accountingMail('pending', 'contador@example.com'))->toBeTrue();
+        ->and(accountingMail('pending', 'contador@example.com'))->toBeFalse();
     $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$nc->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertStatus(422);
     $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$fe->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertStatus(422);
     $this->actingAs($paula)->getJson('/api/v1/cortes?scope=multifox')->assertOk()->assertJsonPath('counts.multifox', 0);
 
-    // Contabilidad aprueba la NC: la FE 131 nunca llegó a cuentas por pagar, no hay nada que descontar
-    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$nc->id}/accounting", ['decision' => 'aprobar'])->assertOk();
+    // Contabilidad no la revisa y no crea nada en cuentas por pagar (la FE 131 nunca llegó allí)
+    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$nc->id}/accounting", ['decision' => 'aprobar'])->assertStatus(422);
     expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
 
     // La factura nueva sí pasa por Multifox
@@ -734,7 +735,7 @@ test('la nota crédito y la factura que anula no piden Multifox; la factura nuev
     expect(\App\Http\Modules\Pagos\Models\PagoCuenta::pluck('document_number')->all())->toBe(['FE 140']);
 });
 
-test('la nota crédito de una factura ya en cuentas por pagar no pide Multifox y descuenta al aprobarse', function () {
+test('la nota crédito de una factura ya en cuentas por pagar se aplica al asociarla: la anula o descuenta', function () {
     mockClaimUploads();
     Permission::firstOrCreate(['name' => 'cortes.multifox', 'guard_name' => 'web']);
     $paula = User::create(['name' => 'Paula', 'email' => 'paula@example.com', 'password' => 'secret']);
@@ -750,11 +751,23 @@ test('la nota crédito de una factura ya en cuentas por pagar no pide Multifox y
     $this->actingAs($paula)->postJson("/api/v1/cortes/invoices/{$fe->id}/multifox", ['upload_token' => (string) Str::uuid()])->assertOk();
     $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$fe->id}/accounting", ['decision' => 'aprobar'])->assertOk();
 
-    $associate(uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '3131', 'related_document' => 'FE 131', 'amount' => 2000000]));
-    $nc = CorteInvoice::where('document_type', CorteInvoice::TYPE_NOTA_CREDITO)->first();
-    // La FE ya estaba aprobada: no se anula su estado, la NC descuenta al aprobarse
+    $pago = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
+
+    // NC parcial con valor: descuenta y la cuenta sigue vigente
+    $associate(uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '3130', 'related_document' => 'FE 131', 'amount' => 500000]));
+    $pago->refresh();
+    expect((float) $pago->adjustments)->toBe(500000.0)
+        ->and($pago->status)->toBe('pendiente')
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(1);
+
+    // NC sin valor: anula el saldo completo; la FE ya aprobada conserva su estado y no se crea otra cuenta
+    $associate(uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '3131', 'related_document' => 'FE 131', 'amount' => null]));
+    $nc = CorteInvoice::where('invoice_number', 'NC 3131')->first();
+    $pago->refresh();
     expect($fe->fresh()->accounting_status)->toBe(CorteInvoice::ACCOUNTING_APROBADA)
-        ->and($nc->accounting_status)->toBe(CorteInvoice::ACCOUNTING_PENDIENTE);
-    $this->actingAs($contador)->postJson("/api/v1/cortes/invoices/{$nc->id}/accounting", ['decision' => 'aprobar'])->assertOk();
-    expect((float) \App\Http\Modules\Pagos\Models\PagoCuenta::first()->adjustments)->toBe(2000000.0);
+        ->and($nc->accounting_status)->toBe(CorteInvoice::ACCOUNTING_APROBADA)
+        ->and((float) $nc->amount)->toBe(1500000.0)
+        ->and((float) $pago->adjustments)->toBe(2000000.0)
+        ->and($pago->status)->toBe('anulada')
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(1);
 });

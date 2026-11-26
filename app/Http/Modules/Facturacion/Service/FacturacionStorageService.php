@@ -64,6 +64,15 @@ class FacturacionStorageService
         return $this->uploads->forModule('Facturación')->claimUpload($token, $user, $this->monthFolder($invoice->period) . '/' . self::FOLDER_SUPPORTS . '/' . $folder);
     }
 
+    /**
+     * Factura del mes eliminada: el archivo no se borra, se mueve a la subcarpeta _Eliminadas del mes (el registro
+     * queda con soft delete). Devuelve la nueva ruta.
+     */
+    public function archive(FacturacionInvoice $invoice): string
+    {
+        return $this->uploads->forModule('Facturación')->moveTo($invoice->file_path, $this->monthFolder($invoice->period) . '/_Eliminadas');
+    }
+
     public function delete(string $path): void
     {
         $this->uploads->forModule('Facturación')->delete($path);

@@ -58,8 +58,7 @@ class CorteInvoiceService
             // En la factura inicial no aplica documento relacionado aunque llegue
             'related_document' => $affectsAnother ? trim($data['related_document']) : null,
             'amount' => $data['amount'],
-            // La nota crédito no se carga en Multifox: queda de una vez pendiente de Contabilidad
-            'accounting_status' => $data['document_type'] === CorteInvoice::TYPE_NOTA_CREDITO ? CorteInvoice::ACCOUNTING_PENDIENTE : null,
+            'accounting_status' => null,
             'observation' => isset($data['observation']) ? trim($data['observation']) : null,
             'uploaded_by' => $user->id,
             ...$file,
@@ -81,11 +80,28 @@ class CorteInvoiceService
             $anulada->update(['accounting_status' => CorteInvoice::ACCOUNTING_ANULADA]);
         }
 
+        // La nota crédito se aplica de una vez (sin Multifox ni aprobación de Contabilidad): descuenta de la cuenta
+        // por pagar de la factura que afecta, si ya estaba allí. Queda registrado el valor aplicado.
+        $applied = null;
+        if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO) {
+            $applied = $this->pagos->applyCorteCreditNote($invoice, $user);
+            $invoice->update([
+                'accounting_status' => CorteInvoice::ACCOUNTING_APROBADA,
+                'accounting_by' => $user->id,
+                'accounting_at' => now(),
+                ...($invoice->amount === null && $applied !== null ? ['amount' => $applied] : []),
+            ]);
+        }
+
         $summary = $invoice->documentTypeLabel() . " N.º {$invoice->invoice_number}"
             . ($invoice->amount !== null ? ' por $' . number_format((float) $invoice->amount, 0, ',', '.') : '')
             . ($invoice->related_document ? " (afecta a {$invoice->related_document})" : '')
             . ($invoice->observation ? ". {$invoice->observation}" : '')
-            . ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO ? '. No se carga en Multifox: pasa a la aprobación de Contabilidad' : '')
+            . ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO
+                ? ($applied !== null
+                    ? '. Nota crédito aplicada: descuenta $' . number_format($applied, 0, ',', '.') . " de la cuenta por pagar de {$invoice->related_document}"
+                    : '. Nota crédito aplicada (la factura que afecta no estaba en cuentas por pagar)')
+                : '')
             . ($voided->isNotEmpty() ? '. Anula ' . $voided->pluck('invoice_number')->implode(', ') . ', que ya no se carga en Multifox' : '');
 
         $corte->history()->create([
@@ -106,10 +122,10 @@ class CorteInvoiceService
     {
         $invoice = $invoice->fresh(['corte', 'uploader']);
 
-        // La nota crédito va directo a Contabilidad; las facturas, a quien las carga en Multifox
-        $invoice->requiresMultifox()
-            ? $this->notifications->invoiceUploaded($invoice)
-            : $this->accounting->pending('cortes', $invoice->corte->project_id, $this->accountingPayload($invoice));
+        // Las facturas van a quien las carga en Multifox; la nota crédito ya quedó aplicada y no pide nada a nadie
+        if ($invoice->requiresMultifox()) {
+            $this->notifications->invoiceUploaded($invoice);
+        }
     }
 
     /**

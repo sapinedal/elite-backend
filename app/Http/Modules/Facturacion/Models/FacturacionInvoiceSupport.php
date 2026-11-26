@@ -4,12 +4,15 @@ namespace App\Http\Modules\Facturacion\Models;
 
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Soporte que adjunta el residente al asociar la factura (capturas de aprobaciones, corte o entrada de Multifox).
  */
 class FacturacionInvoiceSupport extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'facturacion_invoice_supports';
 
     public const UPDATED_AT = null;

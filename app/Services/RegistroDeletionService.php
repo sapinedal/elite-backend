@@ -30,9 +30,10 @@ use InvalidArgumentException;
  *  - Cuentas por pagar: se anulan (si alguna ya tiene pagos no se elimina nada: primero se revierte el pago).
  *  - Facturas del mes asociadas: vuelven a "Pendiente de obra" para asociarlas de nuevo o eliminarlas.
  *
- * Los cortes, órdenes, anticipos y cuentas de cobro se eliminan con soft delete (se pueden recuperar en base de datos);
- * las facturas de un corte y los documentos de una orden se borran para poder cargarlos de nuevo con el mismo número.
- * Los archivos se conservan en S3 (el historial los referencia), salvo el de la factura del mes eliminada.
+ * Nada se borra definitivamente: cortes, órdenes, anticipos, cuentas de cobro, facturas de los cortes, documentos de
+ * órdenes y cuentas de cobro y facturas del mes quedan con soft delete (se pueden recuperar en base de datos), y el
+ * número o paso eliminado se puede volver a cargar. Los archivos se conservan en S3 (el historial los referencia); el
+ * de la factura del mes eliminada pasa a la subcarpeta _Eliminadas del mes.
  *
  * Permisos: cortes.eliminar, ordenes.eliminar, anticipos.eliminar, cuentas_cobro.eliminar, facturacion.eliminar.
  */
@@ -325,7 +326,7 @@ class RegistroDeletionService
             $invoice->delete();
         });
 
-        $this->facturacionStorage->delete($invoice->file_path);
+        app(\App\Http\Modules\Facturacion\Service\FacturacionService::class)->archiveFile($invoice);
         $this->audit('facturacion_invoice', $invoice->id, $invoice->documentNumber(), $reason, $user);
     }
 

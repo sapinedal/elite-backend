@@ -4,12 +4,15 @@ namespace App\Http\Modules\Cortes\Models;
 
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Factura (o nota crédito / factura de reemplazo) cargada a un corte aprobado.
  */
 class CorteInvoice extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'cortes_invoices';
 
     public const TYPE_FACTURA_INICIAL = 'factura_inicial';

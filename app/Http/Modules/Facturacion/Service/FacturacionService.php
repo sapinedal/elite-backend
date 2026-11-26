@@ -300,7 +300,8 @@ class FacturacionService
     }
 
     /**
-     * Contabilidad elimina una factura cargada por error (solo si obra aún no la procesó), con su archivo.
+     * Contabilidad elimina una factura cargada por error (solo si obra aún no la procesó). Queda con soft delete y su
+     * archivo pasa a la subcarpeta _Eliminadas del mes: se puede recuperar.
      */
     public function delete(FacturacionInvoice $invoice, User $user): void
     {
@@ -314,7 +315,21 @@ class FacturacionService
             $invoice->delete();
         });
 
-        $this->storage->delete($invoice->file_path);
+        $this->archiveFile($invoice);
+    }
+
+    /**
+     * Mueve el archivo de la factura eliminada a _Eliminadas y deja la nueva ruta en el registro (eliminado).
+     * Si el movimiento falla, la factura igual queda eliminada (el archivo sigue en la carpeta del mes).
+     */
+    public function archiveFile(FacturacionInvoice $invoice): void
+    {
+        try {
+            $path = $this->storage->archive($invoice);
+            FacturacionInvoice::withTrashed()->whereKey($invoice->id)->update(['file_path' => $path, 'file_name' => basename($path)]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     protected function assertPendingForManager(FacturacionInvoice $invoice, User $user): void

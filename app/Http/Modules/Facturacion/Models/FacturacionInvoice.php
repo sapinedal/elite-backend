@@ -11,6 +11,7 @@ use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Pagos\Models\PagoCuenta;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Factura del mes cargada por Contabilidad. Queda pendiente hasta que el residente responsable la asocia
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class FacturacionInvoice extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'facturacion_invoices';
 
     public const STATUS_PENDIENTE = 'pendiente';

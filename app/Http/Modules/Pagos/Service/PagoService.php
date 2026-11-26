@@ -235,19 +235,7 @@ class PagoService
             : null;
 
         if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO) {
-            // La factura que anula nunca llegó a cuentas por pagar (quedó anulada): no hay nada que descontar
-            $voided = CorteInvoice::where('corte_id', $corte->id)->where('accounting_status', CorteInvoice::ACCOUNTING_ANULADA)
-                ->whereRaw('UPPER(TRIM(invoice_number)) = ?', [mb_strtoupper(trim((string) $invoice->related_document))])->exists();
-            if (!$related && $voided) {
-                return;
-            }
-            if (!$related) {
-                throw new InvalidArgumentException("La factura {$invoice->related_document} que afecta esta nota crédito aún no está en cuentas por pagar. Confirma primero esa factura en Multifox.");
-            }
-            $related->adjustments = (float) $related->adjustments + $amount;
-            $this->refreshStatus($related);
-            $related->save();
-            $this->log($related, PagoMovimiento::ACTION_NOTA_CREDITO, $user, $amount, "Nota crédito N.º {$invoice->invoice_number}. {$invoice->observation}");
+            $this->applyCorteCreditNote($invoice, $user);
 
             return;
         }
@@ -313,6 +301,44 @@ class PagoService
             'created_by' => $user->id,
         ]);
         $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden {$orden->code} completada (entrada de almacén cargada y aprobada por Contabilidad).");
+    }
+
+    /**
+     * Nota crédito de un corte: se aplica al asociarla, sin Multifox ni aprobación de Contabilidad. No crea una cuenta
+     * por pagar: descuenta de la cuenta de la factura que afecta. Si la nota no trae valor, anula todo el saldo de esa
+     * factura (el caso de "la factura estaba mal"). Si la factura queda en cero sin pagos, su cuenta se anula.
+     * Si la factura nunca llegó a cuentas por pagar no hay nada que descontar. Devuelve el valor aplicado.
+     * Debe correr dentro de la transacción del cargue.
+     */
+    public function applyCorteCreditNote(CorteInvoice $invoice, User $user): ?float
+    {
+        $related = $invoice->related_document
+            ? PagoCuenta::where('corte_id', $invoice->corte_id)
+                ->whereRaw('UPPER(TRIM(document_number)) = ?', [mb_strtoupper(trim($invoice->related_document))])
+                ->where('status', '!=', self::STATUS_ANULADA)
+                ->lockForUpdate()
+                ->first()
+            : null;
+        if (!$related) {
+            return null;
+        }
+
+        $amount = $invoice->amount !== null ? (float) $invoice->amount : max(0.0, $related->balance());
+        $related->adjustments = (float) $related->adjustments + $amount;
+
+        if ($related->balance() <= 0 && (float) $related->paid_amount <= 0) {
+            $related->fill(['status' => self::STATUS_ANULADA, 'priority' => null, 'scheduled_for' => null]);
+            $related->save();
+            $this->log($related, PagoMovimiento::ACTION_NOTA_CREDITO, $user, $amount,
+                "Anulada con la nota crédito N.º {$invoice->invoice_number}." . ($invoice->observation ? " {$invoice->observation}" : ''));
+        } else {
+            $this->refreshStatus($related);
+            $related->save();
+            $this->log($related, PagoMovimiento::ACTION_NOTA_CREDITO, $user, $amount,
+                "Nota crédito N.º {$invoice->invoice_number}." . ($invoice->observation ? " {$invoice->observation}" : ''));
+        }
+
+        return $amount;
     }
 
     /**
@@ -625,6 +651,10 @@ class PagoService
         if ($invoice->document_type === CorteInvoice::TYPE_NOTA_CREDITO) {
             if ($related) {
                 $related->adjustments = max(0, (float) $related->adjustments - (float) $invoice->amount);
+                // Si la nota crédito la había anulado, vuelve a estar vigente
+                if ($related->status === self::STATUS_ANULADA && $related->source_id !== null) {
+                    $related->status = self::STATUS_PENDIENTE;
+                }
                 $this->recomputeStatus($related);
                 $related->save();
                 $this->log($related, PagoMovimiento::ACTION_NOTA_CREDITO, $user, -1 * (float) $invoice->amount,

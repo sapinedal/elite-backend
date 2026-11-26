@@ -28,7 +28,14 @@ beforeEach(function () {
         $mock->shouldReceive('delete')->andReturnUsing(function ($path) {
             $this->deletedFiles[] = $path;
         });
+        // El archivo de la factura del mes eliminada no se borra: pasa a _Eliminadas
+        $mock->shouldReceive('archive')->andReturnUsing(function ($invoice) {
+            $this->archivedFiles[] = $invoice->file_path;
+
+            return 'contabilidad/_Eliminadas/' . basename($invoice->file_path);
+        });
     });
+    $this->archivedFiles = [];
 
     foreach (['cortes.ver', 'cortes.eliminar', 'ordenes.ver', 'ordenes.eliminar', 'cuentas_cobro.ver', 'cuentas_cobro.eliminar', 'facturacion.eliminar', 'cortes.facturar', 'proyectos.ver_todos'] as $name) {
         Permission::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
@@ -143,7 +150,21 @@ it('elimina la factura del mes procesada con lo que generó en el corte', functi
         ->and(CorteInvoice::find($invoice->id))->toBeNull()
         ->and($cuenta->fresh()->status)->toBe(PagoService::STATUS_ANULADA)
         ->and($corte->fresh()->status)->toBe(CorteWorkflow::STATUS_APROBADO)
-        ->and($this->deletedFiles)->toContain('contabilidad/fe.pdf');
+        ->and($this->deletedFiles)->toBe([])
+        ->and($this->archivedFiles)->toContain('contabilidad/fe.pdf');
+
+    // Nada se borra definitivamente: la factura del mes y la del corte quedan recuperables
+    $trashed = FacturacionInvoice::withTrashed()->find($factura->id);
+    expect($trashed->trashed())->toBeTrue()
+        ->and($trashed->file_path)->toBe('contabilidad/_Eliminadas/fe.pdf')
+        ->and(CorteInvoice::withTrashed()->find($invoice->id)->trashed())->toBeTrue();
+
+    // El mismo número se puede volver a cargar en el corte
+    $corte->invoices()->create([
+        'invoice_number' => $invoice->invoice_number, 'document_type' => $invoice->document_type,
+        'file_name' => 'fe.pdf', 'file_path' => 'x/fe.pdf', 'file_size' => 10,
+    ]);
+    expect($corte->invoices()->count())->toBe(1);
 });
 
 it('elimina la entrada de una orden completada: vuelve a pendiente de entrada y anula la cuenta', function () {

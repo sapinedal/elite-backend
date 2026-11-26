@@ -5,12 +5,15 @@ namespace App\Http\Modules\Ordenes\Models;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
 use App\Http\Modules\Users\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Documento de un paso posterior a la aprobación: orden de compra del ERP, factura del proveedor o entrada de almacén.
  */
 class OrdenDocument extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'ordenes_documents';
 
     protected $fillable = [
