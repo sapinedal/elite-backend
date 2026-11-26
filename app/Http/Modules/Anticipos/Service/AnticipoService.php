@@ -188,7 +188,10 @@ class AnticipoService
      */
     public function canUploadSupport(Anticipo $anticipo, User $user): bool
     {
-        return $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE && $anticipo->created_by === $user->id;
+        // También los aprobados antes de existir este paso que siguen sin contrato / OC (ya en Multifox o en pagos)
+        return $anticipo->created_by === $user->id
+            && $anticipo->support_file_path === null
+            && in_array($anticipo->status, AnticipoWorkflow::SUPPORT_STATUSES, true);
     }
 
     public function canRegisterMultifox(Anticipo $anticipo, User $user): bool
@@ -379,12 +382,14 @@ class AnticipoService
 
         $anticipo = DB::transaction(function () use ($anticipo, $file, $comment, $user) {
             $anticipo = Anticipo::whereKey($anticipo->id)->lockForUpdate()->firstOrFail();
-            if ($anticipo->status !== AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE) {
+            if ($anticipo->support_file_path !== null || !in_array($anticipo->status, AnticipoWorkflow::SUPPORT_STATUSES, true)) {
                 throw new InvalidArgumentException('Este anticipo ya tiene su contrato u orden de compra.');
             }
 
+            // Solo el que espera el soporte avanza a Contabilidad; los anteriores a este paso conservan su estado
+            $advances = $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE;
             $anticipo->update([
-                'status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD,
+                ...($advances ? ['status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD] : []),
                 'support_file_name' => $file['file_name'],
                 'support_file_path' => $file['file_path'],
                 'support_file_size' => $file['file_size'],
@@ -396,7 +401,7 @@ class AnticipoService
             $anticipo->history()->create([
                 'stage' => AnticipoWorkflow::STEP_SOPORTE,
                 'action' => AnticipoHistory::ACTION_SOPORTE,
-                'comment' => 'Contrato / orden de compra adjunto. Pendiente de Contabilidad (Multifox).' . ($comment ? " {$comment}" : ''),
+                'comment' => 'Contrato / orden de compra adjunto.' . ($advances ? ' Pendiente de Contabilidad (Multifox).' : '') . ($comment ? " {$comment}" : ''),
                 'file_name' => $file['file_name'],
                 'file_path' => $file['file_path'],
                 'user_id' => $user->id,
@@ -405,7 +410,9 @@ class AnticipoService
             return $anticipo;
         });
 
-        $this->notifications->supportUploaded($anticipo, $comment);
+        if ($anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD && $anticipo->wasChanged('status')) {
+            $this->notifications->supportUploaded($anticipo, $comment);
+        }
 
         return $anticipo;
     }
@@ -583,8 +590,8 @@ class AnticipoService
 
         // Contrato / orden de compra que adjunta el residente después de Gerencia
         $support = $history->where('action', AnticipoHistory::ACTION_SOPORTE)->last();
-        $supported = $anticipo->support_file_path !== null
-            || in_array($anticipo->status, [AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD, AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, AnticipoWorkflow::STATUS_COMPLETADO], true);
+        // Solo está hecho si tiene el contrato / OC adjunto (los aprobados antes de este paso lo pueden adjuntar después)
+        $supported = $anticipo->support_file_path !== null;
         $stages[] = [
             'key' => AnticipoWorkflow::STEP_SOPORTE,
             'label' => 'Contrato / OC',

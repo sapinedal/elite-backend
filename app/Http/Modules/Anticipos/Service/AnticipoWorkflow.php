@@ -29,6 +29,15 @@ class AnticipoWorkflow
     public const STATUS_PENDIENTE_APROBACION_CONTABLE = 'pendiente_aprobacion_contable'; // Cargado en Multifox, falta la aprobación
     public const STATUS_COMPLETADO = 'completado';
 
+    // Estados en los que el residente puede adjuntar el contrato / OC si aún no lo tiene (los posteriores son de
+    // anticipos aprobados antes de existir este paso)
+    public const SUPPORT_STATUSES = [
+        self::STATUS_PENDIENTE_SOPORTE,
+        self::STATUS_PENDIENTE_CONTABILIDAD,
+        self::STATUS_PENDIENTE_APROBACION_CONTABLE,
+        self::STATUS_COMPLETADO,
+    ];
+
     public const PERMISSION_VIEW_ALL = 'anticipos.ver_todos';
     public const PERMISSION_CONTABILIZAR = 'anticipos.contabilizar';
     public const PERMISSION_ACCOUNTING = 'anticipos.aprobar_contabilidad';
