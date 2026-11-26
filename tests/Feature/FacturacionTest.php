@@ -601,47 +601,44 @@ test('el indirecto se carga sin valor y pasa a cuentas por pagar cuando el anali
     $this->actingAs($this->contabilidad)->deleteJson("/api/v1/facturacion/{$invoice->id}")->assertStatus(422);
 });
 
-test('la entrada de almacén marcada como aprobada con el cargue pasa directo a cuentas por pagar', function () {
+test('la orden ERP marcada para pago pasa de una vez a cuentas por pagar y la entrada solo se legaliza', function () {
     mockClaimUploads();
     $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
     $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+    $contador = User::create(['name' => 'Contador', 'email' => 'contador@example.com', 'password' => 'secret']);
+    $contador->givePermissionTo(['ordenes.ver', 'ordenes.aprobar_contabilidad', 'proyectos.ver_todos']);
 
     $orden = Orden::create([
         'code' => 'ORD-0003', 'description' => 'Acero', 'project_id' => $this->project->id, 'chapter' => 'Estructura', 'activity' => 'Acero',
-        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
+        'status' => OrdenWorkflow::STATUS_PENDIENTE_ERP, 'current_step' => OrdenWorkflow::STEP_ORDEN_ERP,
         'storage_path' => 'tecnica/Ordenes/ORD-0003', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
     ]);
-    $invoice = uploadInvoice(['invoice_number' => '337', 'amount' => 990000]);
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
-        ->assertOk();
+    $erp = fn (array $extra) => $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'OC-77', 'upload_token' => (string) Str::uuid(), ...$extra]);
 
-    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-9', 'upload_token' => (string) Str::uuid(), 'approved_with_upload' => true])
-        ->assertCreated()->assertJsonPath('data.status', OrdenWorkflow::STATUS_COMPLETADA);
+    // Exige valor y proveedor
+    $erp(['paid_in_advance' => true])->assertStatus(422);
+    expect($orden->fresh()->current_step)->toBe(OrdenWorkflow::STEP_ORDEN_ERP);
+
+    $erp(['paid_in_advance' => true, 'amount' => 990000, 'contractor_id' => $this->contractor->id])
+        ->assertCreated()
+        ->assertJsonPath('data.status', OrdenWorkflow::STATUS_PENDIENTE_FACTURA)
+        ->assertJsonPath('data.paid_in_advance', true);
 
     $pago = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
     expect($pago->orden_id)->toBe($orden->id)
         ->and((float) $pago->amount)->toBe(990000.0)
-        ->and($orden->history()->pluck('action')->all())->toContain('aprobada_con_cargue');
-});
+        ->and($pago->supplier_name)->toBe('INVALGO SAS')
+        ->and($pago->document_number)->toBe('OC-77')
+        ->and($orden->history()->pluck('action')->all())->toContain('pago_anticipado');
 
-test('sin el valor de la factura la entrada no puede saltarse la aprobación de Contabilidad', function () {
-    mockClaimUploads();
-    $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
-    $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+    // Sigue el flujo: factura, entrada y Contabilidad legaliza sin crear otra cuenta por pagar (ni pedir el valor)
+    $invoice = uploadInvoice(['invoice_number' => '337', 'amount' => null]);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])->assertOk();
+    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-9', 'upload_token' => (string) Str::uuid()])
+        ->assertCreated()->assertJsonPath('data.status', OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    $this->actingAs($contador)->postJson("/api/v1/ordenes/{$orden->id}/accounting", ['decision' => 'aprobar'])
+        ->assertOk()->assertJsonPath('data.status', OrdenWorkflow::STATUS_COMPLETADA);
 
-    $orden = Orden::create([
-        'code' => 'ORD-0004', 'description' => 'Arena', 'project_id' => $this->project->id, 'chapter' => 'Estructura', 'activity' => 'Arena',
-        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
-        'storage_path' => 'tecnica/Ordenes/ORD-0004', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
-    ]);
-    $invoice = uploadInvoice(['invoice_number' => '338', 'amount' => null]);
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
-        ->assertOk();
-
-    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-10', 'upload_token' => (string) Str::uuid(), 'approved_with_upload' => true])
-        ->assertStatus(422);
-    expect($orden->fresh()->status)->toBe(OrdenWorkflow::STATUS_PENDIENTE_ENTRADA)
-        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
+    expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(1)
+        ->and($orden->history()->where('action', 'contabilidad_aprobada')->value('comment'))->toContain('Legalizada');
 });

@@ -319,6 +319,12 @@ class OrdenService
     {
         $isInvoice = $step === OrdenWorkflow::STEP_FACTURA;
         $observation = isset($data['observation']) ? trim($data['observation']) : null;
+        // Orden ERP marcada para pago: pasa de una vez a cuentas por pagar (con valor y proveedor de la orden de compra);
+        // la entrada de almacén queda después solo para la legalización con Contabilidad
+        $paidInAdvance = $step === OrdenWorkflow::STEP_ORDEN_ERP && !empty($data['paid_in_advance']);
+        if ($paidInAdvance && (empty($data['amount']) || empty($data['contractor_id']))) {
+            throw new InvalidArgumentException('Para enviar la orden de compra a cuentas por pagar indica el valor y el proveedor.');
+        }
 
         $orden = Orden::whereKey($orden->id)->lockForUpdate()->firstOrFail();
         if ($orden->current_step !== $step) {
@@ -328,25 +334,22 @@ class OrdenService
         $document = $orden->documents()->create([
             'step' => $step,
             'number' => trim($data['number']),
-            'amount' => $isInvoice ? ($data['amount'] ?? null) : null,
-            'contractor_id' => $isInvoice ? ($data['contractor_id'] ?? null) : null,
+            'amount' => $isInvoice || $paidInAdvance ? ($data['amount'] ?? null) : null,
+            'contractor_id' => $isInvoice || $paidInAdvance ? ($data['contractor_id'] ?? null) : null,
             'observation' => $observation ?: null,
             'uploaded_by' => $user->id,
             ...$file,
         ]);
 
-        // Con el último documento (entrada) pasa a la aprobación de Contabilidad antes de cuentas por pagar, salvo que
-        // quien la carga indique que ya quedó aprobada con el cargue: entonces se completa y pasa directo a cuentas por pagar
+        // Con el último documento (entrada) pasa a la aprobación de Contabilidad: antes de cuentas por pagar o, si ya se
+        // pagó desde la orden ERP, solo para legalizarla
         $nextStep = OrdenWorkflow::nextStep($step);
-        $approvedWithUpload = !$nextStep && !empty($data['approved_with_upload']);
-        if ($approvedWithUpload && $orden->documents()->where('step', OrdenWorkflow::STEP_FACTURA)->latest('id')->value('amount') === null) {
-            throw new InvalidArgumentException('La factura del proveedor no tiene valor: debe pasar por la aprobación de Contabilidad para registrarlo.');
-        }
-        $orden->update(match (true) {
-            (bool) $nextStep => ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep],
-            $approvedWithUpload => ['status' => OrdenWorkflow::STATUS_COMPLETADA, 'current_step' => null, 'completed_at' => now()],
-            default => ['status' => OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null],
-        });
+        $orden->update([
+            ...($nextStep
+                ? ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
+                : ['status' => OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null]),
+            ...($paidInAdvance ? ['paid_in_advance' => true] : []),
+        ]);
 
         $summary = OrdenWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : '');
         $orden->history()->create([
@@ -357,9 +360,10 @@ class OrdenService
             'user_id' => $user->id,
         ]);
 
-        if ($approvedWithUpload) {
-            $this->log($orden, OrdenHistory::ACTION_APROBADA_CON_CARGUE, $user, $step, 'Aprobada con el cargue de la entrada. Pasa directo a cuentas por pagar.');
-            $this->pagos->registerFromOrden($orden, $user);
+        if ($paidInAdvance) {
+            $this->log($orden, OrdenHistory::ACTION_PAGO_ANTICIPADO, $user, $step,
+                'Orden de compra enviada a cuentas por pagar con su cargue. La entrada de almacén se legaliza después con Contabilidad.');
+            $this->pagos->registerFromOrdenErp($orden, $document, $user);
         }
 
         return $document;
@@ -390,9 +394,10 @@ class OrdenService
         if ($decision === 'devolver' && !$comment) {
             throw new InvalidArgumentException('Indica el motivo de la devolución para que sepan qué corregir.');
         }
-        // Contabilidad registra el valor de la factura del proveedor (obligatorio al aprobar si aún no lo tiene)
+        // Contabilidad registra el valor de la factura del proveedor (obligatorio al aprobar si aún no lo tiene). Si ya se
+        // pagó desde la orden ERP, la aprobación es solo de legalización y no pasa otra vez a cuentas por pagar
         $invoiceDocument = $orden->documents()->where('step', OrdenWorkflow::STEP_FACTURA)->latest('id')->first();
-        if ($decision === 'aprobar' && !$amount && $invoiceDocument?->amount === null) {
+        if ($decision === 'aprobar' && !$orden->paid_in_advance && !$amount && $invoiceDocument?->amount === null) {
             throw new InvalidArgumentException('Indica el valor de la factura: con él pasa a cuentas por pagar.');
         }
         if ($amount && $invoiceDocument) {
@@ -413,8 +418,12 @@ class OrdenService
             if ($decision === 'aprobar') {
                 $orden->update(['status' => OrdenWorkflow::STATUS_COMPLETADA, 'completed_at' => now()]);
                 $this->log($orden, OrdenHistory::ACTION_CONTABILIDAD_APROBADA, $user, OrdenWorkflow::STEP_APROBACION_CONTABLE,
-                    'Aprobada por Contabilidad. Pasa a cuentas por pagar.' . ($comment ? " {$comment}" : ''));
-                $this->pagos->registerFromOrden($orden, $user);
+                    ($orden->paid_in_advance
+                        ? 'Legalizada por Contabilidad (ya estaba en cuentas por pagar desde la orden ERP).'
+                        : 'Aprobada por Contabilidad. Pasa a cuentas por pagar.') . ($comment ? " {$comment}" : ''));
+                if (!$orden->paid_in_advance) {
+                    $this->pagos->registerFromOrden($orden, $user);
+                }
             } else {
                 // Vuelve a la entrada de almacén: el documento anterior queda en el historial (y su archivo en S3)
                 $orden->documents()->where('step', OrdenWorkflow::STEP_ENTRADA)->delete();
@@ -446,7 +455,8 @@ class OrdenService
         return [
             'module' => 'Registro de Orden',
             'reference' => "Orden {$orden->code}",
-            'pending_intro' => "La orden {$orden->code} ya tiene su entrada de almacén cargada.",
+            'pending_intro' => "La orden {$orden->code} ya tiene su entrada de almacén cargada."
+                . ($orden->paid_in_advance ? ' Ya está en cuentas por pagar desde la orden ERP: la aprobación es para legalizarla.' : ''),
             'details' => [
                 'Orden' => "{$orden->code} · {$orden->description}",
                 'Factura del proveedor' => $invoice?->number,
@@ -595,6 +605,8 @@ class OrdenService
             'can_review' => $this->canReview($orden, $user),
             'can_resubmit' => $this->canResubmit($orden, $user),
             'can_upload_step' => $this->canUploadStep($orden, $user),
+            // Pagada desde la orden ERP: la entrada y la aprobación de Contabilidad son de legalización
+            'paid_in_advance' => (bool) $orden->paid_in_advance,
             'can_review_accounting' => $this->canReviewAccounting($orden, $user),
             'can_delete' => $user->can('ordenes.eliminar'),
         ];

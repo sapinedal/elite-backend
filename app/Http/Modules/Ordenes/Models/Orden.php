@@ -30,11 +30,13 @@ class Orden extends Model
         'created_by',
         'approved_at',
         'completed_at',
+        'paid_in_advance',
     ];
 
     protected $casts = [
         'approved_at' => 'datetime',
         'completed_at' => 'datetime',
+        'paid_in_advance' => 'boolean',
     ];
 
     public function project()

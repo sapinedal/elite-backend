@@ -142,7 +142,8 @@ class RegistroDeletionService
     /**
      * Elimina el último documento cargado de la orden (entrada, factura u orden ERP) y la orden vuelve a ese paso.
      * Los documentos son secuenciales: para borrar uno anterior se eliminan primero los siguientes.
-     * Si la orden ya estaba completada, su cuenta por pagar se anula.
+     * Si la orden ya estaba completada, su cuenta por pagar se anula (si se pagó desde la orden ERP, solo al borrar ese
+     * documento).
      */
     public function deleteOrdenDocument(OrdenDocument $document, string $reason, User $user): Orden
     {
@@ -158,8 +159,12 @@ class RegistroDeletionService
                 throw new InvalidArgumentException("Primero elimina el documento posterior: {$last->stepLabel()}.");
             }
 
-            // Si ya pasó a cuentas por pagar (completada), se anula la cuenta
-            $this->pagos->annulForDeletedSource('orden_id', $orden->id, $reason, $user);
+            // Si ya pasó a cuentas por pagar se anula la cuenta. Si se pagó desde la orden ERP, la cuenta depende de ese
+            // documento: borrar la factura o la entrada (legalización) no la anula
+            $paidFromErp = $orden->paid_in_advance;
+            if (!$paidFromErp || $document->step === OrdenWorkflow::STEP_ORDEN_ERP) {
+                $this->pagos->annulForDeletedSource('orden_id', $orden->id, $reason, $user);
+            }
             FacturacionInvoice::releaseWhere('orden_document_id', $document->id, $reason);
 
             $orden->history()->create([
@@ -175,6 +180,7 @@ class RegistroDeletionService
                 'status' => OrdenWorkflow::STEPS[$document->step]['status'],
                 'current_step' => $document->step,
                 'completed_at' => null,
+                ...($document->step === OrdenWorkflow::STEP_ORDEN_ERP ? ['paid_in_advance' => false] : []),
             ]);
 
             return $orden;

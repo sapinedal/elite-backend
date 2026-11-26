@@ -10,6 +10,7 @@ use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
+use App\Http\Modules\Ordenes\Models\OrdenDocument;
 use App\Http\Modules\Ordenes\Service\OrdenStorageService;
 use App\Http\Modules\Ordenes\Service\OrdenWorkflow;
 use App\Http\Modules\Pagos\Models\PagoCuenta;
@@ -306,6 +307,38 @@ class PagoService
             'created_by' => $user->id,
         ]);
         $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden {$orden->code} completada (entrada de almacén cargada y aprobada por Contabilidad).");
+    }
+
+    /**
+     * Orden de compra ERP enviada a cuentas por pagar con su cargue (se paga antes de la entrada de almacén, que se
+     * legaliza después). Valor y proveedor salen de la orden ERP. Debe correr dentro de la transacción del cargue.
+     */
+    public function registerFromOrdenErp(Orden $orden, OrdenDocument $document, User $user): void
+    {
+        $orden->loadMissing('tower:id,name');
+        if (PagoCuenta::where('source_type', PagoCuenta::SOURCE_ORDEN)->where('source_id', $orden->id)->where('status', '!=', self::STATUS_ANULADA)->exists()) {
+            return;
+        }
+
+        $contractor = $document->contractor_id ? FtraContractor::find($document->contractor_id) : null;
+        $amount = (float) $document->amount;
+
+        $cuenta = PagoCuenta::create([
+            'source_type' => PagoCuenta::SOURCE_ORDEN,
+            'source_id' => $orden->id,
+            'orden_id' => $orden->id,
+            'project_id' => $orden->project_id,
+            'frente' => $this->frenteFor($orden->tower?->name),
+            'contractor_id' => $contractor?->id,
+            'supplier_nit' => $contractor?->nit,
+            'supplier_name' => $contractor?->name ?? 'Proveedor sin nombre',
+            'document_number' => $document->number,
+            'concept' => "Orden {$orden->code} (orden de compra ERP). " . $orden->description,
+            'amount' => $amount,
+            'status' => self::STATUS_PENDIENTE,
+            'created_by' => $user->id,
+        ]);
+        $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Orden de compra ERP {$document->number} de la orden {$orden->code} enviada a cuentas por pagar con su cargue. La entrada de almacén se legaliza después.");
     }
 
     /**

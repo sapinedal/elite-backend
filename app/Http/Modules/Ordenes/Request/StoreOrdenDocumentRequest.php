@@ -16,12 +16,12 @@ class StoreOrdenDocumentRequest extends FormRequest
         return [
             'number' => ['required', 'string', 'max:100'],
             'observation' => ['nullable', 'string', 'max:2000'],
-            // Solo en la factura del proveedor (lo exige OrdenService): pasan a cuentas por pagar
+            // En la factura del proveedor, o en la orden ERP enviada a cuentas por pagar (lo exige OrdenService)
             'amount' => ['nullable', 'numeric', 'min:1', 'max:9999999999999'],
             'contractor_id' => ['nullable', 'integer', 'exists:ftra_contractors,id'],
             'upload_token' => ['required', 'string'],
-            // Solo en la entrada de almacén: ya quedó aprobada con el cargue, pasa directo a cuentas por pagar
-            'approved_with_upload' => ['nullable', 'boolean'],
+            // Solo en la orden ERP: pasa de una vez a cuentas por pagar; la entrada se legaliza después
+            'paid_in_advance' => ['nullable', 'boolean'],
         ];
     }
 
