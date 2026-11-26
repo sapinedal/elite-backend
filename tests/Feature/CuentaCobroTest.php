@@ -127,6 +127,23 @@ test('aprobada, Paula decide que no requiere Multifox y con la aprobación de Co
         ->and(cuentaMailTo(CuentaCobroNotificationMail::EVENT_IN_PAYMENTS, 'residente@example.com'))->toBeTrue();
 });
 
+test('Contabilidad confirma o corrige el valor con el que la cuenta pasa al cuadro de pagos', function () {
+    radicarCuenta()->assertCreated();
+    $cuenta = CuentaCobro::first();
+    aprobarCuenta($cuenta);
+    $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox-decision", ['requires_multifox' => false])->assertOk();
+
+    $this->actingAs($this->contador)->getJson("/api/v1/cuentas-cobro/{$cuenta->id}")->assertOk()
+        ->assertJsonPath('data.payable_amount', 3500000);
+
+    $this->actingAs($this->contador)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/accounting", ['decision' => 'aprobar', 'amount' => 3200000])
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_EN_PAGOS);
+
+    expect((float) PagoCuenta::first()->amount)->toBe(3200000.0)
+        ->and((float) $cuenta->fresh()->amount)->toBe(3200000.0)
+        ->and($cuenta->history()->where('comment', 'like', '%ajustó el valor%')->exists())->toBeTrue();
+});
+
 test('si requiere Multifox no pasa al cuadro de pagos hasta que se carga y Contabilidad lo aprueba', function () {
     radicarCuenta()->assertCreated();
     $cuenta = CuentaCobro::first();
@@ -252,7 +269,7 @@ test('la cuenta directa (con frente) sigue cargue ERP, factura de Facturas del m
         ->assertStatus(422);
     $invoice = \App\Http\Modules\Facturacion\Models\FacturacionInvoice::create([
         'period' => '2026-11-01', 'contractor_id' => $this->contractor->id, 'supplier_name' => $this->contractor->name,
-        'document_type' => 'factura', 'invoice_number' => '77', 'amount' => 3500000, 'file_name' => 'FE 77.pdf',
+        'document_type' => 'factura', 'invoice_number' => '77', 'amount' => 3400000, 'file_name' => 'FE 77.pdf',
         'file_path' => 'contabilidad/2026-11/FE 77.pdf', 'file_size' => 10, 'uploaded_by' => $this->admin->id, 'status' => 'pendiente',
     ]);
     $this->actingAs($this->residente)->getJson('/api/v1/facturacion/targets')->assertOk()
@@ -273,8 +290,10 @@ test('la cuenta directa (con frente) sigue cargue ERP, factura de Facturas del m
     aprobarContabilidad($cuenta);
 
     $pago = PagoCuenta::first();
+    // Sin valor explícito pasa con el de la factura asociada, no con el radicado
     expect($pago->frente)->toBe('TORRE 1')
-        ->and((float) $pago->amount)->toBe(3500000.0);
+        ->and((float) $pago->amount)->toBe(3400000.0)
+        ->and((float) $cuenta->fresh()->amount)->toBe(3400000.0);
     $this->actingAs($this->residente)->getJson("/api/v1/cuentas-cobro/{$cuenta->id}")->assertOk()
         ->assertJsonCount(3, 'data.documents')
         ->assertJsonPath('data.progress.2.key', CuentaCobroWorkflow::STEP_ERP)

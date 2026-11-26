@@ -9,6 +9,7 @@ use App\Http\Modules\CuentasCobro\Models\CuentaCobroAdjunto;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroDocument;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroHistory;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroTipo;
+use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
@@ -424,8 +425,10 @@ class CuentaCobroService
     /**
      * Contabilidad aprueba la cuenta (pasa al cuadro de pagos) o la devuelve a Paula: si se había cargado en Multifox
      * vuelve al cargue (con el número y el soporte limpios); si no requería Multifox, vuelve a la revisión.
+     * Al aprobar, Contabilidad confirma (o corrige) el valor con el que pasa a cuentas por pagar; si no lo envía,
+     * se usa el de la factura asociada (directas) o, en su defecto, el valor radicado.
      */
-    public function reviewAccounting(CuentaCobro $cuenta, string $decision, ?string $comment, User $user): CuentaCobro
+    public function reviewAccounting(CuentaCobro $cuenta, string $decision, ?string $comment, User $user, ?float $amount = null): CuentaCobro
     {
         $comment = $comment !== null ? (trim($comment) ?: null) : null;
         if (!$this->canReviewAccounting($cuenta, $user)) {
@@ -438,13 +441,14 @@ class CuentaCobroService
         $multifoxEmail = ($cuenta->multifoxUser ?? $cuenta->multifoxDecider)?->email;
         $liquidacionEmail = $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_LIQUIDACION)->with('uploader:id,email')->latest('id')->first()?->uploader?->email;
 
-        $cuenta = DB::transaction(function () use ($cuenta, $decision, $comment, $user) {
+        $cuenta = DB::transaction(function () use ($cuenta, $decision, $comment, $user, $amount) {
             $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
             if ($cuenta->status !== CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE) {
                 throw new InvalidArgumentException('Otro usuario ya revisó esta cuenta de cobro.');
             }
 
             if ($decision === 'aprobar') {
+                $this->applyAccountingAmount($cuenta, $amount ?: $this->payableAmount($cuenta), $user);
                 $this->moveToPayments($cuenta, $user);
                 $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
                     'Aprobada por Contabilidad. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
@@ -487,6 +491,45 @@ class CuentaCobroService
         }
 
         return $cuenta;
+    }
+
+    /**
+     * Valor con el que la cuenta pasa a cuentas por pagar: el de la factura asociada (directas) o el radicado.
+     */
+    public function payableAmount(CuentaCobro $cuenta): float
+    {
+        $invoiceAmount = $cuenta->isDirecta()
+            ? $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_FACTURA)->latest('id')->value('amount')
+            : null;
+
+        return (float) ($invoiceAmount ?? $cuenta->amount);
+    }
+
+    /**
+     * Contabilidad confirma el valor: si difiere del radicado se actualiza la cuenta (y la factura asociada) y queda
+     * en el historial.
+     */
+    protected function applyAccountingAmount(CuentaCobro $cuenta, float $amount, User $user): void
+    {
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Indica el valor de la cuenta de cobro: con él pasa a cuentas por pagar.');
+        }
+
+        $invoice = $cuenta->isDirecta()
+            ? $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_FACTURA)->latest('id')->first()
+            : null;
+        if ($invoice && (float) $invoice->amount !== $amount) {
+            $invoice->update(['amount' => $amount]);
+            FacturacionInvoice::where('cuenta_cobro_id', $cuenta->id)->update(['amount' => $amount]);
+        }
+
+        $previous = (float) $cuenta->amount;
+        if ($previous !== $amount) {
+            $cuenta->update(['amount' => $amount]);
+            $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
+                'Contabilidad ajustó el valor de $' . number_format($previous, 0, ',', '.') . ' a $' . number_format($amount, 0, ',', '.') . '.');
+        }
     }
 
     protected function accountingPayload(CuentaCobro $cuenta): array
@@ -778,6 +821,8 @@ class CuentaCobroService
             'contractor' => $cuenta->contractor,
             'document_number' => $cuenta->document_number,
             'amount' => (float) $cuenta->amount,
+            // Valor que Contabilidad confirma al aprobar (factura asociada en las directas)
+            'payable_amount' => $cuenta->status === CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE ? $this->payableAmount($cuenta) : null,
             'description' => $cuenta->description,
             'status' => $cuenta->status,
             'status_label' => CuentaCobroWorkflow::statusLabel($cuenta->status),

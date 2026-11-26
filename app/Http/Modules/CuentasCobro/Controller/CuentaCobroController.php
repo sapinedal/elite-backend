@@ -169,7 +169,7 @@ class CuentaCobroController extends Controller
     {
         return $this->attempt('registrar la aprobación de Contabilidad', function () use ($request, $cuenta) {
             $decision = $request->validated('decision');
-            $cuenta = $this->service->reviewAccounting($cuenta, $decision, $request->validated('comment'), $request->user());
+            $cuenta = $this->service->reviewAccounting($cuenta, $decision, $request->validated('comment'), $request->user(), $request->validated('amount') !== null ? (float) $request->validated('amount') : null);
 
             return $this->respond($cuenta, $request, match (true) {
                 $decision === 'aprobar' => 'Cuenta de cobro aprobada: pasó al cuadro de pagos.',
