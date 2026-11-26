@@ -80,6 +80,30 @@ class Corte extends Model
         return $this->hasMany(CorteInvoice::class, 'corte_id')->orderByDesc('id');
     }
 
+    /**
+     * Facturas vigentes: las del corte (inicial o de reemplazo) que ninguna nota crédito afecta. Si un corte facturado
+     * se queda sin facturas vigentes (todas anuladas con nota crédito), admite de nuevo una factura.
+     */
+    public function hasOpenInvoices(): bool
+    {
+        return !$this->allInvoicesCredited();
+    }
+
+    /**
+     * Todas las facturas del corte (inicial o de reemplazo) tienen una nota crédito que las afecta. Un corte sin
+     * facturas no cuenta como anulado.
+     */
+    public function allInvoicesCredited(): bool
+    {
+        $invoices = $this->relationLoaded('invoices') ? $this->invoices : $this->invoices()->get();
+        $credited = $invoices->where('document_type', CorteInvoice::TYPE_NOTA_CREDITO)
+            ->pluck('related_document')->filter()->map(fn ($n) => mb_strtoupper(trim($n)));
+        $facturas = $invoices->where('document_type', '!=', CorteInvoice::TYPE_NOTA_CREDITO);
+
+        return $facturas->isNotEmpty()
+            && $facturas->every(fn (CorteInvoice $i) => $credited->contains(mb_strtoupper(trim($i->invoice_number))));
+    }
+
     public static function codeFor(int $number): string
     {
         return self::CODE_PREFIX . ' ' . $number;

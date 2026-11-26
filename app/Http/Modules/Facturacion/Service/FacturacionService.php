@@ -342,6 +342,21 @@ class FacturacionService
     }
 
     /**
+     * El corte admite este documento: además de los estados, una factura nueva (no nota crédito ni reemplazo) va a un
+     * corte Aprobado o a uno Facturado cuyas facturas ya se anularon todas con nota crédito.
+     */
+    public static function corteAccepts(Corte $corte, ?string $documentType): bool
+    {
+        if (in_array($corte->status, self::corteStatusesFor($documentType), true)) {
+            return true;
+        }
+
+        return !FacturacionInvoice::requiresRelatedDocument($documentType)
+            && $corte->status === CorteWorkflow::STATUS_FACTURADO
+            && $corte->allInvoicesCredited();
+    }
+
+    /**
      * A qué puede asociar el residente: sus cortes con las tres aprobaciones y sus órdenes pendientes de factura;
      * la cotización, a los contratos de sus proyectos (se radica como anticipo).
      */
@@ -352,12 +367,16 @@ class FacturacionService
         $cortes = Corte::query()
             ->where('created_by', $user->id)
             ->when($isAnticipo, fn ($q) => $q->whereRaw('1 = 0'))
-            ->whereIn('status', self::corteStatusesFor($invoice?->document_type))
+            // Una factura nueva también puede ir a un corte Facturado con sus facturas anuladas por nota crédito
+            ->whereIn('status', array_unique([...self::corteStatusesFor($invoice?->document_type), CorteWorkflow::STATUS_FACTURADO]))
             ->with(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code'])
+            ->with('invoices:id,corte_id,document_type,invoice_number,related_document')
             ->withCount('invoices')
             ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [CorteWorkflow::STATUS_APROBADO])
             ->orderByDesc('approved_at')
-            ->get();
+            ->get()
+            ->filter(fn (Corte $corte) => self::corteAccepts($corte, $invoice?->document_type))
+            ->values();
 
         // Órdenes esperando la factura del proveedor (sin factura cargada). A una orden solo se asocia la factura,
         // cuenta de cobro o reembolso del proveedor, nunca notas crédito, facturas de reemplazo ni cotizaciones.
@@ -631,10 +650,10 @@ class FacturacionService
         if ($isCorte && !in_array($target->status, CorteWorkflow::INVOICEABLE_STATUSES, true)) {
             throw new InvalidArgumentException("El {$target->label()} aún no tiene las tres aprobaciones.");
         }
-        if ($isCorte && !in_array($target->status, self::corteStatusesFor($invoice->document_type), true)) {
+        if ($isCorte && !self::corteAccepts($target, $invoice->document_type)) {
             throw new InvalidArgumentException(FacturacionInvoice::requiresRelatedDocument($invoice->document_type)
                 ? "El {$target->label()} aún no tiene una factura que esta {$invoice->documentTypeLabel()} pueda afectar."
-                : "El {$target->label()} ya tiene factura asociada. Para corregirla usa una nota crédito o una factura de reemplazo.");
+                : "El {$target->label()} ya tiene una factura vigente. Para corregirla carga primero la nota crédito que la anula (o usa una factura de reemplazo).");
         }
 
         if (!$isCorte) {

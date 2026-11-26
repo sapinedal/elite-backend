@@ -10,6 +10,7 @@ use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteWorkflow;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroHistory;
+use App\Http\Modules\CuentasCobro\Service\CuentaCobroWorkflow;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Facturacion\Service\FacturacionStorageService;
 use App\Http\Modules\Ordenes\Models\Orden;
@@ -191,6 +192,20 @@ class RegistroDeletionService
         return $orden;
     }
 
+    /**
+     * Factura de una orden asociada por error: si ya se cargó la entrada de almacén (que depende de la factura) se
+     * quita primero, y la orden vuelve a esperar la factura.
+     */
+    protected function deleteOrdenFactura(OrdenDocument $factura, string $reason, User $user): Orden
+    {
+        $entrada = OrdenDocument::where('orden_id', $factura->orden_id)->where('step', OrdenWorkflow::STEP_ENTRADA)->first();
+        if ($entrada) {
+            $this->deleteOrdenDocument($entrada, $reason, $user);
+        }
+
+        return $this->deleteOrdenDocument($factura->fresh(), $reason, $user);
+    }
+
     // ---------------------------------------------------------------- Anticipos y cuentas de cobro
 
     public function deleteAnticipo(Anticipo $anticipo, string $reason, User $user): void
@@ -222,6 +237,8 @@ class RegistroDeletionService
             $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
 
             $this->pagos->annulForDeletedSource('cuenta_cobro_id', $cuenta->id, $reason, $user);
+            // La factura del mes asociada (cuentas directas) vuelve a pendiente de obra
+            FacturacionInvoice::releaseWhere('cuenta_cobro_id', $cuenta->id, $reason);
 
             $cuenta->history()->create([
                 'action' => CuentaCobroHistory::ACTION_ELIMINADA,
@@ -232,6 +249,40 @@ class RegistroDeletionService
         });
 
         $this->audit('cuenta_cobro', $cuenta->id, (string) $cuenta->code, $reason, $user);
+    }
+
+    /**
+     * Cuenta de cobro directa: quita la factura asociada por error. La liquidación ERP (que depende de la factura) se
+     * quita también; si ya estaba en el cuadro de pagos se anula su cuenta (sin pagos). Vuelve a esperar la factura.
+     */
+    public function deleteCuentaCobroFactura(CuentaCobro $cuenta, string $reason, User $user): CuentaCobro
+    {
+        $reason = $this->assertAllowed($user, self::PERMISSION_FACTURACION, $cuenta->project_id, $reason);
+
+        return DB::transaction(function () use ($cuenta, $reason, $user) {
+            $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
+            $this->pagos->annulForDeletedSource('cuenta_cobro_id', $cuenta->id, $reason, $user);
+
+            $documents = $cuenta->documents()->whereIn('step', [CuentaCobroWorkflow::STEP_FACTURA, CuentaCobroWorkflow::STEP_LIQUIDACION])->get();
+            foreach ($documents as $document) {
+                $cuenta->history()->create([
+                    'stage' => $document->step,
+                    'action' => CuentaCobroHistory::ACTION_DOCUMENTO_ELIMINADO,
+                    'comment' => "{$document->stepLabel()} N.º {$document->number} eliminada. Motivo: {$reason}",
+                    'file_name' => $document->file_name,
+                    'user_id' => $user->id,
+                ]);
+                $document->delete();
+            }
+
+            $cuenta->update([
+                'status' => CuentaCobroWorkflow::STATUS_PENDIENTE_FACTURA,
+                'current_step' => CuentaCobroWorkflow::STEP_FACTURA,
+                'completed_at' => null,
+            ]);
+
+            return $cuenta;
+        });
     }
 
     // ---------------------------------------------------------------- Facturas del mes
@@ -250,9 +301,11 @@ class RegistroDeletionService
             FacturacionInvoice::TARGET_CORTE => $invoice->corte_invoice_id && ($ci = CorteInvoice::find($invoice->corte_invoice_id))
                 ? $this->deleteCorteInvoice($ci, $reason, $user) : null,
             FacturacionInvoice::TARGET_ORDEN => $invoice->orden_document_id && ($doc = OrdenDocument::find($invoice->orden_document_id))
-                ? $this->deleteOrdenDocument($doc, $reason, $user) : null,
+                ? $this->deleteOrdenFactura($doc, $reason, $user) : null,
             FacturacionInvoice::TARGET_ANTICIPO => $invoice->anticipo_id && ($anticipo = Anticipo::find($invoice->anticipo_id))
                 ? $this->deleteAnticipo($anticipo, $reason, $user) : null,
+            FacturacionInvoice::TARGET_CUENTA_COBRO => $invoice->cuenta_cobro_id && ($cuenta = CuentaCobro::find($invoice->cuenta_cobro_id))
+                ? $this->deleteCuentaCobroFactura($cuenta, $reason, $user) : null,
             default => null,
         };
 

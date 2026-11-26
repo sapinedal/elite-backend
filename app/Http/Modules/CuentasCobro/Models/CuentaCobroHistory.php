@@ -19,6 +19,7 @@ class CuentaCobroHistory extends Model
     public const ACTION_REQUIERE_MULTIFOX = 'requiere_multifox'; // Paula decidió que requiere Multifox
     public const ACTION_MULTIFOX = 'multifox';           // Cargada en Multifox: pasa a la aprobación de Contabilidad
     public const ACTION_DOCUMENTO = 'documento'; // Cuenta directa: cargue ERP, factura o liquidación ERP
+    public const ACTION_DOCUMENTO_ELIMINADO = 'documento_eliminado'; // Factura (y liquidación) quitada por error
     public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Aprobada por Contabilidad: pasa al cuadro de pagos
     public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Devuelta a Paula (Multifox)
     public const ACTION_ELIMINADA = 'eliminada'; // Cuenta de cobro eliminada por error

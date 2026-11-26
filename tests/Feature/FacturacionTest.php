@@ -642,3 +642,54 @@ test('la orden ERP marcada para pago pasa de una vez a cuentas por pagar y la en
     expect(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(1)
         ->and($orden->history()->where('action', 'contabilidad_aprobada')->value('comment'))->toContain('Legalizada');
 });
+
+test('un corte cuya factura se anuló con nota crédito vuelve a admitir una factura nueva', function () {
+    mockClaimUploads();
+    $corte = makeCorte($this->residente);
+
+    $fe = uploadInvoice(['invoice_number' => '131']);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$fe->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertOk();
+
+    // Con la factura vigente no se lista ni acepta otra factura inicial
+    $nueva = uploadInvoice(['invoice_number' => '140']);
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$nueva->id}")->assertOk()->json('data');
+    expect(collect($targets['cortes'])->pluck('id')->all())->not->toContain($corte->id);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$nueva->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertStatus(422);
+
+    // La nota crédito anula la FE 131
+    $nc = uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '3131', 'related_document' => 'FE 131']);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$nc->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertOk();
+
+    // Ya aparece y acepta la factura nueva
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$nueva->id}")->assertOk()->json('data');
+    expect(collect($targets['cortes'])->pluck('id')->all())->toContain($corte->id);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$nueva->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertOk();
+    expect($corte->invoices()->count())->toBe(3);
+
+    // Con la nueva vigente, otra factura inicial ya no entra
+    $otra = uploadInvoice(['invoice_number' => '150']);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$otra->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertStatus(422);
+});
+
+test('quitar una factura mal asociada a una orden con entrada la deja otra vez esperando factura', function () {
+    mockClaimUploads();
+    // Deshacer en la orden exige también ordenes.eliminar (igual que cortes.eliminar para los cortes)
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'ordenes.eliminar', 'guard_name' => 'web']);
+    $this->contabilidad->givePermissionTo(['facturacion.eliminar', 'ordenes.eliminar']);
+    $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
+    $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+    $orden = Orden::create([
+        'code' => 'ORD-0020', 'description' => 'Pintura', 'project_id' => $this->project->id, 'chapter' => 'Acabados', 'activity' => 'Pintura',
+        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
+        'storage_path' => 'tecnica/Ordenes/ORD-0020', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
+    ]);
+    $fe = uploadInvoice(['invoice_number' => '777']);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$fe->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])->assertOk();
+    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-1', 'upload_token' => (string) Str::uuid()])->assertCreated();
+
+    $this->actingAs($this->contabilidad)->deleteJson("/api/v1/facturacion/{$fe->id}", ['reason' => 'Factura de otro proveedor'])->assertOk();
+
+    $orden->refresh();
+    expect($orden->status)->toBe(OrdenWorkflow::STATUS_PENDIENTE_FACTURA)
+        ->and($orden->documents()->whereIn('step', [OrdenWorkflow::STEP_FACTURA, OrdenWorkflow::STEP_ENTRADA])->count())->toBe(0);
+});

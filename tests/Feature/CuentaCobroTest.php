@@ -281,3 +281,31 @@ test('la cuenta directa (con frente) sigue cargue ERP, factura de Facturas del m
         ->assertJsonPath('data.progress.4.state', 'aprobado')
         ->assertJsonPath('data.progress.5.state', 'aprobado');
 });
+
+test('quitar la factura mal asociada a una cuenta directa quita también la liquidación y vuelve a esperar factura', function () {
+    $tower = \App\Http\Modules\Configuracion\Models\Tower::create(['project_id' => $this->project->id, 'name' => 'TORRE 1']);
+    $cuenta = CuentaCobro::create([
+        'code' => 'CC-0099', 'tipo_id' => $this->sst->id, 'project_id' => $this->project->id, 'tower_id' => $tower->id,
+        'contractor_id' => $this->contractor->id, 'document_number' => 'C-C 1', 'amount' => 1000000,
+        'status' => CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null,
+        'storage_path' => 'x/cc', 'file_name' => 'cc.pdf', 'file_path' => 'x/cc/cc.pdf', 'created_by' => $this->residente->id,
+    ]);
+    foreach (['erp' => 'ERP-1', 'factura' => 'FE 5', 'liquidacion_erp' => 'LIQ-1'] as $step => $number) {
+        $cuenta->documents()->create(['step' => $step, 'number' => $number, 'file_name' => "{$step}.pdf", 'file_path' => "x/cc/{$step}.pdf", 'uploaded_by' => $this->residente->id]);
+    }
+    $invoice = \App\Http\Modules\Facturacion\Models\FacturacionInvoice::create([
+        'period' => '2026-11-01', 'contractor_id' => $this->contractor->id, 'supplier_name' => 'X', 'document_type' => 'factura',
+        'invoice_number' => '5', 'file_name' => 'fe.pdf', 'file_path' => 'contabilidad/fe.pdf', 'file_size' => 10,
+        'status' => 'procesada', 'target_type' => 'cuenta_cobro', 'cuenta_cobro_id' => $cuenta->id, 'processed_by' => $this->residente->id, 'processed_at' => now(),
+    ]);
+    $this->mock(\App\Http\Modules\Facturacion\Service\FacturacionStorageService::class, fn ($mock) => $mock->shouldReceive('delete'));
+    Permission::firstOrCreate(['name' => 'facturacion.eliminar', 'guard_name' => 'web']);
+    $this->admin->givePermissionTo('facturacion.eliminar');
+
+    $this->actingAs($this->admin)->deleteJson("/api/v1/facturacion/{$invoice->id}", ['reason' => 'Factura equivocada'])->assertOk();
+
+    $cuenta->refresh();
+    expect($cuenta->status)->toBe(CuentaCobroWorkflow::STATUS_PENDIENTE_FACTURA)
+        ->and($cuenta->current_step)->toBe(CuentaCobroWorkflow::STEP_FACTURA)
+        ->and($cuenta->documents()->pluck('step')->all())->toBe(['erp']);
+});

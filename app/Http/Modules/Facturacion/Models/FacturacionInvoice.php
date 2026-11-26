@@ -206,6 +206,7 @@ class FacturacionInvoice extends Model
                 'corte_invoice_id' => null,
                 'orden_document_id' => null,
                 'anticipo_id' => null,
+                'cuenta_cobro_id' => null,
                 'processed_comment' => "Liberada: se eliminó el registro al que estaba asociada. Motivo: {$reason}",
                 'processed_by' => null,
                 'processed_at' => null,
