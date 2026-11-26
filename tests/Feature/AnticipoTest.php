@@ -201,3 +201,38 @@ test('el correo se renderiza con los datos del anticipo', function () {
         ->toContain('$25.000.000')
         ->toContain('Anticipo Multifox');
 });
+
+test('un anticipo aprobado antes del paso de contrato / OC puede adjuntarlo sin cambiar su estado', function () {
+    radicarAnticipo()->assertCreated();
+    $anticipo = Anticipo::first();
+    // Ya en el cuadro de pagos, sin contrato / OC (aprobado antes de existir el paso)
+    $anticipo->update(['status' => AnticipoWorkflow::STATUS_COMPLETADO, 'current_stage' => null, 'approved_at' => now()]);
+
+    $this->actingAs($this->residente)->getJson("/api/v1/anticipos/{$anticipo->id}")->assertOk()
+        ->assertJsonPath('data.can_upload_support', true)
+        ->assertJsonPath('data.progress.2.key', AnticipoWorkflow::STEP_SOPORTE)
+        ->assertJsonPath('data.progress.2.state', 'pendiente');
+
+    // Solo quien lo radicó
+    $this->actingAs($this->contabilidad)->getJson("/api/v1/anticipos/{$anticipo->id}")->assertOk()->assertJsonPath('data.can_upload_support', false);
+
+    $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/support", ['upload_token' => (string) Str::uuid()])
+        ->assertOk()
+        ->assertJsonPath('data.status', AnticipoWorkflow::STATUS_COMPLETADO)
+        ->assertJsonPath('data.progress.2.state', 'aprobado')
+        ->assertJsonPath('data.can_upload_support', false);
+    expect(sentTo(AnticipoNotificationMail::EVENT_ACCOUNTING, 'contabilidad@example.com'))->toBeFalse();
+
+    // No se adjunta dos veces
+    $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/support", ['upload_token' => (string) Str::uuid()])->assertStatus(422);
+});
+
+test('la migración deja en Pendiente soporte los anticipos que esperaban Multifox sin contrato / OC', function () {
+    radicarAnticipo()->assertCreated();
+    $anticipo = Anticipo::first();
+    $anticipo->update(['status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD, 'current_stage' => null, 'approved_at' => now()]);
+
+    (require base_path('database/migrations/2026_11_27_120000_anticipos_pendientes_de_soporte.php'))->up();
+
+    expect($anticipo->fresh()->status)->toBe(AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE);
+});
