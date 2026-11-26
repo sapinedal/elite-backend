@@ -335,11 +335,18 @@ class OrdenService
             ...$file,
         ]);
 
-        // Con el último documento (entrada) pasa a la aprobación de Contabilidad antes de cuentas por pagar
+        // Con el último documento (entrada) pasa a la aprobación de Contabilidad antes de cuentas por pagar, salvo que
+        // quien la carga indique que ya quedó aprobada con el cargue: entonces se completa y pasa directo a cuentas por pagar
         $nextStep = OrdenWorkflow::nextStep($step);
-        $orden->update($nextStep
-            ? ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
-            : ['status' => OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null]);
+        $approvedWithUpload = !$nextStep && !empty($data['approved_with_upload']);
+        if ($approvedWithUpload && $orden->documents()->where('step', OrdenWorkflow::STEP_FACTURA)->latest('id')->value('amount') === null) {
+            throw new InvalidArgumentException('La factura del proveedor no tiene valor: debe pasar por la aprobación de Contabilidad para registrarlo.');
+        }
+        $orden->update(match (true) {
+            (bool) $nextStep => ['status' => OrdenWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep],
+            $approvedWithUpload => ['status' => OrdenWorkflow::STATUS_COMPLETADA, 'current_step' => null, 'completed_at' => now()],
+            default => ['status' => OrdenWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null],
+        });
 
         $summary = OrdenWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : '');
         $orden->history()->create([
@@ -349,6 +356,11 @@ class OrdenService
             'file_name' => $document->file_name,
             'user_id' => $user->id,
         ]);
+
+        if ($approvedWithUpload) {
+            $this->log($orden, OrdenHistory::ACTION_APROBADA_CON_CARGUE, $user, $step, 'Aprobada con el cargue de la entrada. Pasa directo a cuentas por pagar.');
+            $this->pagos->registerFromOrden($orden, $user);
+        }
 
         return $document;
     }

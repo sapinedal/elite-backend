@@ -5,13 +5,14 @@ use Illuminate\Support\Facades\Route;
 
 /**
  * Facturas del mes: Contabilidad (cortes.facturar) carga las facturas en la carpeta del mes y ve el panel;
- * el residente (cortes.crear / ordenes.crear) las asocia a su corte aprobado o a su orden con los soportes.
+ * el residente (cortes.crear / ordenes.crear / cuentas_cobro.crear) las asocia a su corte aprobado, a su orden o a su
+ * cuenta de cobro directa. Los indirectos los aprueba el analista contable (facturacion.aprobar_indirecto) con su valor.
  * La autorización por factura (quién ve / edita / asocia) la resuelve FacturacionService.
  */
 Route::prefix('facturacion')->middleware('auth:sanctum')->group(function () {
-    $all = 'permission:cortes.facturar|cortes.crear|ordenes.crear';
+    $all = 'permission:cortes.facturar|cortes.crear|ordenes.crear|cuentas_cobro.crear|facturacion.aprobar_indirecto';
     $manage = 'permission:cortes.facturar';
-    $associate = 'permission:cortes.crear|ordenes.crear';
+    $associate = 'permission:cortes.crear|ordenes.crear|cuentas_cobro.crear';
 
     Route::get('/catalogs', [FacturacionController::class, 'catalogs'])->middleware($all);
     Route::post('/upload-url', [FacturacionController::class, 'uploadUrl'])->middleware($all);
@@ -26,5 +27,7 @@ Route::prefix('facturacion')->middleware('auth:sanctum')->group(function () {
     // Pendientes: Contabilidad (cortes.facturar); procesadas: facturacion.eliminar (lo valida RegistroDeletionService)
     Route::delete('/{invoice}', [FacturacionController::class, 'destroy'])->middleware('permission:cortes.facturar|facturacion.eliminar');
     Route::get('/{invoice}/download', [FacturacionController::class, 'download'])->middleware($all);
+    // Analista contable: registra el valor del indirecto y lo pasa a cuentas por pagar
+    Route::post('/{invoice}/approve-indirecto', [FacturacionController::class, 'approveIndirecto'])->middleware('permission:facturacion.aprobar_indirecto');
     Route::post('/{invoice}/associate', [FacturacionController::class, 'associate'])->middleware($associate);
 });

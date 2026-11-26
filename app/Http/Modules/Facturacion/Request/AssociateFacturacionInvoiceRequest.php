@@ -21,7 +21,7 @@ class AssociateFacturacionInvoiceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'target_type' => ['required', Rule::in([FacturacionInvoice::TARGET_CORTE, FacturacionInvoice::TARGET_ORDEN, FacturacionInvoice::TARGET_ANTICIPO])],
+            'target_type' => ['required', Rule::in([FacturacionInvoice::TARGET_CORTE, FacturacionInvoice::TARGET_ORDEN, FacturacionInvoice::TARGET_ANTICIPO, FacturacionInvoice::TARGET_CUENTA_COBRO])],
             // Corte, orden o, para la cotización que se radica como anticipo, el contrato
             'target_id' => ['required', 'integer'],
             // Solo si Contabilidad no los registró (lo valida FacturacionService)

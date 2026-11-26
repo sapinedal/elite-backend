@@ -8,8 +8,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * Cargue (POST, con archivo) o corrección (PUT, sin archivo) de una factura del mes por Contabilidad.
- * Nota crédito y factura de reemplazo exigen el documento que afectan; el indirecto exige el valor (va directo a
- * cuentas por pagar).
+ * Nota crédito y factura de reemplazo exigen el documento que afectan. El indirecto se carga sin valor: lo registra
+ * el analista contable al aprobarlo (FacturacionService ignora el valor que llegue).
  */
 class SaveFacturacionInvoiceRequest extends FormRequest
 {
@@ -21,8 +21,6 @@ class SaveFacturacionInvoiceRequest extends FormRequest
     public function rules(): array
     {
         $affectsAnother = FacturacionInvoice::requiresRelatedDocument($this->input('document_type'));
-        // El indirecto pasa de una vez a cuentas por pagar: necesita el valor
-        $isIndirecto = FacturacionInvoice::isIndirecto($this->input('document_type'));
 
         return [
             // El mes define la carpeta del archivo: solo se indica al cargar
@@ -33,7 +31,7 @@ class SaveFacturacionInvoiceRequest extends FormRequest
             // Proveedor como viene en el nombre del archivo, si no está en el catálogo
             'supplier_name' => ['required_without:contractor_id', 'nullable', 'string', 'max:255'],
             'related_document' => [$affectsAnother ? 'required' : 'nullable', 'string', 'max:100'],
-            'amount' => [$isIndirecto ? 'required' : 'nullable', 'numeric', 'min:1', 'max:9999999999999'],
+            'amount' => ['nullable', 'numeric', 'min:1', 'max:9999999999999'],
             'observation' => ['nullable', 'string', 'max:2000'],
             'upload_token' => [$this->isMethod('post') ? 'required' : 'prohibited', 'uuid'],
         ];

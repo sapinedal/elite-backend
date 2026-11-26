@@ -271,14 +271,23 @@ class CorteService
 
             $stage = $corte->current_stage;
 
-            if ($decision === 'aprobar') {
+            // Solo el Interventor puede rechazar y dejar que el corte continúe; el rechazo queda marcado en el corte
+            $continues = $decision === 'rechazar_continuar';
+            if ($continues && $stage !== CorteWorkflow::STAGE_INTERVENTOR) {
+                throw new InvalidArgumentException('Solo el Interventor puede rechazar el corte y dejar que continúe.');
+            }
+
+            if ($decision === 'aprobar' || $continues) {
                 $nextStage = CorteWorkflow::nextStage($stage);
                 $corte->update([
                     'status' => $nextStage ? CorteWorkflow::statusFor($nextStage) : CorteWorkflow::STATUS_APROBADO,
                     'current_stage' => $nextStage,
                     'approved_at' => $nextStage ? null : now(),
+                    ...($continues ? ['interventor_rejected' => true] : []),
                 ]);
-                $this->log($corte, CorteHistory::ACTION_APROBADO, $user, $stage, $comment);
+                $continues
+                    ? $this->log($corte, CorteHistory::ACTION_RECHAZADO_CONTINUA, $user, $stage, 'Rechazado por el Interventor, continúa el flujo sin su aprobación. ' . $comment)
+                    : $this->log($corte, CorteHistory::ACTION_APROBADO, $user, $stage, $comment);
             } else {
                 $corte->update([
                     'status' => CorteWorkflow::STATUS_DEVUELTO,
@@ -291,8 +300,8 @@ class CorteService
             return [$corte, $stage];
         });
 
-        $decision === 'aprobar'
-            ? $this->notifications->approved($corte, $stage, $comment)
+        $decision !== 'devolver'
+            ? $this->notifications->approved($corte, $stage, $decision === 'rechazar_continuar' ? "Rechazado por el Interventor (continúa sin su aprobación): {$comment}" : $comment)
             : $this->notifications->returned($corte, $stage, (string) $comment);
 
         return $corte;
@@ -333,6 +342,7 @@ class CorteService
                 'contract_id' => $data['contract_id'],
                 'status' => CorteWorkflow::statusFor($firstStage),
                 'current_stage' => $firstStage,
+                'interventor_rejected' => false,
                 ...$file,
             ]);
 
@@ -402,6 +412,8 @@ class CorteService
             $state = match (true) {
                 $entry?->action === CorteHistory::ACTION_APROBADO => 'aprobado',
                 $entry?->action === CorteHistory::ACTION_DEVUELTO => 'devuelto',
+                // El Interventor rechazó pero dejó continuar el corte
+                $entry?->action === CorteHistory::ACTION_RECHAZADO_CONTINUA => 'rechazado_continua',
                 $corte->current_stage === $stage => 'actual',
                 default => 'pendiente',
             };
@@ -435,6 +447,9 @@ class CorteService
             'current_stage' => $corte->current_stage,
             'current_stage_label' => CorteWorkflow::stageLabel($corte->current_stage),
             'returned_stage_label' => CorteWorkflow::stageLabel($corte->returned_stage),
+            // Rechazado por el Interventor pero continuó el flujo (Rechazado pero aprobado)
+            'interventor_rejected' => (bool) $corte->interventor_rejected,
+            'can_reject_continue' => $corte->current_stage === CorteWorkflow::STAGE_INTERVENTOR && $this->canReview($corte, $user),
             'file_name' => $corte->file_name,
             'file_size' => $corte->file_size,
             'created_by' => $corte->creator ? ['id' => $corte->creator->id, 'name' => $corte->creator->name] : null,

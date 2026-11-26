@@ -213,3 +213,71 @@ test('el correo se renderiza con los datos de la cuenta de cobro', function () {
 
     expect($html)->toContain('CC-0001 · SST')->toContain('SEGURIDAD TOTAL SAS')->toContain('$3.500.000')->toContain('¿Requiere Multifox?');
 });
+
+test('la cuenta directa (con frente) sigue cargue ERP, factura de Facturas del mes, liquidación ERP y Contabilidad', function () {
+    $this->mock(DirectUploadService::class, function ($mock) {
+        $mock->shouldReceive('forModule')->andReturnSelf();
+        $mock->shouldReceive('claimUpload')->andReturnUsing(fn ($token, $user, $directory) => [
+            'file_name' => "{$token}.pdf", 'file_path' => "{$directory}/{$token}.pdf", 'file_size' => 1000, 'file_mime' => 'application/pdf',
+        ]);
+        $mock->shouldReceive('cleanSegment')->andReturnUsing(fn ($value) => trim($value));
+        $mock->shouldReceive('copyTo')->andReturnUsing(fn ($path, $directory) => "{$directory}/" . basename($path));
+    });
+    $tower = \App\Http\Modules\Configuracion\Models\Tower::create(['project_id' => $this->project->id, 'name' => 'TORRE 1']);
+    $this->residente->givePermissionTo('cortes.ver');
+
+    radicarCuenta(['tower_id' => $tower->id])->assertCreated()->assertJsonPath('data.is_directa', true);
+    $cuenta = CuentaCobro::first();
+    aprobarCuenta($cuenta);
+
+    // No pasa por Multifox: queda en el cargue ERP
+    $cuenta->refresh();
+    expect($cuenta->status)->toBe(CuentaCobroWorkflow::STATUS_PENDIENTE_ERP)
+        ->and($cuenta->current_step)->toBe(CuentaCobroWorkflow::STEP_ERP)
+        ->and(cuentaMailTo(CuentaCobroNotificationMail::EVENT_MULTIFOX_REVIEW, 'paula@example.com'))->toBeFalse()
+        ->and(cuentaMailTo(CuentaCobroNotificationMail::EVENT_STEP_PENDING, 'residente@example.com'))->toBeTrue();
+    $this->actingAs($this->paula)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/multifox-decision", ['requires_multifox' => false])->assertStatus(422);
+
+    // El cargue ERP lo hace quien la radicó o quien tenga cuentas_cobro.cargar_erp
+    $this->actingAs($this->director)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/documents", ['number' => 'ERP-1', 'upload_token' => (string) Str::uuid()])
+        ->assertStatus(422);
+    $erp = User::create(['name' => 'Erp', 'email' => 'erp@example.com', 'password' => 'secret']);
+    $erp->givePermissionTo(['cuentas_cobro.ver', 'cuentas_cobro.cargar_erp', 'proyectos.ver_todos']);
+    $this->actingAs($erp)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/documents", ['number' => 'ERP-1', 'upload_token' => (string) Str::uuid()])
+        ->assertCreated()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_FACTURA)
+        ->assertJsonPath('data.documents.0.step', CuentaCobroWorkflow::STEP_ERP);
+
+    // La factura no se carga en el módulo: el residente la asocia desde Facturas del mes
+    $this->actingAs($this->residente)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/documents", ['number' => 'FE 1', 'upload_token' => (string) Str::uuid()])
+        ->assertStatus(422);
+    $invoice = \App\Http\Modules\Facturacion\Models\FacturacionInvoice::create([
+        'period' => '2026-11-01', 'contractor_id' => $this->contractor->id, 'supplier_name' => $this->contractor->name,
+        'document_type' => 'factura', 'invoice_number' => '77', 'amount' => 3500000, 'file_name' => 'FE 77.pdf',
+        'file_path' => 'contabilidad/2026-11/FE 77.pdf', 'file_size' => 10, 'uploaded_by' => $this->admin->id, 'status' => 'pendiente',
+    ]);
+    $this->actingAs($this->residente)->getJson('/api/v1/facturacion/targets')->assertOk()
+        ->assertJsonPath('data.cuentas_cobro.0.id', $cuenta->id);
+    $this->actingAs($this->residente)->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'cuenta_cobro', 'target_id' => $cuenta->id])
+        ->assertOk();
+    expect($invoice->fresh()->cuenta_cobro_id)->toBe($cuenta->id)
+        ->and($cuenta->fresh()->status)->toBe(CuentaCobroWorkflow::STATUS_PENDIENTE_LIQUIDACION);
+
+    // Liquidación ERP: pasa a Contabilidad, que la devuelve a la liquidación y luego la aprueba
+    $this->actingAs($this->residente)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/documents", ['number' => 'LIQ-1', 'upload_token' => (string) Str::uuid()])
+        ->assertCreated()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
+    $this->actingAs($this->contador)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/accounting", ['decision' => 'devolver', 'comment' => 'Liquidación errada'])
+        ->assertOk()->assertJsonPath('data.status', CuentaCobroWorkflow::STATUS_PENDIENTE_LIQUIDACION);
+    expect(PagoCuenta::count())->toBe(0);
+    $this->actingAs($erp)->postJson("/api/v1/cuentas-cobro/{$cuenta->id}/documents", ['number' => 'LIQ-2', 'upload_token' => (string) Str::uuid()])
+        ->assertCreated();
+    aprobarContabilidad($cuenta);
+
+    $pago = PagoCuenta::first();
+    expect($pago->frente)->toBe('TORRE 1')
+        ->and((float) $pago->amount)->toBe(3500000.0);
+    $this->actingAs($this->residente)->getJson("/api/v1/cuentas-cobro/{$cuenta->id}")->assertOk()
+        ->assertJsonCount(3, 'data.documents')
+        ->assertJsonPath('data.progress.2.key', CuentaCobroWorkflow::STEP_ERP)
+        ->assertJsonPath('data.progress.4.state', 'aprobado')
+        ->assertJsonPath('data.progress.5.state', 'aprobado');
+});

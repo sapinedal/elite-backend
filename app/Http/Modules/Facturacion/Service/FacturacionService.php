@@ -10,6 +10,11 @@ use App\Http\Modules\Cortes\Models\CorteInvoice;
 use App\Http\Modules\Cortes\Service\CorteInvoiceService;
 use App\Http\Modules\Cortes\Service\CorteStorageService;
 use App\Http\Modules\Cortes\Service\CorteWorkflow;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobroDocument;
+use App\Http\Modules\CuentasCobro\Service\CuentaCobroService;
+use App\Http\Modules\CuentasCobro\Service\CuentaCobroStorageService;
+use App\Http\Modules\CuentasCobro\Service\CuentaCobroWorkflow;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Facturacion\Models\FacturacionInvoiceSupport;
 use App\Http\Modules\Ftra\Models\FtraContractor;
@@ -38,15 +43,20 @@ use InvalidArgumentException;
  * La cotización no va a un corte ni a una orden: el residente la radica como anticipo de un contrato (queda
  * pendiente del Director de Obra en el flujo de anticipos).
  *
- * El indirecto no pasa por obra: al cargarlo queda procesado y pasa de una vez a cuentas por pagar.
+ * La cuenta de cobro directa (con frente) también recibe su factura aquí, después del cargue ERP.
+ *
+ * El indirecto no pasa por obra: se carga sin valor (Pendiente aprobación contable) y el analista contable
+ * (facturacion.aprobar_indirecto) lo aprueba registrando el valor: queda procesado y pasa a cuentas por pagar.
  */
 class FacturacionService
 {
     public const PERMISSION_MANAGE = 'cortes.facturar'; // Contabilidad: carga facturas y ve el panel
+    public const PERMISSION_APPROVE_INDIRECTO = 'facturacion.aprobar_indirecto'; // Analista contable: valor del indirecto
 
     // Pestañas del listado
     public const SCOPE_PENDING = 'pending';
     public const SCOPE_PROCESSED = 'processed';
+    public const SCOPE_INDIRECTOS = 'indirectos'; // Indirectos esperando la aprobación del analista contable
     public const SCOPE_ALL = 'all';
 
     public function __construct(
@@ -57,6 +67,8 @@ class FacturacionService
         protected OrdenStorageService $ordenStorage,
         protected AnticipoService $anticipos,
         protected PagoService $pagos,
+        protected CuentaCobroService $cuentasCobro,
+        protected CuentaCobroStorageService $cuentaCobroStorage,
     ) {
     }
 
@@ -70,7 +82,12 @@ class FacturacionService
      */
     public function canAssociate(User $user): bool
     {
-        return $user->can('cortes.crear') || $user->can('ordenes.crear') || $user->can('anticipos.crear');
+        return $user->can('cortes.crear') || $user->can('ordenes.crear') || $user->can('anticipos.crear') || $user->can('cuentas_cobro.crear');
+    }
+
+    public function canApproveIndirecto(User $user): bool
+    {
+        return $user->can(self::PERMISSION_APPROVE_INDIRECTO);
     }
 
     /**
@@ -79,6 +96,7 @@ class FacturacionService
     public function canView(FacturacionInvoice $invoice, User $user): bool
     {
         return $this->canManage($user)
+            || ($invoice->status === FacturacionInvoice::STATUS_PENDIENTE_CONTABLE && $this->canApproveIndirecto($user))
             || ($this->canAssociate($user) && ($invoice->status === FacturacionInvoice::STATUS_PENDIENTE || $invoice->processed_by === $user->id));
     }
 
@@ -109,6 +127,7 @@ class FacturacionService
             's3_root' => trim(config('facturacion.s3_root'), '/'),
             'can_manage' => $this->canManage($user),
             'can_associate' => $this->canAssociate($user),
+            'can_approve_indirecto' => $this->canApproveIndirecto($user),
         ];
     }
 
@@ -118,7 +137,7 @@ class FacturacionService
     public function list(User $user, string $scope, array $filters = []): array
     {
         $query = $this->scopedQuery($user, $scope)
-            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'pagoCuenta:id,status', 'supports']);
+            ->with(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'cuentaCobro:id,code,tipo_id', 'cuentaCobro.tipo:id,name', 'pagoCuenta:id,status', 'supports']);
 
         if (!empty($filters['period'])) {
             $query->whereDate('period', $this->parsePeriod($filters['period']));
@@ -144,6 +163,7 @@ class FacturacionService
             'page' => $page,
             'counts' => [
                 self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
+                self::SCOPE_INDIRECTOS => $this->scopedQuery($user, self::SCOPE_INDIRECTOS)->count(),
                 // Pendientes del residente: las de proveedores con cortes suyos esperando factura
                 'suggested' => $suggested->isEmpty() ? 0 : $this->scopedQuery($user, self::SCOPE_PENDING)->whereIn('contractor_id', $suggested)->count(),
             ],
@@ -160,6 +180,11 @@ class FacturacionService
         if ($scope === self::SCOPE_PROCESSED) {
             $query->where('status', FacturacionInvoice::STATUS_PROCESADA);
         }
+        if ($scope === self::SCOPE_INDIRECTOS) {
+            $query->where('status', FacturacionInvoice::STATUS_PENDIENTE_CONTABLE);
+
+            return $this->canManage($user) || $this->canApproveIndirecto($user) ? $query : $query->whereRaw('1 = 0');
+        }
 
         return $this->canManage($user)
             ? $query
@@ -168,14 +193,14 @@ class FacturacionService
 
     public function get(FacturacionInvoice $invoice, User $user): array
     {
-        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'pagoCuenta:id,status', 'supports.uploader:id,name']);
+        $invoice->load(['contractor:id,name,nit', 'uploader:id,name', 'processor:id,name', 'corte:id,code,contract_id', 'corte.contract:id,contract_code', 'orden:id,code', 'anticipo:id,code,contract_id', 'anticipo.contract:id,contract_code', 'cuentaCobro:id,code,tipo_id', 'cuentaCobro.tipo:id,name', 'pagoCuenta:id,status', 'supports.uploader:id,name']);
 
         return $this->present($invoice, $user, $this->suggestedContractorIds($user));
     }
 
     /**
      * Contabilidad carga una factura ya subida a S3: queda en la carpeta del mes, pendiente de obra.
-     * El indirecto no espera a obra: queda procesado y pasa de una vez a cuentas por pagar.
+     * El indirecto no espera a obra: se carga sin valor y queda pendiente de la aprobación del analista contable.
      */
     public function create(array $data, User $user): FacturacionInvoice
     {
@@ -192,36 +217,56 @@ class FacturacionService
             'document_type' => $data['document_type'],
             'invoice_number' => trim($data['invoice_number']),
             'related_document' => $affectsAnother ? trim($data['related_document']) : null,
-            'amount' => $data['amount'] ?? null,
+            // El valor del indirecto lo registra el analista contable al aprobarlo
+            'amount' => FacturacionInvoice::isIndirecto($data['document_type']) ? null : ($data['amount'] ?? null),
             'observation' => isset($data['observation']) ? (trim($data['observation']) ?: null) : null,
             'uploaded_by' => $user->id,
-            'status' => FacturacionInvoice::STATUS_PENDIENTE,
+            'status' => FacturacionInvoice::isIndirecto($data['document_type']) ? FacturacionInvoice::STATUS_PENDIENTE_CONTABLE : FacturacionInvoice::STATUS_PENDIENTE,
             ...$file,
         ];
 
-        if (!FacturacionInvoice::isIndirecto($data['document_type'])) {
-            return FacturacionInvoice::create($fields);
-        }
-
         try {
-            return DB::transaction(function () use ($fields, $user) {
-                $invoice = FacturacionInvoice::create($fields);
-                $cuenta = $this->pagos->registerFromIndirecto($invoice, $user);
-                $invoice->update([
-                    'status' => FacturacionInvoice::STATUS_PROCESADA,
-                    'target_type' => FacturacionInvoice::TARGET_PAGOS,
-                    'pago_cuenta_id' => $cuenta->id,
-                    'processed_by' => $user->id,
-                    'processed_at' => now(),
-                ]);
-
-                return $invoice;
-            });
+            return FacturacionInvoice::create($fields);
         } catch (\Throwable $e) {
             // Sin registro no debe quedar el archivo en la carpeta del mes
             $this->storage->delete($file['file_path']);
             throw $e;
         }
+    }
+
+    /**
+     * El analista contable aprueba el indirecto registrando su valor: queda procesado y pasa a cuentas por pagar
+     * (frente de indirectos).
+     */
+    public function approveIndirecto(FacturacionInvoice $invoice, float $amount, ?string $comment, User $user): FacturacionInvoice
+    {
+        if (!$this->canApproveIndirecto($user)) {
+            throw new InvalidArgumentException('Solo el analista contable puede aprobar los indirectos.');
+        }
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Indica el valor del indirecto: con él pasa a cuentas por pagar.');
+        }
+        $comment = $comment !== null ? (trim($comment) ?: null) : null;
+
+        return DB::transaction(function () use ($invoice, $amount, $comment, $user) {
+            $invoice = FacturacionInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE_CONTABLE) {
+                throw new InvalidArgumentException('Este indirecto no está pendiente de la aprobación contable.');
+            }
+
+            $invoice->update(['amount' => $amount]);
+            $cuenta = $this->pagos->registerFromIndirecto($invoice, $user);
+            $invoice->update([
+                'status' => FacturacionInvoice::STATUS_PROCESADA,
+                'target_type' => FacturacionInvoice::TARGET_PAGOS,
+                'pago_cuenta_id' => $cuenta->id,
+                'processed_comment' => $comment,
+                'processed_by' => $user->id,
+                'processed_at' => now(),
+            ]);
+
+            return $invoice;
+        });
     }
 
     /**
@@ -231,9 +276,12 @@ class FacturacionService
     public function update(FacturacionInvoice $invoice, array $data, User $user): FacturacionInvoice
     {
         $this->assertPendingForManager($invoice, $user);
-        // Cambiar a indirecto la mandaría a cuentas por pagar sin pasar por el cargue: se elimina y se vuelve a cargar
-        if (FacturacionInvoice::isIndirecto($data['document_type'])) {
-            throw new InvalidArgumentException('Para registrar un indirecto, elimina esta factura y cárgala de nuevo como Indirecto.');
+        // El indirecto sigue otro flujo (aprobación contable, no obra): cambiar a o desde indirecto exige volver a cargarla
+        $isIndirecto = FacturacionInvoice::isIndirecto($data['document_type']);
+        if ($isIndirecto !== FacturacionInvoice::isIndirecto($invoice->document_type)) {
+            throw new InvalidArgumentException($isIndirecto
+                ? 'Para registrar un indirecto, elimina esta factura y cárgala de nuevo como Indirecto.'
+                : 'Para cambiar el tipo de un indirecto, elimínalo y carga de nuevo la factura.');
         }
         $contractor = !empty($data['contractor_id']) ? FtraContractor::find($data['contractor_id']) : null;
         $affectsAnother = FacturacionInvoice::requiresRelatedDocument($data['document_type']);
@@ -244,7 +292,7 @@ class FacturacionService
             'document_type' => $data['document_type'],
             'invoice_number' => trim($data['invoice_number']),
             'related_document' => $affectsAnother ? trim($data['related_document']) : null,
-            'amount' => $data['amount'] ?? null,
+            'amount' => $isIndirecto ? null : ($data['amount'] ?? null),
             'observation' => isset($data['observation']) ? (trim($data['observation']) ?: null) : null,
         ]);
 
@@ -260,7 +308,7 @@ class FacturacionService
 
         DB::transaction(function () use ($invoice) {
             $invoice = FacturacionInvoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
-            if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE) {
+            if (!in_array($invoice->status, [FacturacionInvoice::STATUS_PENDIENTE, FacturacionInvoice::STATUS_PENDIENTE_CONTABLE], true)) {
                 throw new InvalidArgumentException('Obra ya procesó esta factura; no se puede eliminar.');
             }
             $invoice->delete();
@@ -277,7 +325,7 @@ class FacturacionService
         if ($invoice->target_type === FacturacionInvoice::TARGET_PAGOS) {
             throw new InvalidArgumentException('Este indirecto ya está en cuentas por pagar; anúlalo desde allí si se cargó por error.');
         }
-        if ($invoice->status !== FacturacionInvoice::STATUS_PENDIENTE) {
+        if (!in_array($invoice->status, [FacturacionInvoice::STATUS_PENDIENTE, FacturacionInvoice::STATUS_PENDIENTE_CONTABLE], true)) {
             throw new InvalidArgumentException('Obra ya procesó esta factura; no se puede modificar.');
         }
     }
@@ -324,6 +372,15 @@ class FacturacionService
             ->orderByDesc('approved_at')
             ->get();
 
+        // Cuentas de cobro directas del residente que ya pasaron el cargue ERP y esperan la factura
+        $cuentasCobro = CuentaCobro::query()
+            ->where('created_by', $user->id)
+            ->where('current_step', CuentaCobroWorkflow::STEP_FACTURA)
+            ->when(!$ordenCompatible, fn ($q) => $q->whereRaw('1 = 0'))
+            ->with(['tipo:id,name', 'project:id,name', 'tower:id,name', 'contractor:id,name'])
+            ->orderByDesc('approved_at')
+            ->get();
+
         // Contratos de los proyectos del residente para radicar la cotización como anticipo: los del proveedor de la
         // cotización primero. Los que tienen otro proveedor asignado no se ofrecen.
         $contractorId = $invoice?->contractor_id;
@@ -357,6 +414,18 @@ class FacturacionService
                 'project' => $orden->project?->name,
                 'tower' => $orden->tower?->name,
                 'approved_at' => $orden->approved_at?->toIso8601String(),
+            ])->values(),
+            'cuentas_cobro' => $cuentasCobro->map(fn (CuentaCobro $cuenta) => [
+                'id' => $cuenta->id,
+                'code' => $cuenta->code,
+                'label' => $cuenta->reference(),
+                'document_number' => $cuenta->document_number,
+                'amount' => (float) $cuenta->amount,
+                'contractor_id' => $cuenta->contractor_id,
+                'contractor' => $cuenta->contractor?->name,
+                'project' => $cuenta->project?->name,
+                'tower' => $cuenta->tower?->name,
+                'approved_at' => $cuenta->approved_at?->toIso8601String(),
             ])->values(),
             'contratos' => $contracts->map(fn (ContratacionContract $contract) => [
                 'id' => $contract->id,
@@ -397,6 +466,7 @@ class FacturacionService
             FacturacionInvoice::TARGET_CORTE => Corte::find($data['target_id']),
             FacturacionInvoice::TARGET_ORDEN => Orden::find($data['target_id']),
             FacturacionInvoice::TARGET_ANTICIPO => ContratacionContract::query()->accessibleBy($user)->find($data['target_id']),
+            FacturacionInvoice::TARGET_CUENTA_COBRO => CuentaCobro::find($data['target_id']),
             default => null,
         };
         $this->assertCanAssociate($invoice, $target, $targetType, $amount, $contractorId, $user);
@@ -409,6 +479,7 @@ class FacturacionService
         $copyPath = match ($targetType) {
             FacturacionInvoice::TARGET_CORTE => $this->corteStorage->copyInvoiceFile($target, $invoice->file_path),
             FacturacionInvoice::TARGET_ORDEN => $this->ordenStorage->copyStepFile($target, OrdenWorkflow::STEP_FACTURA, $invoice->file_path),
+            FacturacionInvoice::TARGET_CUENTA_COBRO => $this->cuentaCobroStorage->copyStepFile($target, CuentaCobroWorkflow::STEP_FACTURA, $invoice->file_path),
             default => null,
         };
         $file = $copyPath ? [...$invoice->only(['file_size', 'file_mime']), 'file_name' => basename($copyPath), 'file_path' => $copyPath] : [];
@@ -428,6 +499,7 @@ class FacturacionService
         match (true) {
             $record instanceof CorteInvoice => $this->corteInvoices->notifyUploaded($record),
             $record instanceof Anticipo => $this->anticipos->notifySubmitted($record, $comment),
+            $record instanceof CuentaCobroDocument => $this->cuentasCobro->notifyStepDocument($record),
             default => $this->ordenes->notifyStepDocument($record),
         };
 
@@ -438,10 +510,10 @@ class FacturacionService
      * Registra la factura en el corte o en la orden (con la copia $file), o radica el anticipo con la cotización,
      * y la marca como procesada por obra.
      *
-     * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument|Anticipo}
+     * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument|Anticipo|CuentaCobroDocument}
      */
     protected function associateRecords(
-        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract $target, string $targetType, $amount, ?int $contractorId,
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro $target, string $targetType, $amount, ?int $contractorId,
         array $file, ?string $comment, Collection $supports, User $user, ?string &$copyPath,
     ): array {
         return DB::transaction(function () use ($invoice, $target, $targetType, $amount, $contractorId, $file, $comment, $supports, $user, &$copyPath) {
@@ -464,6 +536,11 @@ class FacturacionService
                     'contractor_id' => $contractorId,
                     'observation' => $comment,
                 ], $file, $user),
+                FacturacionInvoice::TARGET_CUENTA_COBRO => $this->cuentasCobro->recordStepDocument($target, CuentaCobroWorkflow::STEP_FACTURA, [
+                    'number' => $invoice->documentNumber(),
+                    'amount' => $amount,
+                    'observation' => $comment,
+                ], $file, $user),
                 FacturacionInvoice::TARGET_ANTICIPO => $this->anticipos->createFromFile([
                     'contract_id' => $target->id,
                     'contractor_id' => $contractorId,
@@ -484,6 +561,7 @@ class FacturacionService
                 'corte_invoice_id' => $targetType === FacturacionInvoice::TARGET_CORTE ? $record->id : null,
                 'orden_document_id' => $targetType === FacturacionInvoice::TARGET_ORDEN ? $record->id : null,
                 'anticipo_id' => $targetType === FacturacionInvoice::TARGET_ANTICIPO ? $record->id : null,
+                'cuenta_cobro_id' => $targetType === FacturacionInvoice::TARGET_CUENTA_COBRO ? $target->id : null,
                 'processed_comment' => $comment,
                 'processed_by' => $user->id,
                 'processed_at' => now(),
@@ -498,12 +576,12 @@ class FacturacionService
     }
 
     protected function assertCanAssociate(
-        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|null $target, string $targetType, $amount, ?int $contractorId, User $user,
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro|null $target, string $targetType, $amount, ?int $contractorId, User $user,
     ): void {
         $isAnticipo = FacturacionInvoice::isAnticipo($invoice->document_type);
 
         if (FacturacionInvoice::isIndirecto($invoice->document_type)) {
-            throw new InvalidArgumentException('Los indirectos no se asocian a obra: pasan directo a cuentas por pagar.');
+            throw new InvalidArgumentException('Los indirectos no se asocian a obra: pasan a cuentas por pagar con la aprobación contable.');
         }
         if ($isAnticipo !== ($targetType === FacturacionInvoice::TARGET_ANTICIPO)) {
             throw new InvalidArgumentException($isAnticipo
@@ -526,6 +604,20 @@ class FacturacionService
             }
             if ($amount === null) {
                 throw new InvalidArgumentException('Indica el valor del anticipo.');
+            }
+
+            return;
+        }
+
+        if ($targetType === FacturacionInvoice::TARGET_CUENTA_COBRO) {
+            if (!$target || $target->created_by !== $user->id) {
+                throw new InvalidArgumentException('Solo quien radicó la cuenta de cobro puede asociarle la factura.');
+            }
+            if ($target->current_step !== CuentaCobroWorkflow::STEP_FACTURA) {
+                throw new InvalidArgumentException("La cuenta de cobro {$target->code} no está esperando la factura.");
+            }
+            if (!FacturacionInvoice::fitsOrden($invoice->document_type)) {
+                throw new InvalidArgumentException('A una cuenta de cobro solo se asocia la factura, cuenta de cobro o reembolso del proveedor.');
             }
 
             return;
@@ -694,6 +786,7 @@ class FacturacionService
             FacturacionInvoice::TARGET_CORTE => ['type' => 'corte', 'id' => $invoice->corte_id, 'code' => $invoice->corte?->code, 'label' => $invoice->corte?->reference() ?? 'Corte eliminado'],
             FacturacionInvoice::TARGET_ORDEN => ['type' => 'orden', 'id' => $invoice->orden_id, 'code' => $invoice->orden?->code, 'label' => 'Orden ' . ($invoice->orden?->code ?? '—')],
             FacturacionInvoice::TARGET_PAGOS => ['type' => 'pagos', 'id' => $invoice->pago_cuenta_id, 'code' => null, 'label' => 'Cuentas por pagar · Indirectos'],
+            FacturacionInvoice::TARGET_CUENTA_COBRO => ['type' => 'cuenta_cobro', 'id' => $invoice->cuenta_cobro_id, 'code' => $invoice->cuentaCobro?->code, 'label' => $invoice->cuentaCobro ? 'Cuenta de cobro ' . $invoice->cuentaCobro->reference() : 'Cuenta de cobro eliminada'],
             FacturacionInvoice::TARGET_ANTICIPO => ['type' => 'anticipo', 'id' => $invoice->anticipo_id, 'code' => $invoice->anticipo?->code, 'label' => $invoice->anticipo?->reference() ?? 'Anticipo eliminado'],
             default => null,
         };
@@ -734,7 +827,8 @@ class FacturacionService
                 ? $this->canManage($user)
                 : $user->can('facturacion.eliminar'),
             'delete_requires_reason' => !$isPending || $invoice->target_type === FacturacionInvoice::TARGET_PAGOS,
-            'can_associate' => $isPending && $this->canAssociate($user),
+            'can_associate' => $isPending && !FacturacionInvoice::isIndirecto($invoice->document_type) && $this->canAssociate($user),
+            'can_approve_indirecto' => $invoice->status === FacturacionInvoice::STATUS_PENDIENTE_CONTABLE && $this->canApproveIndirecto($user),
         ];
     }
 }

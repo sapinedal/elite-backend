@@ -29,6 +29,7 @@ class Corte extends Model
         'status',
         'current_stage',
         'returned_stage',
+        'interventor_rejected',
         'storage_path',
         'file_name',
         'file_path',
@@ -40,6 +41,7 @@ class Corte extends Model
 
     protected $casts = [
         'file_size' => 'integer',
+        'interventor_rejected' => 'boolean',
         'approved_at' => 'datetime',
     ];
 

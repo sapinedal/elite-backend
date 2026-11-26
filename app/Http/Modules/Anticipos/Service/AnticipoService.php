@@ -16,13 +16,14 @@ use InvalidArgumentException;
 /**
  * Anticipos de contratos:
  *
- *   Residente radica la cuenta de cobro -> Director de Obra -> Gerencia -> Contabilidad genera el anticipo
- *   en Multifox y carga el soporte -> Aprobación de Contabilidad -> Cuadro de pagos (si lo devuelve, vuelve a Multifox)
+ *   Residente radica la cuenta de cobro -> Director de Obra -> Gerencia -> el residente adjunta el contrato u orden
+ *   de compra al que se asocia -> Contabilidad genera el anticipo en Multifox y carga el soporte -> Aprobación de
+ *   Contabilidad -> Cuadro de pagos (si lo devuelve, vuelve a Multifox)
  */
 class AnticipoService
 {
     public const SCOPE_MINE = 'mine';
-    public const SCOPE_PENDING = 'pending';   // Anticipos que esperan una aprobación del usuario
+    public const SCOPE_PENDING = 'pending';   // Anticipos que esperan una aprobación del usuario (o su soporte)
     public const SCOPE_ACCOUNTING = 'accounting'; // Aprobados que Contabilidad debe generar en Multifox
     public const SCOPE_ACCOUNTING_APPROVAL = 'accounting_approval'; // Cargados en Multifox por aprobar en Contabilidad
     public const SCOPE_ALL = 'all';
@@ -123,7 +124,10 @@ class AnticipoService
         $query = Anticipo::query();
 
         if ($scope === self::SCOPE_PENDING) {
-            return $query->accessibleBy($user)->whereIn('current_stage', AnticipoWorkflow::stagesFor($user) ?: ['__none__']);
+            // Aprobaciones del usuario y sus anticipos aprobados esperando el contrato / orden de compra
+            return $query->accessibleBy($user)->where(fn ($q) => $q
+                ->whereIn('current_stage', AnticipoWorkflow::stagesFor($user) ?: ['__none__'])
+                ->orWhere(fn ($sub) => $sub->where('status', AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE)->where('created_by', $user->id)));
         }
 
         if ($scope === self::SCOPE_ACCOUNTING && AnticipoWorkflow::canContabilizar($user)) {
@@ -143,7 +147,7 @@ class AnticipoService
 
     public function getAnticipo(Anticipo $anticipo, User $user): array
     {
-        $anticipo->load([...$this->listRelations(), 'history.user:id,name', 'multifoxUser:id,name']);
+        $anticipo->load([...$this->listRelations(), 'history.user:id,name', 'multifoxUser:id,name', 'supportUser:id,name']);
 
         return $this->present($anticipo, $user, true);
     }
@@ -177,6 +181,14 @@ class AnticipoService
     public function canResubmit(Anticipo $anticipo, User $user): bool
     {
         return $anticipo->status === AnticipoWorkflow::STATUS_DEVUELTO && $anticipo->created_by === $user->id;
+    }
+
+    /**
+     * Después de Gerencia, el residente que lo radicó adjunta el contrato u orden de compra.
+     */
+    public function canUploadSupport(Anticipo $anticipo, User $user): bool
+    {
+        return $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE && $anticipo->created_by === $user->id;
     }
 
     public function canRegisterMultifox(Anticipo $anticipo, User $user): bool
@@ -288,7 +300,7 @@ class AnticipoService
                 $nextStage = AnticipoWorkflow::nextStage($stage);
                 $anticipo->update($nextStage
                     ? ['status' => AnticipoWorkflow::STAGES[$nextStage]['status'], 'current_stage' => $nextStage]
-                    : ['status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD, 'current_stage' => null, 'approved_at' => now()]);
+                    : ['status' => AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE, 'current_stage' => null, 'approved_at' => now()]);
                 $this->log($anticipo, AnticipoHistory::ACTION_APROBADO, $user, $stage, $comment);
             } else {
                 $anticipo->update([
@@ -349,6 +361,51 @@ class AnticipoService
         });
 
         $this->notifications->submitted($anticipo, true, $data['comment'] ?? null);
+
+        return $anticipo;
+    }
+
+    /**
+     * El residente adjunta el contrato u orden de compra al que se asocia el anticipo: pasa a Contabilidad (Multifox).
+     */
+    public function uploadSupport(Anticipo $anticipo, array $data, User $user): Anticipo
+    {
+        if (!$this->canUploadSupport($anticipo, $user)) {
+            throw new InvalidArgumentException('Solo el residente que radicó el anticipo puede adjuntar el contrato u orden de compra cuando está aprobado.');
+        }
+
+        $file = $this->storage->claimFile($data['upload_token'], $user, $anticipo->storage_path);
+        $comment = isset($data['comment']) ? (trim($data['comment']) ?: null) : null;
+
+        $anticipo = DB::transaction(function () use ($anticipo, $file, $comment, $user) {
+            $anticipo = Anticipo::whereKey($anticipo->id)->lockForUpdate()->firstOrFail();
+            if ($anticipo->status !== AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE) {
+                throw new InvalidArgumentException('Este anticipo ya tiene su contrato u orden de compra.');
+            }
+
+            $anticipo->update([
+                'status' => AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD,
+                'support_file_name' => $file['file_name'],
+                'support_file_path' => $file['file_path'],
+                'support_file_size' => $file['file_size'],
+                'support_file_mime' => $file['file_mime'],
+                'support_by' => $user->id,
+                'support_at' => now(),
+            ]);
+
+            $anticipo->history()->create([
+                'stage' => AnticipoWorkflow::STEP_SOPORTE,
+                'action' => AnticipoHistory::ACTION_SOPORTE,
+                'comment' => 'Contrato / orden de compra adjunto. Pendiente de Contabilidad (Multifox).' . ($comment ? " {$comment}" : ''),
+                'file_name' => $file['file_name'],
+                'file_path' => $file['file_path'],
+                'user_id' => $user->id,
+            ]);
+
+            return $anticipo;
+        });
+
+        $this->notifications->supportUploaded($anticipo, $comment);
 
         return $anticipo;
     }
@@ -466,6 +523,7 @@ class AnticipoService
             'details' => [
                 'Anticipo' => $anticipo->code,
                 'N.º Multifox' => $anticipo->multifox_number,
+                'Contrato / OC adjunto' => $anticipo->support_file_name,
                 'Valor' => '$' . number_format((float) $anticipo->amount, 0, ',', '.'),
                 'Contrato' => $anticipo->contract?->contract_code,
                 'Proveedor' => $anticipo->contractor?->name ?? $anticipo->contract?->contractor_name,
@@ -478,8 +536,15 @@ class AnticipoService
         ];
     }
 
-    public function downloadUrl(Anticipo $anticipo, bool $multifox = false): string
+    public function downloadUrl(Anticipo $anticipo, bool $multifox = false, bool $support = false): string
     {
+        if ($support) {
+            if (!$anticipo->support_file_path) {
+                throw new InvalidArgumentException('Este anticipo aún no tiene el contrato u orden de compra.');
+            }
+
+            return $this->storage->downloadUrl($anticipo->support_file_path, $anticipo->support_file_name);
+        }
         if ($multifox && !$anticipo->multifox_file_path) {
             throw new InvalidArgumentException('Este anticipo aún no tiene el soporte de Multifox.');
         }
@@ -515,6 +580,23 @@ class AnticipoService
                 'at' => $entry?->created_at?->toIso8601String(),
             ];
         }, array_keys(AnticipoWorkflow::STAGES));
+
+        // Contrato / orden de compra que adjunta el residente después de Gerencia
+        $support = $history->where('action', AnticipoHistory::ACTION_SOPORTE)->last();
+        $supported = $anticipo->support_file_path !== null
+            || in_array($anticipo->status, [AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD, AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, AnticipoWorkflow::STATUS_COMPLETADO], true);
+        $stages[] = [
+            'key' => AnticipoWorkflow::STEP_SOPORTE,
+            'label' => 'Contrato / OC',
+            'kind' => 'document',
+            'state' => match (true) {
+                $anticipo->status === AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE => 'actual',
+                $supported => 'aprobado',
+                default => 'pendiente',
+            },
+            'user' => $supported ? $support?->user?->name : null,
+            'at' => $supported ? $support?->created_at?->toIso8601String() : null,
+        ];
 
         $multifox = $history->where('action', AnticipoHistory::ACTION_MULTIFOX)->last();
         $loaded = in_array($anticipo->status, [AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, AnticipoWorkflow::STATUS_COMPLETADO], true);
@@ -617,6 +699,7 @@ class AnticipoService
             'multifox_at' => $anticipo->multifox_at?->toIso8601String(),
             'can_review' => $this->canReview($anticipo, $user),
             'can_resubmit' => $this->canResubmit($anticipo, $user),
+            'can_upload_support' => $this->canUploadSupport($anticipo, $user),
             'can_register_multifox' => $this->canRegisterMultifox($anticipo, $user),
             'can_review_accounting' => $this->canReviewAccounting($anticipo, $user),
             'can_delete' => $user->can('anticipos.eliminar'),
@@ -624,6 +707,10 @@ class AnticipoService
 
         if ($withDetail) {
             $data['storage_path'] = $anticipo->storage_path;
+            $data['support_file_name'] = $anticipo->support_file_name;
+            $data['support_file_size'] = $anticipo->support_file_size;
+            $data['support_by'] = $anticipo->supportUser?->name;
+            $data['support_at'] = $anticipo->support_at?->toIso8601String();
             $data['multifox_file_name'] = $anticipo->multifox_file_name;
             $data['multifox_file_size'] = $anticipo->multifox_file_size;
             $data['multifox_by'] = $anticipo->multifoxUser?->name;

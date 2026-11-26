@@ -131,6 +131,27 @@ class AnticipoController extends Controller
         });
     }
 
+    /**
+     * El residente adjunta el contrato u orden de compra del anticipo aprobado: pasa a Contabilidad (Multifox).
+     */
+    public function uploadSupport(Request $request, Anticipo $anticipo): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_token' => ['required', 'uuid'],
+            'comment' => ['nullable', 'string', 'max:2000'],
+        ], ['upload_token.required' => 'Adjunta el contrato u orden de compra.'], ['upload_token' => 'contrato u orden de compra', 'comment' => 'comentario']);
+
+        return $this->attempt('adjuntar el contrato u orden de compra', function () use ($request, $anticipo, $data) {
+            $anticipo = $this->service->uploadSupport($anticipo, $data, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Contrato / orden de compra adjunto. Se notificó a Contabilidad para generar el anticipo en Multifox.',
+                'data' => $this->service->getAnticipo($anticipo, $request->user()),
+            ]);
+        });
+    }
+
     public function registerMultifox(RegisterMultifoxRequest $request, Anticipo $anticipo): JsonResponse
     {
         return $this->attempt('cargar el anticipo de Multifox', function () use ($request, $anticipo) {
@@ -165,12 +186,17 @@ class AnticipoController extends Controller
         }
 
         $multifox = $request->query('file') === 'multifox';
+        $support = $request->query('file') === 'soporte';
 
         return $this->attempt('descargar el archivo', fn () => response()->json([
             'status' => 'success',
             'data' => [
-                'download_url' => $this->service->downloadUrl($anticipo, $multifox),
-                'name' => $multifox ? $anticipo->multifox_file_name : $anticipo->file_name,
+                'download_url' => $this->service->downloadUrl($anticipo, $multifox, $support),
+                'name' => match (true) {
+                    $support => $anticipo->support_file_name,
+                    $multifox => $anticipo->multifox_file_name,
+                    default => $anticipo->file_name,
+                },
             ],
         ]));
     }

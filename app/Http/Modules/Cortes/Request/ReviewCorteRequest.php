@@ -14,9 +14,10 @@ class ReviewCorteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'decision' => ['required', 'in:aprobar,devolver'],
-            // Al devolver el residente necesita saber qué corregir
-            'comment' => ['required_if:decision,devolver', 'nullable', 'string', 'max:2000'],
+            // rechazar_continuar: el Interventor no aprueba pero deja que el corte siga (Rechazado pero aprobado)
+            'decision' => ['required', 'in:aprobar,devolver,rechazar_continuar'],
+            // Al devolver (o rechazar) el residente necesita saber qué corregir
+            'comment' => ['required_if:decision,devolver', 'required_if:decision,rechazar_continuar', 'nullable', 'string', 'max:2000'],
         ];
     }
 
@@ -31,7 +32,7 @@ class ReviewCorteRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'comment.required_if' => 'Indica el motivo de la devolución.',
+            'comment.required_if' => 'Indica el motivo de la devolución o del rechazo.',
         ];
     }
 }

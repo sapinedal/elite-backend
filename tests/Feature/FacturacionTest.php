@@ -556,17 +556,36 @@ test('la cotización se radica como anticipo del contrato y no va a cortes ni ó
         ->and($invoice->fresh()->anticipo_id)->toBe($anticipo->id);
 });
 
-test('el indirecto no se asocia a obra: al cargarlo pasa directo a cuentas por pagar', function () {
-    // Necesita el valor
-    $this->actingAs($this->contabilidad)->postJson('/api/v1/facturacion', [
-        'period' => '2026-10', 'document_type' => 'indirecto', 'invoice_number' => '901',
-        'contractor_id' => $this->contractor->id, 'upload_token' => (string) Str::uuid(),
-    ])->assertStatus(422)->assertJsonValidationErrors('amount');
+test('el indirecto se carga sin valor y pasa a cuentas por pagar cuando el analista contable lo aprueba con el valor', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'facturacion.aprobar_indirecto', 'guard_name' => 'web']);
+    $analista = makeUser();
+    $analista->givePermissionTo('facturacion.aprobar_indirecto');
 
-    $invoice = uploadInvoice(['document_type' => 'indirecto', 'invoice_number' => '901', 'amount' => 800000, 'observation' => 'Papelería oficina']);
+    // El valor no se pide (ni se guarda) al cargarlo
+    $invoice = uploadInvoice(['document_type' => 'indirecto', 'invoice_number' => '901', 'amount' => 123, 'observation' => 'Papelería oficina']);
+    expect($invoice->status)->toBe(FacturacionInvoice::STATUS_PENDIENTE_CONTABLE)
+        ->and($invoice->amount)->toBeNull()
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
 
+    // No aparece en las pendientes de obra ni se puede asociar a un corte
+    $corte = makeCorte($this->residente);
+    $this->actingAs($this->residente)->getJson('/api/v1/facturacion?scope=pending')->assertOk()->assertJsonPath('counts.pending', 0);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
+        ->assertStatus(422);
+
+    // Solo el analista contable lo aprueba, y con el valor
+    $this->actingAs($this->contabilidad)->postJson("/api/v1/facturacion/{$invoice->id}/approve-indirecto", ['amount' => 800000])->assertForbidden();
+    $this->actingAs($analista)->getJson('/api/v1/facturacion?scope=indirectos')->assertOk()
+        ->assertJsonPath('counts.indirectos', 1)
+        ->assertJsonPath('data.data.0.can_approve_indirecto', true);
+    $this->actingAs($analista)->postJson("/api/v1/facturacion/{$invoice->id}/approve-indirecto", [])->assertStatus(422)->assertJsonValidationErrors('amount');
+    $this->actingAs($analista)->postJson("/api/v1/facturacion/{$invoice->id}/approve-indirecto", ['amount' => 800000])->assertOk();
+
+    $invoice->refresh();
     $cuenta = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
     expect($invoice->status)->toBe(FacturacionInvoice::STATUS_PROCESADA)
+        ->and((float) $invoice->amount)->toBe(800000.0)
         ->and($invoice->target_type)->toBe(FacturacionInvoice::TARGET_PAGOS)
         ->and($invoice->pago_cuenta_id)->toBe($cuenta->id)
         ->and($cuenta->source_type)->toBe(\App\Http\Modules\Pagos\Models\PagoCuenta::SOURCE_INDIRECTO)
@@ -577,13 +596,52 @@ test('el indirecto no se asocia a obra: al cargarlo pasa directo a cuentas por p
         ->and($cuenta->supplier_name)->toBe('INVALGO SAS')
         ->and($cuenta->status)->toBe('pendiente');
 
-    // No aparece en las pendientes de obra ni se puede asociar a un corte
-    $corte = makeCorte($this->residente);
-    $this->actingAs($this->residente)->getJson('/api/v1/facturacion?scope=pending')->assertOk()->assertJsonPath('counts.pending', 0);
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])
-        ->assertStatus(422);
-
-    // Ya no se elimina desde facturas del mes
+    // No se aprueba dos veces ni se elimina desde facturas del mes
+    $this->actingAs($analista)->postJson("/api/v1/facturacion/{$invoice->id}/approve-indirecto", ['amount' => 1])->assertStatus(422);
     $this->actingAs($this->contabilidad)->deleteJson("/api/v1/facturacion/{$invoice->id}")->assertStatus(422);
+});
+
+test('la entrada de almacén marcada como aprobada con el cargue pasa directo a cuentas por pagar', function () {
+    mockClaimUploads();
+    $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
+    $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+
+    $orden = Orden::create([
+        'code' => 'ORD-0003', 'description' => 'Acero', 'project_id' => $this->project->id, 'chapter' => 'Estructura', 'activity' => 'Acero',
+        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
+        'storage_path' => 'tecnica/Ordenes/ORD-0003', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
+    ]);
+    $invoice = uploadInvoice(['invoice_number' => '337', 'amount' => 990000]);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
+        ->assertOk();
+
+    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-9', 'upload_token' => (string) Str::uuid(), 'approved_with_upload' => true])
+        ->assertCreated()->assertJsonPath('data.status', OrdenWorkflow::STATUS_COMPLETADA);
+
+    $pago = \App\Http\Modules\Pagos\Models\PagoCuenta::first();
+    expect($pago->orden_id)->toBe($orden->id)
+        ->and((float) $pago->amount)->toBe(990000.0)
+        ->and($orden->history()->pluck('action')->all())->toContain('aprobada_con_cargue');
+});
+
+test('sin el valor de la factura la entrada no puede saltarse la aprobación de Contabilidad', function () {
+    mockClaimUploads();
+    $almacen = User::create(['name' => 'Almacen', 'email' => 'almacen@example.com', 'password' => 'secret']);
+    $almacen->givePermissionTo(['ordenes.ver', 'ordenes.gestionar_almacen', 'proyectos.ver_todos']);
+
+    $orden = Orden::create([
+        'code' => 'ORD-0004', 'description' => 'Arena', 'project_id' => $this->project->id, 'chapter' => 'Estructura', 'activity' => 'Arena',
+        'status' => OrdenWorkflow::STATUS_PENDIENTE_FACTURA, 'current_step' => OrdenWorkflow::STEP_FACTURA,
+        'storage_path' => 'tecnica/Ordenes/ORD-0004', 'created_by' => $this->residente->id, 'approved_at' => now()->subDay(),
+    ]);
+    $invoice = uploadInvoice(['invoice_number' => '338', 'amount' => null]);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'orden', 'target_id' => $orden->id])
+        ->assertOk();
+
+    $this->actingAs($almacen)->postJson("/api/v1/ordenes/{$orden->id}/documents", ['number' => 'EA-10', 'upload_token' => (string) Str::uuid(), 'approved_with_upload' => true])
+        ->assertStatus(422);
+    expect($orden->fresh()->status)->toBe(OrdenWorkflow::STATUS_PENDIENTE_ENTRADA)
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0);
 });

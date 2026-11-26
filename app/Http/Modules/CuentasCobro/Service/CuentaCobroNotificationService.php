@@ -21,6 +21,7 @@ use Throwable;
  * | Radicada / reenviada            | Director de Obra (debe aprobar) · Residente (confirma)      |
  * | Aprobada por Director           | Gerencia (debe aprobar) · Residente (avance)                |
  * | Aprobada por Gerencia           | Paula (decide Multifox) · Residente + Director              |
+ * | Directa: paso pendiente         | Residente (+ cuentas_cobro.cargar_erp en ERP / liquidación) |
  * | Devuelta                        | Residente (+ Director si la devolvió Gerencia)              |
  * | En cuadro de pagos              | Residente + aprobadores                                     |
  *
@@ -52,8 +53,30 @@ class CuentaCobroNotificationService
             return;
         }
 
-        $this->send($cuenta, CuentaCobroNotificationMail::EVENT_MULTIFOX_REVIEW, $this->cortes->multifoxRecipients('correos.cuentas_cobro.multifox', $cuenta->project_id), CuentaCobroWorkflow::STEP_MULTIFOX, $comment);
+        // Directa: sigue el cargue ERP (residente o cuentas_cobro.cargar_erp); General / Indirectos: Paula decide Multifox
+        $cuenta->isDirecta()
+            ? $this->stepPending($cuenta, $comment)
+            : $this->send($cuenta, CuentaCobroNotificationMail::EVENT_MULTIFOX_REVIEW, $this->cortes->multifoxRecipients('correos.cuentas_cobro.multifox', $cuenta->project_id), CuentaCobroWorkflow::STEP_MULTIFOX, $comment);
         $this->send($cuenta, CuentaCobroNotificationMail::EVENT_APPROVED, $this->creator($cuenta)->merge($this->previousReviewers($cuenta, $stage)), $stage, $comment);
+    }
+
+    /**
+     * Cuenta directa: aviso del documento que sigue. El cargue ERP y la liquidación los hace el residente o quien
+     * tenga cuentas_cobro.cargar_erp; la factura la asocia el residente desde Facturas del mes.
+     */
+    public function stepPending(CuentaCobro $cuenta, ?string $comment): void
+    {
+        $step = $cuenta->current_step;
+        if (!$step) {
+            return;
+        }
+
+        $recipients = $this->creator($cuenta);
+        if ($step !== CuentaCobroWorkflow::STEP_FACTURA) {
+            $recipients = $recipients->merge(MailRecipients::emails(CuentaCobroWorkflow::PERMISSION_ERP, $cuenta->project_id));
+        }
+
+        $this->send($cuenta, CuentaCobroNotificationMail::EVENT_STEP_PENDING, $recipients, $step, $comment);
     }
 
     public function returned(CuentaCobro $cuenta, string $stage, string $comment): void

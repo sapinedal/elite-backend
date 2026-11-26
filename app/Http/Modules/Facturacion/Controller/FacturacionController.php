@@ -151,8 +151,30 @@ class FacturacionController extends Controller
                 'message' => match ($invoice->target_type) {
                     FacturacionInvoice::TARGET_CORTE => 'Factura asociada al corte. Se notificó para su registro en Multifox.',
                     FacturacionInvoice::TARGET_ANTICIPO => 'Cotización radicada como anticipo ' . ($invoice->anticipo?->code ?? '') . '. Se notificó al Director de Obra.',
+                    FacturacionInvoice::TARGET_CUENTA_COBRO => 'Factura asociada a la cuenta de cobro. Pasa a la liquidación ERP.',
                     default => 'Factura asociada a la orden. Pasa a la entrada de almacén.',
                 },
+                'data' => $this->service->get($invoice, $request->user()),
+            ]);
+        });
+    }
+
+    /**
+     * El analista contable aprueba el indirecto con su valor: pasa a cuentas por pagar.
+     */
+    public function approveIndirecto(Request $request, FacturacionInvoice $invoice): JsonResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1', 'max:9999999999999'],
+            'comment' => ['nullable', 'string', 'max:2000'],
+        ], [], ['amount' => 'valor', 'comment' => 'comentario']);
+
+        return $this->attempt('aprobar el indirecto', function () use ($request, $invoice, $data) {
+            $invoice = $this->service->approveIndirecto($invoice, (float) $data['amount'], $data['comment'] ?? null, $request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Indirecto aprobado. Pasó a cuentas por pagar.',
                 'data' => $this->service->get($invoice, $request->user()),
             ]);
         });

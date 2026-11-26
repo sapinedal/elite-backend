@@ -131,7 +131,11 @@ class CorteController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => $decision === 'aprobar' ? 'Corte aprobado.' : 'Corte devuelto al residente.',
+                'message' => match ($decision) {
+                    'aprobar' => 'Corte aprobado.',
+                    'rechazar_continuar' => 'Corte rechazado por el Interventor. Continúa el flujo sin su aprobación.',
+                    default => 'Corte devuelto al residente.',
+                },
                 'data' => $this->corteService->getCorte($corte, $request->user()),
             ]);
         } catch (InvalidArgumentException $e) {

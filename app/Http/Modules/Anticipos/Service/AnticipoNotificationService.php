@@ -19,7 +19,8 @@ use Throwable;
  * |--------------------------------|-------------------------------------------------------------|
  * | Radicado / reenviado           | Director de Obra (debe aprobar) · Residente (confirma)      |
  * | Aprobado por Director          | Gerencia (debe aprobar) · Residente (avance)                |
- * | Aprobado por Gerencia          | Contabilidad (generar en Multifox) · Residente + Director   |
+ * | Aprobado por Gerencia          | Residente (adjuntar contrato / OC) · Residente + Director   |
+ * | Contrato / OC adjunto          | Contabilidad (generar en Multifox)                          |
  * | Devuelto por Director          | Residente                                                   |
  * | Devuelto por Gerencia          | Residente + Director                                        |
  * | Anticipo cargado de Multifox   | Residente + aprobadores (pasó al cuadro de pagos)           |
@@ -48,9 +49,16 @@ class AnticipoNotificationService
             return;
         }
 
-        // Aprobación final: Contabilidad genera el anticipo en Multifox; aviso aparte al residente y aprobadores
-        $this->send($anticipo, AnticipoNotificationMail::EVENT_ACCOUNTING, $this->accountingRecipients($anticipo), AnticipoWorkflow::STEP_CONTABILIDAD, $comment);
+        // Aprobación final: el residente adjunta el contrato / OC (luego Contabilidad lo genera en Multifox)
         $this->send($anticipo, AnticipoNotificationMail::EVENT_APPROVED, $this->creator($anticipo)->merge($this->previousReviewers($anticipo, $stage)), $stage, $comment);
+    }
+
+    /**
+     * El residente adjuntó el contrato / orden de compra: Contabilidad genera el anticipo en Multifox.
+     */
+    public function supportUploaded(Anticipo $anticipo, ?string $comment): void
+    {
+        $this->send($anticipo, AnticipoNotificationMail::EVENT_ACCOUNTING, $this->accountingRecipients($anticipo), AnticipoWorkflow::STEP_CONTABILIDAD, $comment);
     }
 
     public function returned(Anticipo $anticipo, string $stage, string $comment): void

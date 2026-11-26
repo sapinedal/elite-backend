@@ -20,6 +20,8 @@ class StoreOrdenDocumentRequest extends FormRequest
             'amount' => ['nullable', 'numeric', 'min:1', 'max:9999999999999'],
             'contractor_id' => ['nullable', 'integer', 'exists:ftra_contractors,id'],
             'upload_token' => ['required', 'string'],
+            // Solo en la entrada de almacén: ya quedó aprobada con el cargue, pasa directo a cuentas por pagar
+            'approved_with_upload' => ['nullable', 'boolean'],
         ];
     }
 

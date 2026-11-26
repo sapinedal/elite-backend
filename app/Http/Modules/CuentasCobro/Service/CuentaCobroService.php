@@ -6,6 +6,7 @@ use App\Http\Modules\Configuracion\Models\Project;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroAdjunto;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobroDocument;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroHistory;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroTipo;
 use App\Http\Modules\Ftra\Models\FtraContractor;
@@ -23,6 +24,9 @@ use InvalidArgumentException;
  *     - no requiere Multifox: pasa a la aprobación de Contabilidad
  *     - requiere Multifox: pasa a la aprobación de Contabilidad cuando se carga en Multifox
  *   Contabilidad la aprueba (cuadro de pagos) o la devuelve a Paula.
+ *
+ * Las directas (con frente) después de Gerencia siguen: Cargue ERP -> Factura (Facturas del mes) -> Liquidación ERP
+ * -> Contabilidad (si la devuelve, vuelve a la liquidación) -> cuadro de pagos.
  */
 class CuentaCobroService
 {
@@ -30,7 +34,11 @@ class CuentaCobroService
     public const SCOPE_PENDING = 'pending';   // Esperan una aprobación del usuario
     public const SCOPE_MULTIFOX = 'multifox'; // Aprobadas que Paula debe revisar / cargar en Multifox
     public const SCOPE_ACCOUNTING_APPROVAL = 'accounting_approval'; // Por aprobar en Contabilidad
+    public const SCOPE_ERP = 'erp'; // Directas esperando el cargue ERP o la liquidación (cuentas_cobro.cargar_erp)
     public const SCOPE_ALL = 'all';
+
+    // Pasos que se cargan en el módulo (la factura se asocia desde Facturas del mes)
+    public const UPLOADABLE_STEPS = [CuentaCobroWorkflow::STEP_ERP, CuentaCobroWorkflow::STEP_LIQUIDACION];
 
     public function __construct(
         protected CuentaCobroStorageService $storage,
@@ -81,6 +89,7 @@ class CuentaCobroService
             'can_create' => $user->can('cuentas_cobro.crear'),
             'can_handle_multifox' => CuentaCobroWorkflow::canHandleMultifox($user),
             'can_approve_accounting' => CuentaCobroWorkflow::canApproveAccounting($user),
+            'can_load_erp' => CuentaCobroWorkflow::canLoadErp($user),
             'can_parametrize' => $user->can(CuentaCobroWorkflow::PERMISSION_PARAMETRIZAR),
             // Crear un tipo nuevo desde el formulario de radicación
             'can_create_tipo' => $user->can(CuentaCobroWorkflow::PERMISSION_PARAMETRIZAR) || $user->can('cuentas_cobro.crear'),
@@ -122,6 +131,7 @@ class CuentaCobroService
             self::SCOPE_PENDING => $this->scopedQuery($user, self::SCOPE_PENDING)->count(),
             self::SCOPE_MULTIFOX => CuentaCobroWorkflow::canHandleMultifox($user) ? $this->scopedQuery($user, self::SCOPE_MULTIFOX)->count() : 0,
             self::SCOPE_ACCOUNTING_APPROVAL => CuentaCobroWorkflow::canApproveAccounting($user) ? $this->scopedQuery($user, self::SCOPE_ACCOUNTING_APPROVAL)->count() : 0,
+            self::SCOPE_ERP => CuentaCobroWorkflow::canLoadErp($user) ? $this->scopedQuery($user, self::SCOPE_ERP)->count() : 0,
         ];
     }
 
@@ -141,7 +151,11 @@ class CuentaCobroService
             return $query->accessibleBy($user)->where('status', CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE);
         }
 
-        if ($scope === self::SCOPE_ALL && ($user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL) || CuentaCobroWorkflow::canHandleMultifox($user) || CuentaCobroWorkflow::canApproveAccounting($user))) {
+        if ($scope === self::SCOPE_ERP && CuentaCobroWorkflow::canLoadErp($user)) {
+            return $query->accessibleBy($user)->whereIn('current_step', self::UPLOADABLE_STEPS);
+        }
+
+        if ($scope === self::SCOPE_ALL && ($user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL) || CuentaCobroWorkflow::canHandleMultifox($user) || CuentaCobroWorkflow::canApproveAccounting($user) || CuentaCobroWorkflow::canLoadErp($user))) {
             return $query->accessibleBy($user);
         }
 
@@ -150,7 +164,7 @@ class CuentaCobroService
 
     public function getCuenta(CuentaCobro $cuenta, User $user): array
     {
-        $cuenta->load([...$this->listRelations(), 'tipo', 'history.user:id,name', 'adjuntos.uploader:id,name', 'multifoxUser:id,name', 'multifoxDecider:id,name']);
+        $cuenta->load([...$this->listRelations(), 'tipo', 'history.user:id,name', 'adjuntos.uploader:id,name', 'documents.uploader:id,name', 'multifoxUser:id,name', 'multifoxDecider:id,name']);
 
         return $this->present($cuenta, $user, true);
     }
@@ -167,7 +181,18 @@ class CuentaCobroService
         return $user->can(CuentaCobroWorkflow::PERMISSION_VIEW_ALL)
             || CuentaCobroWorkflow::stagesFor($user) !== []
             || CuentaCobroWorkflow::canHandleMultifox($user)
-            || CuentaCobroWorkflow::canApproveAccounting($user);
+            || CuentaCobroWorkflow::canApproveAccounting($user)
+            || CuentaCobroWorkflow::canLoadErp($user);
+    }
+
+    /**
+     * Cargue ERP y liquidación de las directas: quien radicó la cuenta o quien tenga cuentas_cobro.cargar_erp.
+     */
+    public function canUploadStep(CuentaCobro $cuenta, User $user): bool
+    {
+        return in_array($cuenta->current_step, self::UPLOADABLE_STEPS, true)
+            && ($cuenta->created_by === $user->id || CuentaCobroWorkflow::canLoadErp($user))
+            && $user->canAccessProject($cuenta->project_id);
     }
 
     public function canReview(CuentaCobro $cuenta, User $user): bool
@@ -251,9 +276,13 @@ class CuentaCobroService
 
             if ($decision === 'aprobar') {
                 $nextStage = CuentaCobroWorkflow::nextStage($stage);
-                $cuenta->update($nextStage
-                    ? ['status' => CuentaCobroWorkflow::STAGES[$nextStage]['status'], 'current_stage' => $nextStage]
-                    : ['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_REVISION, 'current_stage' => null, 'approved_at' => now()]);
+                // Con la última aprobación: la directa pasa al cargue ERP; la de General / Indirectos, a Multifox
+                $firstStep = CuentaCobroWorkflow::firstStep();
+                $cuenta->update(match (true) {
+                    (bool) $nextStage => ['status' => CuentaCobroWorkflow::STAGES[$nextStage]['status'], 'current_stage' => $nextStage],
+                    $cuenta->isDirecta() => ['status' => CuentaCobroWorkflow::STEPS[$firstStep]['status'], 'current_stage' => null, 'current_step' => $firstStep, 'approved_at' => now()],
+                    default => ['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_REVISION, 'current_stage' => null, 'approved_at' => now()],
+                });
                 $this->log($cuenta, CuentaCobroHistory::ACTION_APROBADO, $user, $stage, $comment);
             } else {
                 $cuenta->update(['status' => CuentaCobroWorkflow::STATUS_DEVUELTA, 'current_stage' => null, 'returned_stage' => $stage]);
@@ -292,6 +321,7 @@ class CuentaCobroService
                 ...$this->fields($data),
                 'status' => CuentaCobroWorkflow::STAGES[$firstStage]['status'],
                 'current_stage' => $firstStage,
+                'current_step' => null,
                 ...$file,
             ]);
             $this->attach($cuenta, $data['attachment_tokens'] ?? [], $user);
@@ -406,6 +436,7 @@ class CuentaCobroService
         }
 
         $multifoxEmail = ($cuenta->multifoxUser ?? $cuenta->multifoxDecider)?->email;
+        $liquidacionEmail = $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_LIQUIDACION)->with('uploader:id,email')->latest('id')->first()?->uploader?->email;
 
         $cuenta = DB::transaction(function () use ($cuenta, $decision, $comment, $user) {
             $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
@@ -417,6 +448,12 @@ class CuentaCobroService
                 $this->moveToPayments($cuenta, $user);
                 $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
                     'Aprobada por Contabilidad. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
+            } elseif ($cuenta->isDirecta() && $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_LIQUIDACION)->exists()) {
+                // Directa: vuelve a la liquidación ERP; el documento anterior queda en el historial (y su archivo en S3)
+                $cuenta->documents()->where('step', CuentaCobroWorkflow::STEP_LIQUIDACION)->delete();
+                $cuenta->update(['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_LIQUIDACION, 'current_step' => CuentaCobroWorkflow::STEP_LIQUIDACION]);
+                $this->log($cuenta, CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA, $user, CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
+                    "Devuelta por Contabilidad a la liquidación ERP. {$comment}");
             } else {
                 $loaded = $cuenta->requires_multifox && $cuenta->multifox_number;
                 $cuenta->update($loaded
@@ -440,6 +477,9 @@ class CuentaCobroService
 
         if ($decision === 'aprobar') {
             $this->notifications->inPayments($cuenta, $comment);
+        } elseif ($cuenta->current_step === CuentaCobroWorkflow::STEP_LIQUIDACION) {
+            $erp = $this->accounting->usersWith([CuentaCobroWorkflow::PERMISSION_ERP], $cuenta->project_id)->push($liquidacionEmail)->push($cuenta->creator?->email);
+            $this->accounting->returned('cuentas_cobro', $cuenta->project_id, $erp, [...$this->accountingPayload($cuenta), 'returned_to' => 'Liquidación ERP', 'tabs' => ['pending' => 'accounting_approval', 'returned' => 'erp']], (string) $comment, $user->name);
         } else {
             // Paula: permiso cortes.multifox (o el correo de Multifox de cuentas de cobro) y quien la había gestionado
             $multifox = $this->accounting->usersWith(['cortes.multifox', 'correos.cuentas_cobro.multifox'], $cuenta->project_id)->push($multifoxEmail);
@@ -460,7 +500,10 @@ class CuentaCobroService
                 'Cuenta de cobro' => $cuenta->code,
                 'Tipo' => $cuenta->tipo?->name,
                 'N.º documento' => $cuenta->document_number,
-                'N.º Multifox' => $cuenta->multifox_number ?? ($cuenta->requires_multifox === false ? 'No requiere' : null),
+                'N.º Multifox' => $cuenta->isDirecta() ? null : ($cuenta->multifox_number ?? ($cuenta->requires_multifox === false ? 'No requiere' : null)),
+                ...($cuenta->isDirecta() ? collect(CuentaCobroWorkflow::STEPS)->mapWithKeys(fn (array $step, string $key) => [
+                    $step['label'] => $cuenta->documents()->where('step', $key)->latest('id')->value('number'),
+                ])->all() : []),
                 'Valor' => '$' . number_format((float) $cuenta->amount, 0, ',', '.'),
                 'Proveedor' => $cuenta->contractor?->name,
                 'Proyecto / Torre' => trim(($cuenta->project?->name ?? '—') . ($cuenta->tower ? ' · ' . $cuenta->tower->name : '')),
@@ -478,6 +521,11 @@ class CuentaCobroService
             $adjunto = $cuenta->adjuntos()->findOrFail($adjuntoId);
 
             return $this->storage->downloadUrl($adjunto->file_path, $adjunto->file_name);
+        }
+        if ($file === 'documento') {
+            $document = $cuenta->documents()->findOrFail($adjuntoId);
+
+            return $this->storage->downloadUrl($document->file_path, $document->file_name);
         }
         if ($file === 'multifox') {
             if (!$cuenta->multifox_file_path) {
@@ -518,6 +566,9 @@ class CuentaCobroService
         }, array_keys(CuentaCobroWorkflow::STAGES));
 
         $done = in_array($cuenta->status, [CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, CuentaCobroWorkflow::STATUS_EN_PAGOS], true);
+        if ($cuenta->isDirecta()) {
+            return [...$steps, ...$this->directSteps($cuenta, $done), $this->accountingStep($cuenta, $history)];
+        }
         $final = $history->whereIn('action', [CuentaCobroHistory::ACTION_SIN_MULTIFOX, CuentaCobroHistory::ACTION_MULTIFOX])->last();
         $steps[] = [
             'key' => CuentaCobroWorkflow::STEP_MULTIFOX,
@@ -532,22 +583,126 @@ class CuentaCobroService
             'at' => $done ? $final?->created_at?->toIso8601String() : null,
         ];
 
+        $steps[] = $this->accountingStep($cuenta, $history);
+
+        return $steps;
+    }
+
+    /**
+     * Pasos documentales de la directa (cargue ERP, factura, liquidación) para la línea de tiempo.
+     */
+    protected function directSteps(CuentaCobro $cuenta, bool $done): array
+    {
+        $documents = $cuenta->exists ? $cuenta->documents()->with('uploader:id,name')->get() : collect();
+        $keys = array_keys(CuentaCobroWorkflow::STEPS);
+        $currentIndex = $cuenta->current_step ? array_search($cuenta->current_step, $keys, true) : ($done ? count($keys) : -1);
+
+        return array_map(function (string $step, int $index) use ($documents, $currentIndex) {
+            $document = $documents->where('step', $step)->last();
+
+            return [
+                'key' => $step,
+                'label' => CuentaCobroWorkflow::STEPS[$step]['label'],
+                'kind' => 'document',
+                'state' => match (true) {
+                    $index === $currentIndex => 'actual',
+                    $document !== null || $index < $currentIndex => 'aprobado',
+                    default => 'pendiente',
+                },
+                'user' => $document?->uploader?->name,
+                'at' => $document?->created_at?->toIso8601String(),
+            ];
+        }, $keys, array_keys($keys));
+    }
+
+    protected function accountingStep(CuentaCobro $cuenta, $history): array
+    {
         $accounting = $history->whereIn('action', [CuentaCobroHistory::ACTION_CONTABILIDAD_APROBADA, CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA])->last();
-        $steps[] = [
+
+        return [
             'key' => CuentaCobroWorkflow::STEP_APROBACION_CONTABLE,
             'label' => 'Aprobación Contabilidad',
             'kind' => 'approval',
             'state' => match (true) {
                 $cuenta->status === CuentaCobroWorkflow::STATUS_EN_PAGOS => 'aprobado',
                 $cuenta->status === CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE => 'actual',
-                in_array($cuenta->status, CuentaCobroWorkflow::MULTIFOX_STATUSES, true) && $accounting?->action === CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA => 'devuelto',
+                (in_array($cuenta->status, CuentaCobroWorkflow::MULTIFOX_STATUSES, true) || $cuenta->current_step === CuentaCobroWorkflow::STEP_LIQUIDACION)
+                    && $accounting?->action === CuentaCobroHistory::ACTION_CONTABILIDAD_DEVUELTA => 'devuelto',
                 default => 'pendiente',
             },
             'user' => $accounting?->user?->name,
             'at' => $accounting?->created_at?->toIso8601String(),
         ];
+    }
 
-        return $steps;
+    /**
+     * Carga el documento del paso actual de la directa (cargue ERP o liquidación) y avanza.
+     */
+    public function uploadDocument(CuentaCobro $cuenta, array $data, User $user): CuentaCobroDocument
+    {
+        if (!$this->canUploadStep($cuenta, $user)) {
+            throw new InvalidArgumentException('Esta cuenta de cobro no tiene un documento pendiente que puedas cargar.');
+        }
+
+        $step = $cuenta->current_step;
+        $file = $this->storage->claimStepFile($data['upload_token'], $user, $cuenta, $step);
+        $document = DB::transaction(fn () => $this->recordStepDocument($cuenta, $step, $data, $file, $user));
+        $this->notifyStepDocument($document);
+
+        return $document;
+    }
+
+    /**
+     * Registra el documento de $step con el archivo ya guardado y avanza la cuenta. Debe llamarse dentro de una
+     * transacción; el aviso lo envía notifyStepDocument() después del commit. Lo usan el cargue normal y las
+     * facturas del mes (el residente asocia a su cuenta la factura que cargó Contabilidad).
+     *
+     * @param array{file_name: string, file_path: string, file_size: int, file_mime: ?string} $file
+     */
+    public function recordStepDocument(CuentaCobro $cuenta, string $step, array $data, array $file, User $user): CuentaCobroDocument
+    {
+        $observation = isset($data['observation']) ? (trim($data['observation']) ?: null) : null;
+
+        $cuenta = CuentaCobro::whereKey($cuenta->id)->lockForUpdate()->firstOrFail();
+        if ($cuenta->current_step !== $step) {
+            throw new InvalidArgumentException('Otro usuario ya cargó este documento.');
+        }
+
+        $document = $cuenta->documents()->create([
+            'step' => $step,
+            'number' => trim($data['number']),
+            'amount' => $step === CuentaCobroWorkflow::STEP_FACTURA ? ($data['amount'] ?? null) : null,
+            'observation' => $observation,
+            'uploaded_by' => $user->id,
+            ...$file,
+        ]);
+
+        // Con la liquidación pasa a la aprobación de Contabilidad antes del cuadro de pagos
+        $nextStep = CuentaCobroWorkflow::nextStep($step);
+        $cuenta->update($nextStep
+            ? ['status' => CuentaCobroWorkflow::STEPS[$nextStep]['status'], 'current_step' => $nextStep]
+            : ['status' => CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE, 'current_step' => null]);
+
+        $this->log($cuenta, CuentaCobroHistory::ACTION_DOCUMENTO, $user, $step,
+            CuentaCobroWorkflow::STEPS[$step]['number_label'] . " {$document->number}" . ($observation ? ". {$observation}" : ''), $document->file_name);
+
+        return $document;
+    }
+
+    /**
+     * Aviso a quien sigue: el residente (factura o liquidación), quien carga en el ERP, o Contabilidad.
+     */
+    public function notifyStepDocument(CuentaCobroDocument $document): void
+    {
+        $cuenta = $document->cuenta()->firstOrFail();
+
+        $cuenta->status === CuentaCobroWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE
+            ? $this->accounting->pending('cuentas_cobro', $cuenta->project_id, [
+                ...$this->accountingPayload($cuenta),
+                'pending_intro' => "La cuenta de cobro {$cuenta->reference()} ya tiene su liquidación ERP cargada.",
+                'tabs' => ['pending' => 'accounting_approval', 'returned' => 'erp'],
+            ], $document->observation)
+            : $this->notifications->stepPending($cuenta, $document->observation);
     }
 
     protected function moveToPayments(CuentaCobro $cuenta, User $user): void
@@ -629,6 +784,12 @@ class CuentaCobroService
             'current_stage' => $cuenta->current_stage,
             'current_stage_label' => CuentaCobroWorkflow::stageLabel($cuenta->current_stage),
             'returned_stage_label' => CuentaCobroWorkflow::stageLabel($cuenta->returned_stage),
+            // Directa (con frente): Cargue ERP -> Factura -> Liquidación ERP en lugar de Multifox
+            'is_directa' => $cuenta->isDirecta(),
+            'current_step' => $cuenta->current_step,
+            'current_step_label' => $cuenta->current_step ? CuentaCobroWorkflow::STEPS[$cuenta->current_step]['label'] : null,
+            'current_step_number_label' => $cuenta->current_step ? CuentaCobroWorkflow::STEPS[$cuenta->current_step]['number_label'] : null,
+            'can_upload_step' => $this->canUploadStep($cuenta, $user),
             'requires_multifox' => $cuenta->requires_multifox,
             'multifox_number' => $cuenta->multifox_number,
             'file_name' => $cuenta->file_name,
@@ -653,6 +814,18 @@ class CuentaCobroService
                 'file_size' => $a->file_size,
                 'uploaded_by' => $a->uploader?->name,
                 'created_at' => $a->created_at?->toIso8601String(),
+            ])->values();
+            $data['documents'] = $cuenta->documents->map(fn (CuentaCobroDocument $d) => [
+                'id' => $d->id,
+                'step' => $d->step,
+                'step_label' => $d->stepLabel(),
+                'number' => $d->number,
+                'amount' => $d->amount !== null ? (float) $d->amount : null,
+                'observation' => $d->observation,
+                'file_name' => $d->file_name,
+                'file_size' => $d->file_size,
+                'uploaded_by' => $d->uploader?->name,
+                'created_at' => $d->created_at?->toIso8601String(),
             ])->values();
             $data['multifox_file_name'] = $cuenta->multifox_file_name;
             $data['multifox_file_size'] = $cuenta->multifox_file_size;

@@ -7,7 +7,8 @@ use App\Http\Modules\Users\Models\User;
 /**
  * Definición del flujo de anticipos, en un solo lugar.
  *
- *   Radicado -> Director de Obra -> Gerencia -> Contabilidad (anticipo en Multifox) -> Aprobación de Contabilidad -> Completado (cuadro de pagos)
+ *   Radicado -> Director de Obra -> Gerencia -> Soporte (el residente adjunta el contrato u orden de compra)
+ *            -> Contabilidad (anticipo en Multifox) -> Aprobación de Contabilidad -> Completado (cuadro de pagos)
  *                     \__________________\___ Devuelto (al residente)          ^__________ devuelto _________/
  *
  * Cada aprobación y el paso de Contabilidad se habilitan con permisos Spatie, así se configuran desde Roles.
@@ -16,12 +17,14 @@ class AnticipoWorkflow
 {
     public const STAGE_DIRECTOR = 'director_obra';
     public const STAGE_GERENCIA = 'gerencia';
+    public const STEP_SOPORTE = 'soporte'; // Contrato u orden de compra al que se asocia el anticipo
     public const STEP_CONTABILIDAD = 'contabilidad';
     public const STEP_APROBACION_CONTABLE = 'aprobacion_contable';
 
     public const STATUS_PENDIENTE_DIRECTOR = 'pendiente_director';
     public const STATUS_PENDIENTE_GERENCIA = 'pendiente_gerencia';
     public const STATUS_DEVUELTO = 'devuelto';
+    public const STATUS_PENDIENTE_SOPORTE = 'pendiente_soporte'; // El residente debe adjuntar el contrato / orden de compra
     public const STATUS_PENDIENTE_CONTABILIDAD = 'pendiente_contabilidad';
     public const STATUS_PENDIENTE_APROBACION_CONTABLE = 'pendiente_aprobacion_contable'; // Cargado en Multifox, falta la aprobación
     public const STATUS_COMPLETADO = 'completado';
@@ -50,6 +53,7 @@ class AnticipoWorkflow
         self::STATUS_PENDIENTE_DIRECTOR => 'Pendiente Director de Obra',
         self::STATUS_PENDIENTE_GERENCIA => 'Pendiente Gerencia',
         self::STATUS_DEVUELTO => 'Devuelto',
+        self::STATUS_PENDIENTE_SOPORTE => 'Pendiente soporte (contrato / OC)',
         self::STATUS_PENDIENTE_CONTABILIDAD => 'Pendiente Contabilidad',
         self::STATUS_PENDIENTE_APROBACION_CONTABLE => 'Pendiente aprobación Contabilidad',
         self::STATUS_COMPLETADO => 'En cuadro de pagos',
@@ -83,6 +87,9 @@ class AnticipoWorkflow
 
     public static function stageLabel(?string $stage): ?string
     {
+        if ($stage === self::STEP_SOPORTE) {
+            return 'Soporte contrato / OC';
+        }
         if ($stage === self::STEP_CONTABILIDAD) {
             return 'Contabilidad';
         }

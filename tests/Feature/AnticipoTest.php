@@ -98,9 +98,22 @@ test('flujo completo: radica, aprueban director y gerencia, contabilidad carga M
         ->and(sentTo(AnticipoNotificationMail::EVENT_PENDING_REVIEW, 'gerencia@example.com'))->toBeTrue();
 
     $this->actingAs($this->gerencia)->postJson("/api/v1/anticipos/{$anticipo->id}/review", ['decision' => 'aprobar', 'comment' => 'OK'])->assertOk();
-    expect($anticipo->fresh()->status)->toBe(AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD)
-        ->and(sentTo(AnticipoNotificationMail::EVENT_ACCOUNTING, 'contabilidad@example.com'))->toBeTrue()
+    // Aprobado: el residente debe adjuntar el contrato / orden de compra antes de Contabilidad
+    expect($anticipo->fresh()->status)->toBe(AnticipoWorkflow::STATUS_PENDIENTE_SOPORTE)
+        ->and(sentTo(AnticipoNotificationMail::EVENT_ACCOUNTING, 'contabilidad@example.com'))->toBeFalse()
         ->and(PagoCuenta::count())->toBe(0);
+
+    // Contabilidad aún no puede cargar Multifox ni otro usuario adjuntar el soporte
+    $this->actingAs($this->contabilidad)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-70', 'upload_token' => (string) Str::uuid()])
+        ->assertStatus(422);
+    $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/support", [])->assertStatus(422)->assertJsonValidationErrors('upload_token');
+
+    $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/support", ['upload_token' => (string) Str::uuid(), 'comment' => 'Contrato firmado'])
+        ->assertOk()->assertJsonPath('data.status', AnticipoWorkflow::STATUS_PENDIENTE_CONTABILIDAD)
+        ->assertJsonPath('data.progress.2.key', AnticipoWorkflow::STEP_SOPORTE)
+        ->assertJsonPath('data.progress.2.state', 'aprobado');
+    expect($anticipo->fresh()->support_file_path)->toStartWith($anticipo->storage_path . '/')
+        ->and(sentTo(AnticipoNotificationMail::EVENT_ACCOUNTING, 'contabilidad@example.com'))->toBeTrue();
 
     // El residente no puede cargar el anticipo de Multifox
     $this->actingAs($this->residente)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-77', 'upload_token' => (string) Str::uuid()])

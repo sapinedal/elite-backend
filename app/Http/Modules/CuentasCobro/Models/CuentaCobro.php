@@ -32,6 +32,7 @@ class CuentaCobro extends Model
         'description',
         'status',
         'current_stage',
+        'current_step',
         'returned_stage',
         'storage_path',
         'file_name',
@@ -107,6 +108,20 @@ class CuentaCobro extends Model
     public function adjuntos()
     {
         return $this->hasMany(CuentaCobroAdjunto::class, 'cuenta_cobro_id')->orderBy('id');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(CuentaCobroDocument::class, 'cuenta_cobro_id')->orderBy('id');
+    }
+
+    /**
+     * Directa: tiene frente (torre). Sigue el flujo de cortes y órdenes (ERP, factura, liquidación) en lugar de Multifox.
+     * Sin frente es General / Indirectos.
+     */
+    public function isDirecta(): bool
+    {
+        return $this->tower_id !== null;
     }
 
     public function history()

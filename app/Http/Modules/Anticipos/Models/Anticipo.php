@@ -37,6 +37,12 @@ class Anticipo extends Model
         'file_path',
         'file_size',
         'file_mime',
+        'support_file_name',
+        'support_file_path',
+        'support_file_size',
+        'support_file_mime',
+        'support_by',
+        'support_at',
         'multifox_number',
         'multifox_file_name',
         'multifox_file_path',
@@ -52,9 +58,16 @@ class Anticipo extends Model
         'amount' => 'decimal:2',
         'file_size' => 'integer',
         'multifox_file_size' => 'integer',
+        'support_file_size' => 'integer',
+        'support_at' => 'datetime',
         'multifox_at' => 'datetime',
         'approved_at' => 'datetime',
     ];
+
+    public function supportUser()
+    {
+        return $this->belongsTo(\App\Http\Modules\Users\Models\User::class, 'support_by');
+    }
 
     public function contract()
     {

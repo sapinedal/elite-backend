@@ -9,6 +9,7 @@ use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\CuentasCobro\Models\CuentaCobroTipo;
 use App\Http\Modules\CuentasCobro\Request\MultifoxDecisionRequest;
 use App\Http\Modules\CuentasCobro\Request\RegisterCuentaMultifoxRequest;
+use App\Http\Modules\CuentasCobro\Request\StoreCuentaCobroDocumentRequest;
 use App\Http\Modules\CuentasCobro\Request\ResubmitCuentaCobroRequest;
 use App\Http\Modules\CuentasCobro\Request\ReviewCuentaCobroRequest;
 use App\Http\Modules\CuentasCobro\Request\SaveCuentaCobroTipoRequest;
@@ -152,15 +153,29 @@ class CuentaCobroController extends Controller
         });
     }
 
+    /**
+     * Cuenta directa: cargue ERP o liquidación ERP (quien la radicó o cuentas_cobro.cargar_erp).
+     */
+    public function storeDocument(StoreCuentaCobroDocumentRequest $request, CuentaCobro $cuenta): JsonResponse
+    {
+        return $this->attempt('cargar el documento', function () use ($request, $cuenta) {
+            $document = $this->service->uploadDocument($cuenta, $request->validated(), $request->user());
+
+            return $this->respond($cuenta->fresh(), $request, $document->stepLabel() . ' cargado.', 201);
+        });
+    }
+
     public function reviewAccounting(AccountingDecisionRequest $request, CuentaCobro $cuenta): JsonResponse
     {
         return $this->attempt('registrar la aprobación de Contabilidad', function () use ($request, $cuenta) {
             $decision = $request->validated('decision');
             $cuenta = $this->service->reviewAccounting($cuenta, $decision, $request->validated('comment'), $request->user());
 
-            return $this->respond($cuenta, $request, $decision === 'aprobar'
-                ? 'Cuenta de cobro aprobada: pasó al cuadro de pagos.'
-                : 'Cuenta de cobro devuelta a Multifox.');
+            return $this->respond($cuenta, $request, match (true) {
+                $decision === 'aprobar' => 'Cuenta de cobro aprobada: pasó al cuadro de pagos.',
+                $cuenta->isDirecta() => 'Cuenta de cobro devuelta a la liquidación ERP.',
+                default => 'Cuenta de cobro devuelta a Multifox.',
+            });
         });
     }
 

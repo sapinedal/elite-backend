@@ -21,6 +21,7 @@ class OrdenHistory extends Model
     public const ACTION_REENVIADA = 'reenviada';
     public const ACTION_DOCUMENTO = 'documento';
     public const ACTION_CONTABILIDAD_APROBADA = 'contabilidad_aprobada'; // Contabilidad aprueba: pasa a cuentas por pagar
+    public const ACTION_APROBADA_CON_CARGUE = 'aprobada_con_cargue'; // Entrada aprobada con el cargue: pasa directo a cuentas por pagar
     public const ACTION_CONTABILIDAD_DEVUELTA = 'contabilidad_devuelta'; // Contabilidad devuelve a Almacén (entrada)
     public const ACTION_DOCUMENTO_ELIMINADO = 'documento_eliminado'; // Documento (orden ERP, factura o entrada) eliminado por error
     public const ACTION_ELIMINADA = 'eliminada'; // Orden eliminada por error

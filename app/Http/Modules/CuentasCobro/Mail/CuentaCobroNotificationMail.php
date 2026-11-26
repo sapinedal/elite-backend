@@ -29,6 +29,7 @@ class CuentaCobroNotificationMail extends Mailable
     public const EVENT_APPROVED = 'approved';
     public const EVENT_MULTIFOX_REVIEW = 'multifox_review'; // Paula decide si requiere Multifox
     public const EVENT_IN_PAYMENTS = 'in_payments';         // Pasó al cuadro de pagos
+    public const EVENT_STEP_PENDING = 'step_pending';       // Directa: pendiente cargue ERP, factura o liquidación
 
     protected const TONES = [
         'action' => ['#c2701f', '#fdf1e4'],
@@ -156,7 +157,10 @@ class CuentaCobroNotificationMail extends Mailable
                 'headline' => 'Cuenta de cobro aprobada',
                 'badge' => 'Aprobada',
                 'tone' => 'success',
-                'intro' => "La cuenta de cobro {$ref} de {$supplier} por {$amount} completó las aprobaciones del Director de Obra y Gerencia. Se revisará si requiere Multifox antes de pasar al cuadro de pagos.",
+                'intro' => "La cuenta de cobro {$ref} de {$supplier} por {$amount} completó las aprobaciones del Director de Obra y Gerencia. "
+                    . ($c->isDirecta()
+                        ? 'Sigue el cargue en el ERP, la factura y la liquidación ERP antes de la aprobación de Contabilidad.'
+                        : 'Se revisará si requiere Multifox antes de pasar al cuadro de pagos.'),
                 'commentLabel' => 'Comentario de Gerencia',
                 'cta' => 'Ver cuenta de cobro',
             ],
@@ -169,13 +173,25 @@ class CuentaCobroNotificationMail extends Mailable
                 'commentLabel' => 'Comentario de Gerencia',
                 'cta' => 'Revisar cuenta de cobro',
             ],
+            self::EVENT_STEP_PENDING => [
+                'subject' => "Cuenta de cobro pendiente de {$label}: {$ref}",
+                'headline' => "Pendiente: {$label}",
+                'badge' => "Pendiente · {$label}",
+                'tone' => 'action',
+                'intro' => $this->stage === CuentaCobroWorkflow::STEP_FACTURA
+                    ? "La cuenta de cobro {$ref} de {$supplier} ya está cargada en el ERP. Asocia la factura desde Facturas del mes en Elite."
+                    : "La cuenta de cobro {$ref} de {$supplier} por {$amount} está pendiente de {$label}. Carga el número y el documento desde Elite.",
+                'commentLabel' => 'Observación',
+                'cta' => 'Ver cuenta de cobro',
+            ],
             self::EVENT_IN_PAYMENTS => [
                 'subject' => "Cuenta de cobro en cuadro de pagos: {$ref}",
                 'headline' => 'Cuenta de cobro en cuadro de pagos',
                 'badge' => 'En cuadro de pagos',
                 'tone' => 'success',
                 'intro' => "La cuenta de cobro {$ref} de {$supplier} pasó al cuadro de pagos por {$amount}"
-                    . ($c->requires_multifox ? ' después de cargarse en Multifox' . ($c->multifox_number ? " (N.º {$c->multifox_number})" : '') . '.' : ' (no requirió Multifox).'),
+                    . ($c->isDirecta() ? ' después de la liquidación ERP y la aprobación de Contabilidad.' : '')
+                    . ($c->isDirecta() ? '' : ($c->requires_multifox ? ' después de cargarse en Multifox' . ($c->multifox_number ? " (N.º {$c->multifox_number})" : '') . '.' : ' (no requirió Multifox).')),
                 'commentLabel' => 'Observación',
                 'cta' => 'Ver cuenta de cobro',
             ],

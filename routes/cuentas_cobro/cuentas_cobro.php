@@ -28,6 +28,8 @@ Route::prefix('cuentas-cobro')->middleware('auth:sanctum')->group(function () {
     // Paula (cargo de Multifox o permiso cortes.multifox): lo valida CuentaCobroService
     Route::post('/{cuenta}/multifox-decision', [CuentaCobroController::class, 'decideMultifox'])->middleware('permission:cuentas_cobro.ver');
     Route::post('/{cuenta}/multifox', [CuentaCobroController::class, 'registerMultifox'])->middleware('permission:cuentas_cobro.ver');
+    // Directas: cargue ERP y liquidación (quien la radicó o cuentas_cobro.cargar_erp; lo valida CuentaCobroService)
+    Route::post('/{cuenta}/documents', [CuentaCobroController::class, 'storeDocument'])->middleware('permission:cuentas_cobro.ver');
     Route::post('/{cuenta}/accounting', [CuentaCobroController::class, 'reviewAccounting'])->middleware('permission:cuentas_cobro.aprobar_contabilidad');
     Route::delete('/{cuenta}', [CuentaCobroController::class, 'destroy'])->middleware('permission:cuentas_cobro.eliminar');
 });

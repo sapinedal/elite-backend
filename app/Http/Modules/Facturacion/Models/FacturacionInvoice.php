@@ -5,6 +5,7 @@ namespace App\Http\Modules\Facturacion\Models;
 use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
+use App\Http\Modules\CuentasCobro\Models\CuentaCobro;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Ordenes\Models\Orden;
 use App\Http\Modules\Pagos\Models\PagoCuenta;
@@ -21,11 +22,14 @@ class FacturacionInvoice extends Model
 
     public const STATUS_PENDIENTE = 'pendiente';
     public const STATUS_PROCESADA = 'procesada';
+    // Indirecto: se carga sin valor y espera que el analista contable lo registre al aprobarlo
+    public const STATUS_PENDIENTE_CONTABLE = 'pendiente_contable';
 
     public const TARGET_CORTE = 'corte';
     public const TARGET_ORDEN = 'orden';
     public const TARGET_ANTICIPO = 'anticipo';
-    public const TARGET_PAGOS = 'pagos'; // Indirecto: pasa directo a cuentas por pagar
+    public const TARGET_PAGOS = 'pagos'; // Indirecto: pasa a cuentas por pagar con la aprobación del analista contable
+    public const TARGET_CUENTA_COBRO = 'cuenta_cobro'; // Cuenta de cobro directa pendiente de factura
 
     public const TYPE_FACTURA = 'factura';
     public const TYPE_CUENTA_COBRO = 'cuenta_cobro';
@@ -38,7 +42,8 @@ class FacturacionInvoice extends Model
     /**
      * Tipos con su etiqueta, el prefijo con el que se nombran en la carpeta (FE 335, C-C 49) y el tipo
      * equivalente en las facturas del corte. La cotización no va a cortes: se radica como anticipo (corte_type null).
-     * El indirecto no se asocia a nada en obra: al cargarlo pasa directo a cuentas por pagar.
+     * El indirecto no se asocia a nada en obra: se carga sin valor y, cuando el analista contable lo aprueba con el
+     * valor, pasa a cuentas por pagar.
      */
     public const DOCUMENT_TYPES = [
         self::TYPE_FACTURA => ['label' => 'Factura electrónica', 'prefix' => 'FE', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
@@ -53,6 +58,7 @@ class FacturacionInvoice extends Model
     public const STATUS_LABELS = [
         self::STATUS_PENDIENTE => 'Pendiente de obra',
         self::STATUS_PROCESADA => 'Procesada por obra',
+        self::STATUS_PENDIENTE_CONTABLE => 'Pendiente aprobación contable',
     ];
 
     protected $fillable = [
@@ -76,6 +82,7 @@ class FacturacionInvoice extends Model
         'corte_invoice_id',
         'orden_document_id',
         'anticipo_id',
+        'cuenta_cobro_id',
         'pago_cuenta_id',
         'processed_comment',
         'processed_by',
@@ -117,6 +124,11 @@ class FacturacionInvoice extends Model
     public function anticipo()
     {
         return $this->belongsTo(Anticipo::class, 'anticipo_id');
+    }
+
+    public function cuentaCobro()
+    {
+        return $this->belongsTo(CuentaCobro::class, 'cuenta_cobro_id');
     }
 
     public function pagoCuenta()

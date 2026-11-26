@@ -364,7 +364,11 @@ class PagoService
             'created_by' => $user->id,
         ]);
         $this->log($cuenta, PagoMovimiento::ACTION_CREADA, $user, $amount, "Cuenta de cobro {$cuentaCobro->code} "
-            . ($cuentaCobro->requires_multifox ? "cargada en Multifox (N.º {$cuentaCobro->multifox_number})." : 'aprobada (no requirió Multifox).'));
+            . match (true) {
+                $cuentaCobro->isDirecta() => 'liquidada en el ERP y aprobada por Contabilidad.',
+                (bool) $cuentaCobro->requires_multifox => "cargada en Multifox (N.º {$cuentaCobro->multifox_number}).",
+                default => 'aprobada (no requirió Multifox).',
+            });
     }
 
     /**

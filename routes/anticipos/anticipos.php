@@ -19,6 +19,8 @@ Route::prefix('anticipos')->middleware('auth:sanctum')->group(function () {
     Route::post('/{anticipo}/review', [AnticipoController::class, 'review'])
         ->middleware('permission:anticipos.aprobar_director|anticipos.aprobar_gerencia');
     Route::post('/{anticipo}/resubmit', [AnticipoController::class, 'resubmit'])->middleware('permission:anticipos.crear');
+    // El residente adjunta el contrato / orden de compra después de Gerencia (lo valida AnticipoService)
+    Route::post('/{anticipo}/support', [AnticipoController::class, 'uploadSupport'])->middleware('permission:anticipos.crear');
     Route::post('/{anticipo}/multifox', [AnticipoController::class, 'registerMultifox'])->middleware('permission:anticipos.contabilizar');
     Route::post('/{anticipo}/accounting', [AnticipoController::class, 'reviewAccounting'])->middleware('permission:anticipos.aprobar_contabilidad');
     Route::delete('/{anticipo}', [AnticipoController::class, 'destroy'])->middleware('permission:anticipos.eliminar');

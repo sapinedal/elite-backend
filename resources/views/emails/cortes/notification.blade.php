@@ -25,6 +25,7 @@
         $stepStyles = [
             'aprobado' => ['bg' => '#16a34a', 'fg' => '#ffffff', 'icon' => '&#10003;', 'text' => '#15803d', 'label' => 'Aprobado'],
             'devuelto' => ['bg' => '#dc2626', 'fg' => '#ffffff', 'icon' => '&#8617;', 'text' => '#b91c1c', 'label' => 'Devuelto'],
+            'rechazado_continua' => ['bg' => '#f59e0b', 'fg' => '#ffffff', 'icon' => '!', 'text' => '#b45309', 'label' => 'Rechazado, continúa'],
             'actual' => ['bg' => '#EE9D4C', 'fg' => '#ffffff', 'icon' => '&#9679;', 'text' => '#c2701f', 'label' => 'En revisión'],
             'pendiente' => ['bg' => '#e2e8f0', 'fg' => '#94a3b8', 'icon' => '&#9675;', 'text' => '#94a3b8', 'label' => 'Pendiente'],
         ];

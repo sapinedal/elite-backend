@@ -18,6 +18,7 @@ class CorteHistory extends Model
     public const ACTION_RADICADO = 'radicado';
     public const ACTION_APROBADO = 'aprobado';
     public const ACTION_DEVUELTO = 'devuelto';
+    public const ACTION_RECHAZADO_CONTINUA = 'rechazado_continua'; // Interventor rechaza pero el corte sigue (Rechazado pero aprobado)
     public const ACTION_REENVIADO = 'reenviado';
     public const ACTION_FACTURA = 'factura';
     public const ACTION_MULTIFOX = 'multifox'; // Factura confirmada en Multifox: pasa a la aprobación de Contabilidad
