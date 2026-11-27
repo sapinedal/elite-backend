@@ -5,6 +5,7 @@ namespace App\Http\Modules\Anticipos\Service;
 use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Anticipos\Models\AnticipoHistory;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
+use App\Http\Modules\Facturacion\Models\FacturacionInvoice;
 use App\Http\Modules\Ftra\Models\FtraContractor;
 use App\Http\Modules\Pagos\Service\AccountingApprovalNotifier;
 use App\Http\Modules\Pagos\Service\PagoService;
@@ -249,6 +250,34 @@ class AnticipoService
                 'file_mime' => $source['file_mime'] ?? null,
             ];
         }, $user);
+    }
+
+    /**
+     * Copia la factura que legaliza el anticipo (desde Facturas del mes) a la subcarpeta Legalizacion del anticipo.
+     */
+    public function copyLegalizacionFile(Anticipo $anticipo, string $path): ?string
+    {
+        return $anticipo->storage_path ? $this->storage->copyTo($path, $anticipo->storage_path . '/Legalizacion') : null;
+    }
+
+    /**
+     * Factura que legaliza un anticipo ya radicado: queda en su historial (con la copia) y no crea otra cuenta por
+     * pagar ni cambia el estado del anticipo. Corre dentro de la transacción de Facturas del mes.
+     */
+    public function recordLegalizacion(Anticipo $anticipo, FacturacionInvoice $invoice, $amount, array $file, ?string $comment, User $user): Anticipo
+    {
+        $detail = $invoice->documentTypeLabel() . " {$invoice->documentNumber()}"
+            . ($amount !== null ? ' por $' . number_format((float) $amount, 0, ',', '.') : '');
+        $anticipo->history()->create([
+            'stage' => null,
+            'action' => AnticipoHistory::ACTION_LEGALIZADO,
+            'comment' => "Legalizado con {$detail}." . ($comment ? " {$comment}" : ''),
+            'file_name' => $file['file_name'] ?? $invoice->file_name,
+            'file_path' => $file['file_path'] ?? $invoice->file_path,
+            'user_id' => $user->id,
+        ]);
+
+        return $anticipo;
     }
 
     public function notifySubmitted(Anticipo $anticipo, ?string $comment = null): void
@@ -554,6 +583,21 @@ class AnticipoService
         ];
     }
 
+    /**
+     * Factura de Facturas del mes que legaliza este anticipo.
+     */
+    public function legalizacionUrl(Anticipo $anticipo, int $invoiceId): array
+    {
+        $invoice = FacturacionInvoice::where('anticipo_id', $anticipo->id)
+            ->where('target_type', FacturacionInvoice::TARGET_LEGALIZACION)
+            ->find($invoiceId);
+        if (!$invoice) {
+            throw new InvalidArgumentException('La factura de legalización no existe.');
+        }
+
+        return [$this->storage->downloadUrl($invoice->file_path, $invoice->file_name), $invoice->file_name];
+    }
+
     public function downloadUrl(Anticipo $anticipo, bool $multifox = false, bool $support = false): string
     {
         if ($support) {
@@ -733,6 +777,22 @@ class AnticipoService
             $data['multifox_file_size'] = $anticipo->multifox_file_size;
             $data['multifox_by'] = $anticipo->multifoxUser?->name;
             $data['progress'] = $this->progress($anticipo);
+            // Facturas que legalizan el anticipo (asociadas desde Facturas del mes)
+            $data['legalizaciones'] = FacturacionInvoice::where('anticipo_id', $anticipo->id)
+                ->where('target_type', FacturacionInvoice::TARGET_LEGALIZACION)
+                ->with('processor:id,name')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (FacturacionInvoice $invoice) => [
+                    'id' => $invoice->id,
+                    'document_type_label' => $invoice->documentTypeLabel(),
+                    'document_number' => $invoice->documentNumber(),
+                    'amount' => $invoice->amount !== null ? (float) $invoice->amount : null,
+                    'file_name' => $invoice->file_name,
+                    'file_size' => $invoice->file_size,
+                    'processed_by' => $invoice->processor?->name,
+                    'processed_at' => $invoice->processed_at?->toIso8601String(),
+                ])->values();
             $data['history'] = $anticipo->history->sortByDesc('id')->map(fn (AnticipoHistory $h) => [
                 'id' => $h->id,
                 'action' => $h->action,

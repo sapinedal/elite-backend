@@ -152,7 +152,8 @@ class FacturacionController extends Controller
                     FacturacionInvoice::TARGET_CORTE => $invoice->document_type === FacturacionInvoice::TYPE_NOTA_CREDITO
                         ? 'Nota crédito aplicada al corte. No requiere Multifox ni aprobación de Contabilidad.'
                         : 'Factura asociada al corte. Se notificó para su registro en Multifox.',
-                    FacturacionInvoice::TARGET_ANTICIPO => 'Cotización radicada como anticipo ' . ($invoice->anticipo?->code ?? '') . '. Se notificó al Director de Obra.',
+                    FacturacionInvoice::TARGET_ANTICIPO => $invoice->documentTypeLabel() . ' radicada como anticipo ' . ($invoice->anticipo?->code ?? '') . '. Se notificó al Director de Obra.',
+                    FacturacionInvoice::TARGET_LEGALIZACION => 'Factura asociada al anticipo ' . ($invoice->anticipo?->code ?? '') . ' como legalización.',
                     FacturacionInvoice::TARGET_CUENTA_COBRO => 'Factura asociada a la cuenta de cobro. Pasa a la liquidación ERP.',
                     default => 'Factura asociada a la orden. Pasa a la entrada de almacén.',
                 },

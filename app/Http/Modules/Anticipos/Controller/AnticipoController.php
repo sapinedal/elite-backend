@@ -185,6 +185,14 @@ class AnticipoController extends Controller
             return $this->forbidden();
         }
 
+        if ($request->query('file') === 'legalizacion') {
+            return $this->attempt('descargar el archivo', function () use ($request, $anticipo) {
+                [$url, $name] = $this->service->legalizacionUrl($anticipo, (int) $request->query('invoice'));
+
+                return response()->json(['status' => 'success', 'data' => ['download_url' => $url, 'name' => $name]]);
+            });
+        }
+
         $multifox = $request->query('file') === 'multifox';
         $support = $request->query('file') === 'soporte';
 

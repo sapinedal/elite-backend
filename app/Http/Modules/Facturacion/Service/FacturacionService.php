@@ -4,6 +4,7 @@ namespace App\Http\Modules\Facturacion\Service;
 
 use App\Http\Modules\Anticipos\Models\Anticipo;
 use App\Http\Modules\Anticipos\Service\AnticipoService;
+use App\Http\Modules\Anticipos\Service\AnticipoWorkflow;
 use App\Http\Modules\Contratacion\Models\ContratacionContract;
 use App\Http\Modules\Cortes\Models\Corte;
 use App\Http\Modules\Cortes\Models\CorteInvoice;
@@ -377,11 +378,8 @@ class FacturacionService
      */
     public function targets(User $user, ?FacturacionInvoice $invoice = null): array
     {
-        $isAnticipo = $invoice && FacturacionInvoice::isAnticipo($invoice->document_type);
-
         $cortes = Corte::query()
             ->where('created_by', $user->id)
-            ->when($isAnticipo, fn ($q) => $q->whereRaw('1 = 0'))
             // Una factura nueva también puede ir a un corte Facturado con sus facturas anuladas por nota crédito
             ->whereIn('status', array_unique([...self::corteStatusesFor($invoice?->document_type), CorteWorkflow::STATUS_FACTURADO]))
             ->with(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code'])
@@ -393,15 +391,12 @@ class FacturacionService
             ->filter(fn (Corte $corte) => self::corteAccepts($corte, $invoice?->document_type))
             ->values();
 
-        // Órdenes esperando la factura del proveedor (sin factura cargada). A una orden solo se asocia la factura,
-        // cuenta de cobro o reembolso del proveedor, nunca notas crédito, facturas de reemplazo ni cotizaciones.
-        $ordenCompatible = !$invoice || FacturacionInvoice::fitsOrden($invoice->document_type);
+        // Órdenes esperando la factura del proveedor (sin factura cargada); cualquier documento sirve
         $ordenes = Orden::query()
             ->where('created_by', $user->id)
             ->where('status', OrdenWorkflow::STATUS_PENDIENTE_FACTURA)
             ->where('current_step', OrdenWorkflow::STEP_FACTURA)
             ->whereDoesntHave('documents', fn ($q) => $q->where('step', OrdenWorkflow::STEP_FACTURA))
-            ->when(!$ordenCompatible, fn ($q) => $q->whereRaw('1 = 0'))
             ->with(['project:id,name', 'tower:id,name'])
             ->orderByDesc('approved_at')
             ->get();
@@ -410,15 +405,22 @@ class FacturacionService
         $cuentasCobro = CuentaCobro::query()
             ->where('created_by', $user->id)
             ->where('current_step', CuentaCobroWorkflow::STEP_FACTURA)
-            ->when(!$ordenCompatible, fn ($q) => $q->whereRaw('1 = 0'))
             ->with(['tipo:id,name', 'project:id,name', 'tower:id,name', 'contractor:id,name'])
             ->orderByDesc('approved_at')
             ->get();
 
-        // Contratos de los proyectos del residente para radicar la cotización como anticipo: los del proveedor de la
-        // cotización primero. Los que tienen otro proveedor asignado no se ofrecen.
+        // Anticipos ya radicados por el residente: la factura los legaliza (no crea otra cuenta por pagar)
+        $anticipos = Anticipo::query()
+            ->where('created_by', $user->id)
+            ->with(['project:id,name', 'tower:id,name', 'contractor:id,name', 'contract:id,contract_code,contractor_name'])
+            ->when($invoice?->contractor_id, fn ($q, $id) => $q->orderByRaw('CASE WHEN contractor_id = ? THEN 0 ELSE 1 END', [$id]))
+            ->orderByDesc('id')
+            ->get();
+
+        // Contratos de los proyectos del residente para radicar el documento como anticipo nuevo: los del proveedor
+        // del documento primero. Los que tienen otro proveedor asignado no se ofrecen.
         $contractorId = $invoice?->contractor_id;
-        $contracts = !$isAnticipo || !$user->can('anticipos.crear') ? collect() : ContratacionContract::query()
+        $contracts = !$user->can('anticipos.crear') ? collect() : ContratacionContract::query()
             ->accessibleBy($user)
             ->when($contractorId, fn ($q) => $q->where(fn ($sub) => $sub->whereNull('contractor_id')->orWhere('contractor_id', $contractorId)))
             ->with(['project:id,name', 'tower:id,name'])
@@ -461,6 +463,19 @@ class FacturacionService
                 'tower' => $cuenta->tower?->name,
                 'approved_at' => $cuenta->approved_at?->toIso8601String(),
             ])->values(),
+            'anticipos' => $anticipos->map(fn (Anticipo $anticipo) => [
+                'id' => $anticipo->id,
+                'code' => $anticipo->code,
+                'label' => $anticipo->reference(),
+                'status' => $anticipo->status,
+                'status_label' => AnticipoWorkflow::statusLabel($anticipo->status),
+                'amount' => (float) $anticipo->amount,
+                'document_number' => $anticipo->document_number,
+                'contractor_id' => $anticipo->contractor_id,
+                'contractor' => $anticipo->contractor?->name ?? $anticipo->contract?->contractor_name,
+                'project' => $anticipo->project?->name,
+                'tower' => $anticipo->tower?->name,
+            ])->values(),
             'contratos' => $contracts->map(fn (ContratacionContract $contract) => [
                 'id' => $contract->id,
                 'contract_code' => $contract->contract_code,
@@ -501,6 +516,7 @@ class FacturacionService
             FacturacionInvoice::TARGET_ORDEN => Orden::find($data['target_id']),
             FacturacionInvoice::TARGET_ANTICIPO => ContratacionContract::query()->accessibleBy($user)->find($data['target_id']),
             FacturacionInvoice::TARGET_CUENTA_COBRO => CuentaCobro::find($data['target_id']),
+            FacturacionInvoice::TARGET_LEGALIZACION => Anticipo::find($data['target_id']),
             default => null,
         };
         $this->assertCanAssociate($invoice, $target, $targetType, $amount, $contractorId, $user);
@@ -514,6 +530,7 @@ class FacturacionService
             FacturacionInvoice::TARGET_CORTE => $this->corteStorage->copyInvoiceFile($target, $invoice->file_path),
             FacturacionInvoice::TARGET_ORDEN => $this->ordenStorage->copyStepFile($target, OrdenWorkflow::STEP_FACTURA, $invoice->file_path),
             FacturacionInvoice::TARGET_CUENTA_COBRO => $this->cuentaCobroStorage->copyStepFile($target, CuentaCobroWorkflow::STEP_FACTURA, $invoice->file_path),
+            FacturacionInvoice::TARGET_LEGALIZACION => $this->anticipos->copyLegalizacionFile($target, $invoice->file_path),
             default => null,
         };
         $file = $copyPath ? [...$invoice->only(['file_size', 'file_mime']), 'file_name' => basename($copyPath), 'file_path' => $copyPath] : [];
@@ -531,6 +548,7 @@ class FacturacionService
 
         // Después del commit, igual que en el cargue normal de cada módulo
         match (true) {
+            $targetType === FacturacionInvoice::TARGET_LEGALIZACION => null,
             $record instanceof CorteInvoice => $this->corteInvoices->notifyUploaded($record),
             $record instanceof Anticipo => $this->anticipos->notifySubmitted($record, $comment),
             $record instanceof CuentaCobroDocument => $this->cuentasCobro->notifyStepDocument($record),
@@ -547,7 +565,7 @@ class FacturacionService
      * @return array{0: FacturacionInvoice, 1: CorteInvoice|OrdenDocument|Anticipo|CuentaCobroDocument}
      */
     protected function associateRecords(
-        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro $target, string $targetType, $amount, ?int $contractorId,
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro|Anticipo $target, string $targetType, $amount, ?int $contractorId,
         array $file, ?string $comment, Collection $supports, User $user, ?string &$copyPath,
     ): array {
         return DB::transaction(function () use ($invoice, $target, $targetType, $amount, $contractorId, $file, $comment, $supports, $user, &$copyPath) {
@@ -583,6 +601,7 @@ class FacturacionService
                     'description' => $invoice->observation,
                     'comment' => $comment,
                 ], $invoice->only(['file_path', 'file_size', 'file_mime']), $user, $copyPath),
+                FacturacionInvoice::TARGET_LEGALIZACION => $this->anticipos->recordLegalizacion($target, $invoice, $amount, $file, $comment, $user),
             };
 
             $invoice->update([
@@ -594,7 +613,7 @@ class FacturacionService
                 'orden_id' => $targetType === FacturacionInvoice::TARGET_ORDEN ? $target->id : null,
                 'corte_invoice_id' => $targetType === FacturacionInvoice::TARGET_CORTE ? $record->id : null,
                 'orden_document_id' => $targetType === FacturacionInvoice::TARGET_ORDEN ? $record->id : null,
-                'anticipo_id' => $targetType === FacturacionInvoice::TARGET_ANTICIPO ? $record->id : null,
+                'anticipo_id' => in_array($targetType, [FacturacionInvoice::TARGET_ANTICIPO, FacturacionInvoice::TARGET_LEGALIZACION], true) ? $record->id : null,
                 'cuenta_cobro_id' => $targetType === FacturacionInvoice::TARGET_CUENTA_COBRO ? $target->id : null,
                 'processed_comment' => $comment,
                 'processed_by' => $user->id,
@@ -610,17 +629,19 @@ class FacturacionService
     }
 
     protected function assertCanAssociate(
-        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro|null $target, string $targetType, $amount, ?int $contractorId, User $user,
+        FacturacionInvoice $invoice, Corte|Orden|ContratacionContract|CuentaCobro|Anticipo|null $target, string $targetType, $amount, ?int $contractorId, User $user,
     ): void {
-        $isAnticipo = FacturacionInvoice::isAnticipo($invoice->document_type);
-
+        // Cualquier documento del proveedor se asocia a corte, orden, cuenta de cobro o anticipo; solo el indirecto no
         if (FacturacionInvoice::isIndirecto($invoice->document_type)) {
             throw new InvalidArgumentException('Los indirectos no se asocian a obra: pasan a cuentas por pagar con la aprobación contable.');
         }
-        if ($isAnticipo !== ($targetType === FacturacionInvoice::TARGET_ANTICIPO)) {
-            throw new InvalidArgumentException($isAnticipo
-                ? 'La cotización se radica como anticipo de un contrato, no se asocia a cortes ni órdenes.'
-                : 'Solo las cotizaciones se radican como anticipo.');
+
+        if ($targetType === FacturacionInvoice::TARGET_LEGALIZACION) {
+            if (!$target || $target->created_by !== $user->id) {
+                throw new InvalidArgumentException('Solo quien radicó el anticipo puede asociarle la factura.');
+            }
+
+            return;
         }
 
         if ($targetType === FacturacionInvoice::TARGET_ANTICIPO) {
@@ -631,10 +652,10 @@ class FacturacionService
                 throw new InvalidArgumentException('No tienes acceso al contrato seleccionado.');
             }
             if (!$contractorId) {
-                throw new InvalidArgumentException('Indica el proveedor de la cotización.');
+                throw new InvalidArgumentException('Indica el proveedor del documento.');
             }
             if ($target->contractor_id !== null && (int) $target->contractor_id !== (int) $contractorId) {
-                throw new InvalidArgumentException('El contrato no pertenece al proveedor de la cotización.');
+                throw new InvalidArgumentException('El contrato no pertenece al proveedor del documento.');
             }
             if ($amount === null) {
                 throw new InvalidArgumentException('Indica el valor del anticipo.');
@@ -649,9 +670,6 @@ class FacturacionService
             }
             if ($target->current_step !== CuentaCobroWorkflow::STEP_FACTURA) {
                 throw new InvalidArgumentException("La cuenta de cobro {$target->code} no está esperando la factura.");
-            }
-            if (!FacturacionInvoice::fitsOrden($invoice->document_type)) {
-                throw new InvalidArgumentException('A una cuenta de cobro solo se asocia la factura, cuenta de cobro o reembolso del proveedor.');
             }
 
             return;
@@ -674,9 +692,6 @@ class FacturacionService
         if (!$isCorte) {
             if ($target->current_step !== OrdenWorkflow::STEP_FACTURA) {
                 throw new InvalidArgumentException("La orden {$target->code} no está esperando la factura del proveedor.");
-            }
-            if (!FacturacionInvoice::fitsOrden($invoice->document_type)) {
-                throw new InvalidArgumentException('A una orden de compra solo se asocia la factura, cuenta de cobro o reembolso del proveedor.');
             }
         }
     }
@@ -822,6 +837,7 @@ class FacturacionService
             FacturacionInvoice::TARGET_PAGOS => ['type' => 'pagos', 'id' => $invoice->pago_cuenta_id, 'code' => null, 'label' => 'Cuentas por pagar · Indirectos'],
             FacturacionInvoice::TARGET_CUENTA_COBRO => ['type' => 'cuenta_cobro', 'id' => $invoice->cuenta_cobro_id, 'code' => $invoice->cuentaCobro?->code, 'label' => $invoice->cuentaCobro ? 'Cuenta de cobro ' . $invoice->cuentaCobro->reference() : 'Cuenta de cobro eliminada'],
             FacturacionInvoice::TARGET_ANTICIPO => ['type' => 'anticipo', 'id' => $invoice->anticipo_id, 'code' => $invoice->anticipo?->code, 'label' => $invoice->anticipo?->reference() ?? 'Anticipo eliminado'],
+            FacturacionInvoice::TARGET_LEGALIZACION => ['type' => 'legalizacion_anticipo', 'id' => $invoice->anticipo_id, 'code' => $invoice->anticipo?->code, 'label' => $invoice->anticipo ? 'Legaliza anticipo ' . $invoice->anticipo->reference() : 'Anticipo eliminado'],
             default => null,
         };
 

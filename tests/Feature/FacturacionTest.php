@@ -488,11 +488,11 @@ test('al asociar solo se listan los cortes aprobados sin factura y las órdenes 
         ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'corte', 'target_id' => $facturado->id])
         ->assertStatus(422);
 
-    // La nota crédito solo se lista contra cortes ya facturados y nunca contra órdenes
+    // La nota crédito se lista contra cortes ya facturados; como cualquier documento, también contra órdenes
     $nota = uploadInvoice(['document_type' => 'nota_credito', 'invoice_number' => '12', 'related_document' => 'FE 335']);
     $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$nota->id}")->assertOk()->json('data');
     expect(collect($targets['cortes'])->pluck('id')->all())->toBe([$facturado->id])
-        ->and($targets['ordenes'])->toBe([]);
+        ->and(collect($targets['ordenes'])->pluck('id')->all())->toBe([$porFacturar->id]);
 });
 
 test('el reembolso se asocia como la factura: a un corte aprobado o a una orden', function () {
@@ -508,7 +508,7 @@ test('el reembolso se asocia como la factura: a un corte aprobado o a una orden'
         ->and($corte->fresh()->status)->toBe(CorteWorkflow::STATUS_FACTURADO);
 });
 
-test('la cotización se radica como anticipo del contrato y no va a cortes ni órdenes', function () {
+test('la cotización se radica como anticipo del contrato y otra factura lo legaliza', function () {
     config(['anticipos.stage_emails' => ['director_obra' => ['director@example.com']], 'anticipos.monitor' => []]);
     $this->residente->givePermissionTo(['anticipos.ver', 'anticipos.crear']);
     $contract = \App\Http\Modules\Contratacion\Models\ContratacionContract::create([
@@ -525,15 +525,10 @@ test('la cotización se radica como anticipo del contrato y no va a cortes ni ó
     $invoice = uploadInvoice(['document_type' => 'cotizacion', 'invoice_number' => '88', 'amount' => null]);
     expect($invoice->documentNumber())->toBe('COT 88');
 
-    // Solo contratos del proveedor (o sin proveedor); ni cortes ni órdenes
+    // Contratos solo del proveedor (o sin proveedor); la cotización también puede ir a sus cortes
     $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$invoice->id}")->assertOk()->json('data');
-    expect($targets['cortes'])->toBe([])->and($targets['ordenes'])->toBe([])
+    expect(collect($targets['cortes'])->pluck('id')->all())->toBe([Corte::first()->id])
         ->and(collect($targets['contratos'])->pluck('id')->all())->toBe([$contract->id]);
-
-    // No va a un corte
-    $this->actingAs($this->residente)
-        ->postJson("/api/v1/facturacion/{$invoice->id}/associate", ['target_type' => 'corte', 'target_id' => Corte::first()->id])
-        ->assertStatus(422);
 
     // El anticipo necesita el valor
     $this->actingAs($this->residente)
@@ -554,6 +549,41 @@ test('la cotización se radica como anticipo del contrato y no va a cortes ni ó
         ->and($anticipo->status)->toBe(\App\Http\Modules\Anticipos\Service\AnticipoWorkflow::STATUS_PENDIENTE_DIRECTOR)
         ->and($anticipo->file_path)->toStartWith('tecnica/Contratos/INVALGO/')
         ->and($invoice->fresh()->anticipo_id)->toBe($anticipo->id);
+
+    // La factura del proveedor legaliza el anticipo ya radicado: no crea otro anticipo ni otra cuenta por pagar
+    $factura = uploadInvoice(['invoice_number' => '90', 'amount' => 5000000]);
+    $targets = $this->actingAs($this->residente)->getJson("/api/v1/facturacion/targets?invoice={$factura->id}")->assertOk()->json('data');
+    expect(collect($targets['anticipos'])->pluck('id')->all())->toBe([$anticipo->id])
+        ->and(collect($targets['contratos'])->pluck('id')->all())->toBe([$contract->id]);
+
+    // Solo quien radicó el anticipo lo legaliza
+    $otroResidente = makeUser();
+    $otroResidente->givePermissionTo($this->residente->getAllPermissions());
+    $this->actingAs($otroResidente)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'legalizacion_anticipo', 'target_id' => $anticipo->id])
+        ->assertStatus(422);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'legalizacion_anticipo', 'target_id' => $anticipo->id, 'comment' => 'Legaliza 30%'])
+        ->assertOk()
+        ->assertJsonPath('data.target.type', 'legalizacion_anticipo')
+        ->assertJsonPath('data.target.code', $anticipo->code);
+
+    expect(\App\Http\Modules\Anticipos\Models\Anticipo::count())->toBe(1)
+        ->and($anticipo->fresh()->status)->toBe(\App\Http\Modules\Anticipos\Service\AnticipoWorkflow::STATUS_PENDIENTE_DIRECTOR)
+        ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(0)
+        ->and($factura->fresh()->anticipo_id)->toBe($anticipo->id)
+        ->and($anticipo->history()->where('action', 'legalizado')->first()->file_path)->toStartWith($anticipo->storage_path . '/Legalizacion/');
+
+    $this->actingAs($this->residente)->getJson("/api/v1/anticipos/{$anticipo->id}")->assertOk()
+        ->assertJsonPath('data.legalizaciones.0.id', $factura->id)
+        ->assertJsonPath('data.legalizaciones.0.document_number', 'FE 90');
+
+    // Una factura (no solo la cotización) también puede radicarse como anticipo nuevo
+    $otra = uploadInvoice(['invoice_number' => '91', 'amount' => 1000000]);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$otra->id}/associate", ['target_type' => 'anticipo', 'target_id' => $contract->id])
+        ->assertOk()->assertJsonPath('data.target.type', 'anticipo');
+    expect(\App\Http\Modules\Anticipos\Models\Anticipo::count())->toBe(2);
 });
 
 test('el indirecto se carga sin valor y pasa a cuentas por pagar cuando el analista contable lo aprueba con el valor', function () {

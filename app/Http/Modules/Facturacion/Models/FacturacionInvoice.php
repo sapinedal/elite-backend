@@ -33,6 +33,7 @@ class FacturacionInvoice extends Model
     public const TARGET_ANTICIPO = 'anticipo';
     public const TARGET_PAGOS = 'pagos'; // Indirecto: pasa a cuentas por pagar con la aprobación del analista contable
     public const TARGET_CUENTA_COBRO = 'cuenta_cobro'; // Cuenta de cobro directa pendiente de factura
+    public const TARGET_LEGALIZACION = 'legalizacion_anticipo'; // Factura que legaliza un anticipo ya radicado (no crea otra cuenta por pagar)
 
     public const TYPE_FACTURA = 'factura';
     public const TYPE_CUENTA_COBRO = 'cuenta_cobro';
@@ -44,7 +45,8 @@ class FacturacionInvoice extends Model
 
     /**
      * Tipos con su etiqueta, el prefijo con el que se nombran en la carpeta (FE 335, C-C 49) y el tipo
-     * equivalente en las facturas del corte. La cotización no va a cortes: se radica como anticipo (corte_type null).
+     * equivalente en las facturas del corte. Cualquier documento (salvo el indirecto) se asocia a corte, orden, cuenta de
+     * cobro o anticipo; en el corte la cotización entra como factura inicial.
      * El indirecto no se asocia a nada en obra: se carga sin valor y, cuando el analista contable lo aprueba con el
      * valor, pasa a cuentas por pagar.
      */
@@ -54,7 +56,7 @@ class FacturacionInvoice extends Model
         self::TYPE_NOTA_CREDITO => ['label' => 'Nota crédito', 'prefix' => 'NC', 'corte_type' => CorteInvoice::TYPE_NOTA_CREDITO],
         self::TYPE_FACTURA_REEMPLAZO => ['label' => 'Factura de reemplazo', 'prefix' => 'FE', 'corte_type' => CorteInvoice::TYPE_FACTURA_REEMPLAZO],
         self::TYPE_REEMBOLSO => ['label' => 'Reembolso', 'prefix' => 'RE', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
-        self::TYPE_COTIZACION => ['label' => 'Cotización', 'prefix' => 'COT', 'corte_type' => null],
+        self::TYPE_COTIZACION => ['label' => 'Cotización', 'prefix' => 'COT', 'corte_type' => CorteInvoice::TYPE_FACTURA_INICIAL],
         self::TYPE_INDIRECTO => ['label' => 'Indirecto', 'prefix' => 'IND', 'corte_type' => null],
     ];
 
