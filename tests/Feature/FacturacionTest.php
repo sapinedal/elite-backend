@@ -578,6 +578,16 @@ test('la cotización se radica como anticipo del contrato y otra factura lo lega
         ->assertJsonPath('data.legalizaciones.0.id', $factura->id)
         ->assertJsonPath('data.legalizaciones.0.document_number', 'FE 90');
 
+    // Si Contabilidad no registró el valor de la factura, se pide al legalizar y queda en la factura
+    $sinValor = uploadInvoice(['invoice_number' => '92', 'amount' => null]);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$sinValor->id}/associate", ['target_type' => 'legalizacion_anticipo', 'target_id' => $anticipo->id])
+        ->assertStatus(422);
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$sinValor->id}/associate", ['target_type' => 'legalizacion_anticipo', 'target_id' => $anticipo->id, 'amount' => 2500000])
+        ->assertOk();
+    expect((float) $sinValor->fresh()->amount)->toBe(2500000.0);
+
     // Una factura (no solo la cotización) también puede radicarse como anticipo nuevo
     $otra = uploadInvoice(['invoice_number' => '91', 'amount' => 1000000]);
     $this->actingAs($this->residente)

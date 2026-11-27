@@ -505,7 +505,8 @@ class FacturacionService
         }
 
         // El valor no se pide al asociar: si Contabilidad no lo registró al cargar la factura, lo indica al aprobarla
-        // (después de Multifox) en el corte o la orden. El anticipo sí necesita el valor al radicarse.
+        // (después de Multifox) en el corte o la orden. El anticipo sí necesita el valor al radicarse, y la factura que
+        // legaliza un anticipo también (no pasa por otra aprobación de Contabilidad donde registrarlo).
         $amount = $invoice->amount ?? ($data['amount'] ?? null);
 
         // Igual que en el corte, no se pide el proveedor al asociar: cuentas por pagar usa el de la factura del mes
@@ -640,6 +641,9 @@ class FacturacionService
         if ($targetType === FacturacionInvoice::TARGET_LEGALIZACION) {
             if (!$target || $target->created_by !== $user->id) {
                 throw new InvalidArgumentException('Solo quien radicó el anticipo puede asociarle la factura.');
+            }
+            if ($amount === null) {
+                throw new InvalidArgumentException('Indica el valor de la factura que legaliza el anticipo.');
             }
 
             return;

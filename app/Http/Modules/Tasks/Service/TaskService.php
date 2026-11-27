@@ -60,19 +60,16 @@ class TaskService
                                        ->pluck('count', 'status');
 
             $statsQuery2 = clone $query;
-            $p0Count = $statsQuery2->where('priority', 'P0')->count();
+            // Críticas = P0 que siguen abiertas (una tarea completada ya no es crítica)
+            $p0Count = $statsQuery2->where('priority', 'P0')
+                                   ->where('status', '!=', 'Completada')
+                                   ->count();
 
             $statsQuery3 = clone $query;
             $totalCount = $statsQuery3->count();
 
             // Ahora aplicamos los filtros específicos de tarjetas (Estado y Prioridad)
-            if (!empty($filters['status'])) {
-                $query->where('status', $filters['status']);
-            }
-
-            if (!empty($filters['priority'])) {
-                $query->where('priority', $filters['priority']);
-            }
+            $this->applyCardFilters($query, $filters);
 
             $perPage = intval($filters['per_page'] ?? 15);
             $paginated = $query->with([
@@ -99,13 +96,7 @@ class TaskService
         }
 
         // Si no se pide paginación, aplicamos todos los filtros y devolvemos la lista completa
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (!empty($filters['priority'])) {
-            $query->where('priority', $filters['priority']);
-        }
+        $this->applyCardFilters($query, $filters);
 
         return $query->with([
                          'project:id,code,name',
@@ -116,6 +107,41 @@ class TaskService
                      ->withCount('observations')
                      ->orderBy('created_at', 'desc')
                      ->get();
+    }
+
+    /**
+     * Aplica los filtros de tarjetas (Estado y Prioridad).
+     *
+     * - 'status' admite varios estados (array o lista separada por comas): "En espera,En progreso".
+     * - 'priority' admite una o varias prioridades del mismo modo.
+     * - Si se filtra por P0 (Críticas) sin elegir estados, se excluyen las completadas.
+     */
+    private function applyCardFilters($query, array $filters): void
+    {
+        $statuses = $this->toList($filters['status'] ?? null);
+        $priorities = $this->toList($filters['priority'] ?? null);
+
+        if (!empty($priorities)) {
+            $query->whereIn('priority', $priorities);
+        }
+
+        if (!empty($statuses)) {
+            $query->whereIn('status', $statuses);
+        } elseif (in_array('P0', $priorities, true)) {
+            $query->where('status', '!=', 'Completada');
+        }
+    }
+
+    /**
+     * Normaliza un filtro que puede llegar como string, lista separada por comas o array.
+     */
+    private function toList($value): array
+    {
+        if (is_null($value) || $value === '') {
+            return [];
+        }
+        $items = is_array($value) ? $value : explode(',', (string) $value);
+        return array_values(array_filter(array_map('trim', $items), fn ($v) => $v !== ''));
     }
 
     /**
