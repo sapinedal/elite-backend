@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Route;
  * La autorización por factura (quién ve / edita / asocia) la resuelve FacturacionService.
  */
 Route::prefix('facturacion')->middleware('auth:sanctum')->group(function () {
-    $all = 'permission:cortes.facturar|cortes.crear|ordenes.crear|cuentas_cobro.crear|facturacion.aprobar_indirecto';
+    $all = 'permission:cortes.facturar|cortes.crear|cortes.eliminar|ordenes.crear|cuentas_cobro.crear|anticipos.crear|facturacion.aprobar_indirecto';
     $manage = 'permission:cortes.facturar';
-    $associate = 'permission:cortes.crear|ordenes.crear|cuentas_cobro.crear';
+    // cortes.eliminar: quien corrige una factura mal cargada vuelve a asociar la nueva al corte
+    $associate = 'permission:cortes.crear|cortes.eliminar|ordenes.crear|cuentas_cobro.crear|anticipos.crear';
 
     Route::get('/catalogs', [FacturacionController::class, 'catalogs'])->middleware($all);
     Route::post('/upload-url', [FacturacionController::class, 'uploadUrl'])->middleware($all);

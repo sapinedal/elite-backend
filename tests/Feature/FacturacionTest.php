@@ -801,3 +801,36 @@ test('la nota crédito de una factura ya en cuentas por pagar se aplica al asoci
         ->and($pago->status)->toBe('anulada')
         ->and(\App\Http\Modules\Pagos\Models\PagoCuenta::count())->toBe(1);
 });
+
+test('quien elimina facturas de cortes puede volver a asociar la factura corregida a un corte que no radicó', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'cortes.eliminar', 'guard_name' => 'web']);
+    $paula = makeUser();
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'cortes.ver_todos', 'guard_name' => 'web']);
+    $paula->givePermissionTo(['cortes.ver', 'cortes.ver_todos', 'cortes.eliminar', 'proyectos.ver_todos']);
+    $otro = makeUser();
+    $otro->givePermissionTo(['cortes.ver', 'cortes.ver_todos', 'cortes.crear', 'proyectos.ver_todos']);
+
+    // Corte del residente con la factura FE 335 asociada y luego eliminada por error en valores
+    $corte = makeCorte($this->residente);
+    $factura = uploadInvoice();
+    $this->actingAs($this->residente)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertOk();
+    $this->actingAs($paula)->deleteJson('/api/v1/cortes/invoices/' . CorteInvoice::first()->id, ['reason' => 'Inconsistencia en valores'])
+        ->assertOk()->assertJsonPath('data.status', CorteWorkflow::STATUS_APROBADO);
+    expect($factura->fresh()->status)->toBe(FacturacionInvoice::STATUS_PENDIENTE);
+
+    // Paula ve el botón en el corte y el corte en Facturas del mes; otro residente no
+    $this->actingAs($paula)->getJson("/api/v1/cortes/{$corte->id}")->assertOk()->assertJsonPath('data.can_associate_invoice', true);
+    $this->actingAs($otro)->getJson("/api/v1/cortes/{$corte->id}")->assertOk()->assertJsonPath('data.can_associate_invoice', false);
+    $targets = $this->actingAs($paula)->getJson("/api/v1/facturacion/targets?invoice={$factura->id}")->assertOk()->json('data');
+    expect(collect($targets['cortes'])->pluck('id')->all())->toBe([$corte->id]);
+    $this->actingAs($otro)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertStatus(422);
+
+    // Se vuelve a asociar con el mismo número (la eliminada no lo bloquea)
+    $this->actingAs($paula)
+        ->postJson("/api/v1/facturacion/{$factura->id}/associate", ['target_type' => 'corte', 'target_id' => $corte->id])->assertOk();
+    expect($corte->fresh()->status)->toBe(CorteWorkflow::STATUS_FACTURADO)
+        ->and(CorteInvoice::where('corte_id', $corte->id)->count())->toBe(1)
+        ->and(CorteInvoice::withTrashed()->where('corte_id', $corte->id)->count())->toBe(2);
+});

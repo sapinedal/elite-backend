@@ -83,7 +83,7 @@ class FacturacionService
      */
     public function canAssociate(User $user): bool
     {
-        return $user->can('cortes.crear') || $user->can('ordenes.crear') || $user->can('anticipos.crear') || $user->can('cuentas_cobro.crear');
+        return $user->can('cortes.crear') || $user->can('cortes.eliminar') || $user->can('ordenes.crear') || $user->can('anticipos.crear') || $user->can('cuentas_cobro.crear');
     }
 
     public function canApproveIndirecto(User $user): bool
@@ -378,8 +378,9 @@ class FacturacionService
      */
     public function targets(User $user, ?FacturacionInvoice $invoice = null): array
     {
+        // Sus cortes; quien puede eliminar facturas de cortes ve también los de sus proyectos (para asociar la corregida)
         $cortes = Corte::query()
-            ->where('created_by', $user->id)
+            ->when($user->can('cortes.eliminar'), fn ($q) => $q->accessibleBy($user), fn ($q) => $q->where('created_by', $user->id))
             // Una factura nueva también puede ir a un corte Facturado con sus facturas anuladas por nota crédito
             ->whereIn('status', array_unique([...self::corteStatusesFor($invoice?->document_type), CorteWorkflow::STATUS_FACTURADO]))
             ->with(['project:id,name', 'tower:id,name', 'contractor:id,name,nit', 'contract:id,contract_code'])
@@ -676,7 +677,7 @@ class FacturacionService
         }
 
         $isCorte = $targetType === FacturacionInvoice::TARGET_CORTE;
-        if (!$target || $target->created_by !== $user->id) {
+        if (!$target || ($isCorte ? !$target->canAssociateInvoice($user) : $target->created_by !== $user->id)) {
             throw new InvalidArgumentException('Solo el residente responsable puede asociar facturas a su ' . ($isCorte ? 'corte.' : 'orden.'));
         }
 

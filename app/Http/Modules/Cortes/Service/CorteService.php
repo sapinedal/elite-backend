@@ -462,6 +462,8 @@ class CorteService
             'can_review' => $this->canReview($corte, $user),
             'can_resubmit' => $this->canResubmit($corte, $user),
             'can_invoice' => $this->canInvoice($corte, $user),
+            // Botón "Asociar factura": quien lo radicó o quien elimina facturas de cortes en el proyecto
+            'can_associate_invoice' => in_array($corte->status, CorteWorkflow::INVOICEABLE_STATUSES, true) && $corte->canAssociateInvoice($user),
             'can_delete' => $user->can('cortes.eliminar'),
             'invoices_count' => $corte->invoices_count ?? ($corte->relationLoaded('invoices') ? $corte->invoices->count() : 0),
         ];

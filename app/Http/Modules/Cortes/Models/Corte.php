@@ -93,6 +93,16 @@ class Corte extends Model
      * Todas las facturas del corte (inicial o de reemplazo) tienen una nota crédito que las afecta. Un corte sin
      * facturas no cuenta como anulado.
      */
+    /**
+     * Asocia facturas al corte quien lo radicó o quien puede eliminar sus facturas (cortes.eliminar) en el proyecto:
+     * así quien corrige una factura mal cargada puede asociar la nueva.
+     */
+    public function canAssociateInvoice(User $user): bool
+    {
+        return $this->created_by === $user->id
+            || ($user->can('cortes.eliminar') && $user->canAccessProject($this->project_id));
+    }
+
     public function allInvoicesCredited(): bool
     {
         $invoices = $this->relationLoaded('invoices') ? $this->invoices : $this->invoices()->get();
