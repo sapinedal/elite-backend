@@ -138,7 +138,8 @@ test('flujo completo: radica, aprueban director y gerencia, contabilidad carga M
 
     $this->actingAs($this->contabilidad)->postJson("/api/v1/anticipos/{$anticipo->id}/multifox", ['multifox_number' => 'AN-77', 'upload_token' => (string) Str::uuid()])
         ->assertOk();
-    $this->actingAs($this->contador)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'aprobar'])
+    // Contabilidad confirma (o corrige) el valor al aprobar
+    $this->actingAs($this->contador)->postJson("/api/v1/anticipos/{$anticipo->id}/accounting", ['decision' => 'aprobar', 'amount' => 24500000])
         ->assertOk()->assertJsonPath('data.status', AnticipoWorkflow::STATUS_COMPLETADO);
 
     $anticipo->refresh();
@@ -148,7 +149,9 @@ test('flujo completo: radica, aprueban director y gerencia, contabilidad carga M
         ->and($anticipo->multifox_file_path)->toStartWith($anticipo->storage_path . '/')
         ->and($cuenta->source_type)->toBe(PagoCuenta::SOURCE_ANTICIPO)
         ->and($cuenta->anticipo_id)->toBe($anticipo->id)
-        ->and((float) $cuenta->amount)->toBe(25000000.0)
+        ->and((float) $cuenta->amount)->toBe(24500000.0)
+        ->and((float) $anticipo->amount)->toBe(24500000.0)
+        ->and($anticipo->history()->where('comment', 'like', '%ajustó el valor%')->exists())->toBeTrue()
         ->and($cuenta->supplier_name)->toBe('EMELECT GROUP SAS')
         ->and($cuenta->document_number)->toBe('C-C 45')
         ->and($cuenta->frente)->toBe('TORRE 2')

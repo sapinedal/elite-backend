@@ -169,7 +169,7 @@ class AnticipoController extends Controller
     {
         return $this->attempt('registrar la aprobación de Contabilidad', function () use ($request, $anticipo) {
             $decision = $request->validated('decision');
-            $anticipo = $this->service->reviewAccounting($anticipo, $decision, $request->validated('comment'), $request->user());
+            $anticipo = $this->service->reviewAccounting($anticipo, $decision, $request->validated('comment'), $request->user(), $request->validated('amount') !== null ? (float) $request->validated('amount') : null);
 
             return response()->json([
                 'status' => 'success',

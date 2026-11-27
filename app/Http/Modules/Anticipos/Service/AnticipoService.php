@@ -465,9 +465,10 @@ class AnticipoService
 
     /**
      * Contabilidad aprueba el anticipo cargado en Multifox (pasa al cuadro de pagos) o lo devuelve a quien lo genera
-     * en Multifox, que debe cargarlo de nuevo.
+     * en Multifox, que debe cargarlo de nuevo. Al aprobar, Contabilidad confirma (o corrige) el valor con el que pasa
+     * al cuadro de pagos; si no lo envía, se usa el valor radicado.
      */
-    public function reviewAccounting(Anticipo $anticipo, string $decision, ?string $comment, User $user): Anticipo
+    public function reviewAccounting(Anticipo $anticipo, string $decision, ?string $comment, User $user, ?float $amount = null): Anticipo
     {
         $comment = $comment !== null ? (trim($comment) ?: null) : null;
         if (!$this->canReviewAccounting($anticipo, $user)) {
@@ -479,13 +480,23 @@ class AnticipoService
 
         $multifoxEmail = $anticipo->multifoxUser?->email;
 
-        $anticipo = DB::transaction(function () use ($anticipo, $decision, $comment, $user) {
+        $anticipo = DB::transaction(function () use ($anticipo, $decision, $comment, $user, $amount) {
             $anticipo = Anticipo::whereKey($anticipo->id)->lockForUpdate()->firstOrFail();
             if ($anticipo->status !== AnticipoWorkflow::STATUS_PENDIENTE_APROBACION_CONTABLE) {
                 throw new InvalidArgumentException('Otro usuario ya revisó este anticipo.');
             }
 
             if ($decision === 'aprobar') {
+                $previous = (float) $anticipo->amount;
+                $amount = round($amount ?: $previous, 2);
+                if ($amount <= 0) {
+                    throw new InvalidArgumentException('Indica el valor del anticipo: con él pasa al cuadro de pagos.');
+                }
+                if ($amount !== $previous) {
+                    $anticipo->update(['amount' => $amount]);
+                    $this->log($anticipo, AnticipoHistory::ACTION_CONTABILIDAD_APROBADA, $user, AnticipoWorkflow::STEP_APROBACION_CONTABLE,
+                        'Contabilidad ajustó el valor de $' . number_format($previous, 0, ',', '.') . ' a $' . number_format($amount, 0, ',', '.') . '.');
+                }
                 $anticipo->update(['status' => AnticipoWorkflow::STATUS_COMPLETADO]);
                 $this->log($anticipo, AnticipoHistory::ACTION_CONTABILIDAD_APROBADA, $user, AnticipoWorkflow::STEP_APROBACION_CONTABLE,
                     'Aprobado por Contabilidad. Pasa al cuadro de pagos.' . ($comment ? " {$comment}" : ''));
